@@ -3,14 +3,10 @@ name: Import Xiaomi 14T Pro kernel history
 # Migration-only workflow. Never builds or flashes kernels.
 # Preserve original Git commit IDs by pushing successive ancestors.
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/import-rothko-history.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: rothko-history-import
@@ -26,8 +22,18 @@ jobs:
       TARGET_URL: https://github.com/cogan17/Xiomi-14t-pro.git
       SOURCE_BRANCH: bsp-rothko-u-oss
       EXPECTED_SOURCE_SHA: 924d8eb314b764a92dc7d8610def9239f0db566c
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.ROTHKO_MIGRATION_TOKEN }}
     steps:
+      - name: Require temporary Workflows-capable token
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::Missing Actions secret ROTHKO_MIGRATION_TOKEN. Create a fine-grained PAT scoped only to cogan17/Xiomi-14t-pro with Contents and Workflows read/write; save it as that repository secret, then manually run this workflow."
+            exit 1
+          fi
+          echo "Temporary migration token is configured (value not displayed)."
+
       - name: Confirm original source and destination
         shell: bash
         run: |
