@@ -117,3 +117,24 @@ bukan menghapus jejak kejadian.
 - **Prioritas selanjutnya:** memastikan backup RAW Slot A terbaru
   tersedia (boot, init_boot, vendor_boot, dtbo, vbmeta) dan memeriksa
   checksum sebelum merancang opsi pemulihan.
+
+## 2026-10-12 — Pemeriksaan metadata backup RAW Slot A
+
+- **Input:** pengguna mengirim `backup.json` dari Kernel Flasher,
+  nama backup `2026-10-12--02-40`, tipe `raw`.
+- **Metadata kernel:** `6.1.177-android14-11-Cogan`, build
+  `2026-10-10 03:36:04 UTC`; `bootSha1` lengkap
+  `82d969f0cab5e7f17f5d499b847e7cba64a08932`.
+- **Hasil yang diverifikasi:** checksum metadata untuk `boot`,
+  `init_boot`, `vendor_boot`, `dtbo`, `vbmeta` seluruhnya
+  **5/5 cocok** dengan hasil baca langsung Slot A melalui Termux.
+- **Referensi baru:** `system_dlkm` SHA-256
+  `361be1dfdf7fa5d84f4712e005d4d1925100b3e94cf04954619fd45ba18defda`;
+  `vendor_dlkm` SHA-256
+  `596cce7cd8e8a4a44c47080ce914facc9580004b5c18a8627c90551a3da5d536`.
+- **Belum terverifikasi:** file image backup tidak dikirim bersama JSON,
+  jadi ukuran/hash ulang file asli dan salinan cadangan eksternal
+  **belum diperiksa**. Dua DLKM belum punya pembanding Termux.
+- **Keputusan:** jangan menyimpulkan backup dapat dipulihkan hanya
+  berdasarkan JSON, dan tetap tahan flashing/restoring.
+- **Laporan:** [ROTHKO_ACTIVE_SLOT_A_AUDIT.md](ROTHKO_ACTIVE_SLOT_A_AUDIT.md).
