@@ -1,0 +1,56 @@
+name: Cogan Rothko - Validate Active Slot A Hash Probe
+
+on:
+  push:
+    branches:
+      - dev/rothko
+    paths:
+      - '.github/workflows/validate-active-slot-a-probe.yml'
+      - 'scripts/collect_active_slot_a_hashes.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe-lint:
+    if: github.ref == 'refs/heads/dev/rothko'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/collect_active_slot_a_hashes.sh
+      - name: Shell syntax and constrained read-only audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh -n scripts/collect_active_slot_a_hashes.sh
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          s = Path('scripts/collect_active_slot_a_hashes.sh').read_text()
+          for necessary in ('ro.product.device', 'ro.product.vendor.device',
+                            'ro.boot.slot_suffix', "'rothko'", "'_a'",
+                            'blockdev --getsize64', 'sha256sum',
+                            'EXACT_STOCK_DEGAS_INIT_BOOT',
+                            'EXACT_STOCK_ROTHKO_INIT_BOOT',
+                            'NOT an image backup'):
+              assert necessary in s, 'Missing safety element: ' + necessary
+          assert re.findall(r'^\s*[A-Z_]+=(?:\x27)([0-9a-f]{64})(?:\x27)',s, re.M)
+          for banned in ('dd if=', 'dd of=', 'flash_image ', 'fastboot ',
+                         'bootctl ', 'reboot ', 'insmod ', 'modprobe ',
+                         'mount -o rw', 'setprop '):
+              assert banned not in s, 'Unexpected operation ' + banned
+          print('Static checks pass. No device exercised.')
+          PY
+          {
+            echo '### Active Slot A hash probe: static inspection only'
+            echo
+            echo 'Script syntax and expected read-only commands reviewed.'
+            echo 'No device was connected and no image was flashed.'
+          } >> "$GITHUB_STEP_SUMMARY"
