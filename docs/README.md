@@ -29,6 +29,7 @@ tidak pernah menjadi izin otomatis untuk flashing.
 | [ROTHKO_STOCK_FIRMWARE_AUDIT.md](ROTHKO_STOCK_FIRMWARE_AUDIT.md) | Perbandingan firmware WNNIDXM Rothko dan WNEIDXM Degas |
 | [ROTHKO_VENDOR_ABI_AUDIT.md](ROTHKO_VENDOR_ABI_AUDIT.md) | KMI, metadata modul, Kernel Flasher Slot A, BakaSU/SUSFS |
 | [ROTHKO_SLOT_B_BACKUP_AUDIT.md](ROTHKO_SLOT_B_BACKUP_AUDIT.md) | Checksum backup Slot B dan pembanding stock |
+| [ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md) | Audit checksum `init_boot_a` aktif; prosedur read-only dan batas penafsiran |
 
 ## Workflow pengembangan
 
@@ -41,7 +42,11 @@ tidak pernah menjadi izin otomatis untuk flashing.
 - [Kernel lineage](../.github/workflows/check-rothko-lineage.yml):
   menjaga pemisahan source Xiaomi dan GKI.
 - [Read-only Termux probe](../scripts/collect_rothko_probe.sh):
-  tinjau isi skrip sebelum menjalankannya.
+  inventaris firmware dan modul.
+- [Active init_boot_a checksum](../scripts/check_active_init_boot.sh):
+  bandingkan image Slot A dengan stock Rothko/Degas tanpa flashing.
+- [CI static safety lint](../.github/workflows/validate-init-boot-probe.yml):
+  pemeriksaan skrip baru (belum membuktikan hasil pada HP).
 
 ## Pegangan keselamatan
 
