@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "intent": "STATIC_SOURCE_LINEAGE_ONLY_NOT_DEVICE_COMPATIBILITY",
+  "xiaomi_source": {
+    "repository": "cogan17/Xiomi-14t-pro",
+    "baseline_branch": "bsp-rothko-u-oss",
+    "baseline_commit": "924d8eb314b764a92dc7d8610def9239f0db566c",
+    "makefile_blob_sha": "754b7c377c2c6fc734495aec00ed0e14ecf33448",
+    "makefile_kernel_version": "6.1.57",
+    "build_config_kmi_generation": 11
+  },
+  "gki_reference": {
+    "repository": "cogan17/GKI_BakaSU_SUSFS",
+    "fork_source_repository": "coolzyd9107/GKI_BakaSU_SUSFS",
+    "workflow": "/.github/workflows/kernel-custom.yml",
+    "audited_main_commit": "73fe92fa8aa40cb4a7e4ed506c5eac8b36331848",
+    "kernel_manifest_url": "https://android.googlesource.com/kernel/manifest",
+    "requested_manifest_branch": "common-android14-6.1-lts",
+    "requested_kernel_version": "6.1.177",
+    "compiled_kernel_commit_confirmed": false
+  },
+  "device_observation": {
+    "codename": "rothko",
+    "operating_system_android_version": "16",
+    "uname_is_susfs_spoofed": true,
+    "displayed_uname_sublevel_not_trustworthy": "6.1.170",
+    "true_running_kernel_version_verified": false,
+    "vendor_module_abi_verified": false,
+    "partition_layout_verified": false,
+    "flashable_compatibility_verified": false
+  },
+  "prohibitions": {
+    "do_not_infer_true_kernel_version_from_uname": true,
+    "do_not_relabel_source_6_1_57_as_6_1_177": true,
+    "do_not_force_module_version_mismatch": true,
+    "no_automatic_kernel_build": true,
+    "no_flashable_artifacts": true,
+    "no_droidspaces": true,
+    "no_ntsync": true
+  }
+}
