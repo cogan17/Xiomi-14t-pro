@@ -26,10 +26,10 @@ makes combined installation into one source tree inappropriate. The All option
 means a matrix of **three separate workspaces and builds**, not simultaneous root
 engines.
 
-The current workflow resolves the selected upstream ref, fetches the
-`kernel/setup.sh` file corresponding to its *exact resolved commit*, and performs
-a shell syntax check. **It never executes setup.sh, clones the root source for
-patching, writes into the kernel source, or builds APK/kernel images.**
+The current workflow is a **selection/matrix preview only**. A future,
+separately reviewed CI audit should resolve each selected upstream ref, fetch
+its `kernel/setup.sh` from the exact resolved commit, and perform a shell syntax
+check. It must **not** execute setup.sh, patch the kernel tree, or build images.
 
 ## Kernel baseline observations
 
