@@ -42,3 +42,25 @@ bukan menghapus jejak kejadian.
 - Belum dijalankan pada perangkat, sehingga hasil checksum Slot A belum diketahui.
 - Tidak dilakukan perubahan partisi, flashing, atau penggantian slot.
 - Langkah berikutnya: pengguna meninjau skrip dan mengirim hasilnya.
+
+## 2026-10-12 — Hasil langsung dari active init_boot_a
+
+- **Tujuan:** melacak apakah Slot A masih menggunakan image boot ramdisk
+  salah model, tanpa melakukan flashing.
+- **Bukti dari HP:** `ro.product.device=rothko`, `slot=_a`,
+  firmware `OS3.0.301.0.WNNIDXM`, ukuran `init_boot_a=8388608` byte.
+- **Hash partisi:** `951f096146157773abe4cbbd9b0dacbe9c2fa6400d4c438298353e5fb8a8bf04`.
+  Image ini **byte-identical dengan stock Degas WNEIDXM**, tidak cocok
+  dengan stock Rothko; klasifikasi skrip `EXACT_DEGAS_STOCK`.
+- **Konteks:** Slot A tetap aktif dan ditandai Successful; BakaSU masih
+  berjalan. Backup Slot B memuat `init_boot` stock Rothko.
+- **Inferensi/belum terbukti:** penyebab historis status Slot B
+  Unbootable dan konsekuensi AVB/LKM belum diketahui; jangan menganggap
+  hash sebagai diagnosis kerusakan hardware.
+- **Tindakan repository:** audit aktif, status proyek dan catatan insiden
+  diperbarui di branch `dev/rothko`.
+- **Tidak dilakukan:** flashing, restore, menyalin image mentah ke repo,
+  mengubah slot, modifikasi kernel/root, ataupun mematikan SUSFS.
+- **Keputusan:** tahan perubahan pada slot aktif hingga tersedia backup
+  aktual yang dapat diverifikasi dan rencana pemulihan yang ditinjau.
+- **Rincian:** [audit init_boot_a](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md).
