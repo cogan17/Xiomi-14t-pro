@@ -64,3 +64,22 @@ bukan menghapus jejak kejadian.
 - **Keputusan:** tahan perubahan pada slot aktif hingga tersedia backup
   aktual yang dapat diverifikasi dan rencana pemulihan yang ditinjau.
 - **Rincian:** [audit init_boot_a](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md).
+
+## 2026-10-12 — Persiapan fingerprint seluruh partisi boot Slot A
+
+- **Tujuan:** mengenali `boot_a`, `init_boot_a`, `vendor_boot_a`, `dtbo_a`
+  dan `vbmeta_a` secara read-only; menyiapkan bukti sebelum backup/pemulihan.
+- **Kondisi sebelum:** `init_boot_a` terbukti identik dengan stock Degas,
+  sedangkan backup Slot B berisi stock Rothko. Kernel Cogan r7 dan root
+  BakaSU pada Slot A masih berjalan.
+- **Tindakan:** menambahkan `scripts/collect_active_slot_a_hashes.sh`,
+  dokumentasi perbandingan checksum serta CI statis.
+- **Bukti:** [GitHub Actions #38168635728](https://github.com/cogan17/Xiomi-14t-pro/actions/runs/38168635728)
+  selesai **success**; SHA commit awal skrip `c3d4f7d5f0b7fb1090ad3f94617bf161c40b7cc9`.
+- **Hasil terverifikasi:** skrip lolos `sh -n` dan inspeksi statis.
+- **BELUM diuji:** eksekusi pada HP, SHA-256 aktual lima image,
+  backup Slot A terbaru, kesetaraan dengan build r7 dan ABI modul vendor.
+- **Keselamatan:** tidak ada restore, flash, perubahan slot, perubahan
+  root/SUSFS, ataupun pengunggahan image mentah.
+- **Berikutnya:** pengguna membaca skrip dan menjalankannya dari Termux,
+  kemudian mengirim hasil pemeriksaan sebelum keputusan selanjutnya.
