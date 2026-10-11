@@ -9,14 +9,19 @@ bukti. Tiap insiden memiliki keadaan dan kriteria penutupan.
   `WNNIDXM` (`rothko/mt6989`).
 - **Diketahui:** `init_boot.img` kedua model memiliki isi ramdisk sangat
   mirip; ini dapat menjelaskan mengapa root manager dapat melakukan patch.
-- **Belum diketahui:** apakah `init_boot_a` aktif saat ini masih memuat
-  modifikasi dari ROM yang salah dan apakah pernah memicu kegagalan.
-- **Tindakan:** ZIP stock Rothko yang benar sudah tersedia; **jangan**
-  mengulangi flashing degas. Bandingkan image aktif secara read-only
-  jika memang dibutuhkan.
+- **Terverifikasi baru (12 Oktober 2026):** checksum SHA-256 image
+  `init_boot_a` aktif (8 MiB) **persis sama dengan stock Degas WNEIDXM**:
+  `951f096146157773abe4cbbd9b0dacbe9c2fa6400d4c438298353e5fb8a8bf04`.
+  Ini bukan lagi dugaan atau sekadar image yang pernah diunduh.
+- **Masih belum diketahui:** kapan/dengan proses apa image itu dipasang,
+  apakah pernah menimbulkan kegagalan, dan apakah berkaitan dengan status
+  Slot B unbootable. Tidak ada bukti kerusakan hardware/Slot A dari hash.
+- **Tindakan:** ZIP stock Rothko yang benar sudah tersedia, tetapi jangan
+  flash atau restore Slot A secara spontan. Simpan bukti image aktif,
+  rencanakan backup dan langkah pemulihan sebelum perubahan.
 - **Referensi:** [Audit firmware](ROTHKO_STOCK_FIRMWARE_AUDIT.md),
   [pemeriksaan `init_boot_a` aktif](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md)
-  (skrip disiapkan, hasil pada HP belum ada).
+  (hasil checksum dari HP sudah diperoleh).
 
 ## I-002 — Slot B bertanda `Unbootable: Yes`
 
