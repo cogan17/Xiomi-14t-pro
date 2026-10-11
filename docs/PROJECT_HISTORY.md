@@ -40,6 +40,16 @@ ketidakpastian sebelumnya tentang isi Slot A. Root BakaSU tetap berjalan.
 Penyebab status Slot B unbootable **belum diketahui**. Tidak dilakukan
 flashing/restore ataupun penggantian slot.
 
+### Audit lanjutan Slot A, 12 Oktober 2026
+
+SHA-256 langsung dari lima partisi Slot A tercatat dalam
+[audit boot-chain aktif](ROTHKO_ACTIVE_SLOT_A_AUDIT.md): `boot_a`
+berbeda dari stock Rothko (konsisten dengan kernel Cogan),
+`init_boot_a` stock Degas, `vendor_boot_a` stock Rothko,
+`dtbo_a` dan `vbmeta_a` sama dengan backup Slot B. Tidak ada
+flashing atau restore, dan backup RAW terbaru Slot A masih perlu
+konfirmasi sebelum perubahan.
+
 ## Kelanjutan riwayat
 
 Untuk setiap pekerjaan baru, tambahkan entri bertanggal di
