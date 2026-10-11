@@ -14,7 +14,9 @@ bukti. Tiap insiden memiliki keadaan dan kriteria penutupan.
 - **Tindakan:** ZIP stock Rothko yang benar sudah tersedia; **jangan**
   mengulangi flashing degas. Bandingkan image aktif secara read-only
   jika memang dibutuhkan.
-- **Referensi:** [Audit firmware](ROTHKO_STOCK_FIRMWARE_AUDIT.md).
+- **Referensi:** [Audit firmware](ROTHKO_STOCK_FIRMWARE_AUDIT.md),
+  [pemeriksaan `init_boot_a` aktif](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md)
+  (skrip disiapkan, hasil pada HP belum ada).
 
 ## I-002 — Slot B bertanda `Unbootable: Yes`
 
