@@ -30,6 +30,16 @@ serta audit berkas firmware. **Bukan** sejarah seluruh upstream Xiaomi.
   `boot/init_boot` dan AK3 adalah konteks yang dilaporkan pengguna,
   **bukan bukti teknis bahwa prosedur tersebut cocok untuk firmware ini**.
 
+## Penemuan lanjutan, 12 Oktober 2026
+
+Setelah skrip pemeriksaan checksum dijalankan oleh pemilik melalui Termux,
+`init_boot_a` pada Slot A aktif **terbukti identik dengan image stock
+Xiaomi 14T Degas (WNEIDXM)**; hash lengkap pada
+[audit image aktif](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md). Ini mengoreksi
+ketidakpastian sebelumnya tentang isi Slot A. Root BakaSU tetap berjalan.
+Penyebab status Slot B unbootable **belum diketahui**. Tidak dilakukan
+flashing/restore ataupun penggantian slot.
+
 ## Kelanjutan riwayat
 
 Untuk setiap pekerjaan baru, tambahkan entri bertanggal di
