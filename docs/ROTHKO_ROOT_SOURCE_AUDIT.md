@@ -33,8 +33,18 @@ check. It must **not** execute setup.sh, patch the kernel tree, or build images.
 
 ## Kernel baseline observations
 
-- `Makefile` declares Linux `6.1.57`; the existing Cogan GKI project target
-  `6.1.177` is not a source-level match.
+- Xiaomi Rothko source `Makefile` declares **6.1.57**. This is the source
+  baseline in this standalone repo, not the version established on the phone.
+- The separate Cogan GKI build project, forked from
+  https://github.com/coolzyd9107/GKI_BakaSU_SUSFS, configures
+  **android14 / 6.1 / sublevel 177 / lts** by default in
+  `.github/workflows/kernel-custom.yml`. This identifies a build **configuration**
+  and the user reports it as their patched kernel; it is not verification of
+  the currently booted kernel binary or device-module ABI.
+- The device's `uname -a` result reported `6.1.170-android14-11-...`, but the
+  user confirms **SUSFS uname spoofing**. Treat that release and build string
+  as **masked/untrusted**; never infer the running kernel's true sublevel or
+  exact KMI from spoofable uname output.
 - `build.config.gki.aarch64.vendor` can select a `VENDOR_DEFCONFIG`, but
   `arch/arm64/configs/` lists only generic configs; no `rothko.config` was
   found in that directory.
@@ -60,8 +70,12 @@ check. It must **not** execute setup.sh, patch the kernel tree, or build images.
 
 1. Verify exact Xiaomi 14T Pro / Redmi K70 Ultra board and firmware differences,
    required MediaTek vendor files, DT/DLKM modules, and device defconfig.
-2. Compare live device `uname -r`, kernel config, ABI/KMI, firmware build and
-   partition layout **without making changes to the device**.
+2. Collect device kernel/firmware/ABI evidence **read-only**: firmware build,
+   partition layout, kernel config and vendor module metadata (e.g. vermagic).
+   Since SUSFS is spoofing uname on this device, record `uname -r` only as a
+   spoofed display value. Recover actual kernel release/build identity from
+   trustworthy build provenance, unmodified boot image and matching artifacts;
+   do not turn off root/hiding, modify partitions or flash for this audit.
 3. Integrate **one** root driver variant in an isolated checkout, using a
    reviewed commit and recording its SHA and manager build version.
 4. Establish root + SUSFS + NoMount source-version and patch-compatibility
