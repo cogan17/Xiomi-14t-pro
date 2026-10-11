@@ -1,0 +1,103 @@
+name: Cogan Rothko - Verify Root Sources (No Build)
+
+# Source audit only. No setup script execution, kernel patch, APK, release or flashable image.
+on:
+  push:
+    branches:
+      - dev/rothko
+    paths:
+      - '.github/workflows/validate-root-sources.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-audit:
+    name: Audit ${{ matrix.flavor }} (no build)
+    if: github.ref == 'refs/heads/dev/rothko'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavor: KSU
+            repository: tiann/KernelSU
+            source_branch: main
+            source_sha: f895b80a3aad79948ba8074f53cf8f65a314d576
+          - flavor: KSUN
+            repository: KernelSU-Next/KernelSU-Next
+            source_branch: dev
+            source_sha: 02a9e1c5fb2c4fd8117429fe004136332788c1b6
+          - flavor: BakaSU
+            repository: Baka-SU/BakaSU
+            source_branch: main
+            source_sha: f6cb7e70c10ebde149f3121ae68b945514fd0801
+
+    env:
+      ROOT_FLAVOR: ${{ matrix.flavor }}
+      SOURCE_REPO: ${{ matrix.repository }}
+      SOURCE_BRANCH: ${{ matrix.source_branch }}
+      SOURCE_SHA: ${{ matrix.source_sha }}
+
+    steps:
+      - name: Confirm pinned Git ref has not moved
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_sha="$(git ls-remote --exit-code "https://github.com/$SOURCE_REPO.git" "refs/heads/$SOURCE_BRANCH" | cut -f1)"
+          if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then
+            echo "::error::Upstream $ROOT_FLAVOR ($SOURCE_REPO/$SOURCE_BRANCH) changed: $remote_sha instead of audited $SOURCE_SHA. Re-audit before updating pins."
+            exit 1
+          fi
+          echo "Pinned source verified: $ROOT_FLAVOR @ $SOURCE_SHA"
+
+      - name: Download exact pinned integration source (never execute scripts)
+        shell: bash
+        run: |
+          set -euo pipefail
+          workdir="$RUNNER_TEMP/rothko-root-source-audit/$ROOT_FLAVOR"
+          mkdir -p "$workdir"
+          for file in setup.sh Kconfig Makefile; do
+            url="https://raw.githubusercontent.com/$SOURCE_REPO/$SOURCE_SHA/kernel/$file"
+            curl --fail --location --silent --show-error --retry 3 --connect-timeout 15 --max-time 90 "$url" -o "$workdir/$file"
+            test -s "$workdir/$file" || {
+              echo "::error::Empty upstream file: kernel/$file"
+              exit 1
+            }
+          done
+
+          # Syntax-check only; do NOT run setup.sh.
+          sh -n "$workdir/setup.sh"
+          grep -Fq 'drivers/kernelsu/Kconfig' "$workdir/setup.sh" || {
+            echo "::error::Missing expected root-driver Kconfig integration"
+            exit 1
+          }
+          grep -Fq 'CONFIG_KSU' "$workdir/setup.sh" || {
+            echo "::error::Missing expected CONFIG_KSU integration"
+            exit 1
+          }
+          grep -Eq '^[[:space:]]*config[[:space:]]+KSU([[:space:]]|$)' "$workdir/Kconfig" || {
+            echo "::error::Missing KSU configuration entry"
+            exit 1
+          }
+
+          {
+            echo "### Root source static audit: $ROOT_FLAVOR"
+            echo
+            echo "| Check | Result |"
+            echo "|---|---|"
+            echo "| Source | $SOURCE_REPO |"
+            echo "| Branch | $SOURCE_BRANCH |"
+            echo "| Exact commit | \`$SOURCE_SHA\` |"
+            echo "| setup.sh shell syntax | PASS |"
+            echo "| KernelSU driver integration markers | PASS |"
+            echo "| kernel Kconfig and Makefile | Present |"
+            echo
+            echo "**Scope: source metadata and static sanity checks only.**"
+            echo
+            echo "No root integration, patches, compiled kernel, manager APK or ZIP."
+            echo
+            echo "DroidSpaces and NTSync are intentionally excluded."
+          } >> "$GITHUB_STEP_SUMMARY"
