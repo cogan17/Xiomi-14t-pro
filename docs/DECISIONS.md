@@ -17,6 +17,18 @@ yang merupakan perintah untuk flashing.
 | D-009 | 2026-10-12 | Audit **read-only**, validasi module vermagic/CRC dan kompatibilitas root/SUSFS/NoMount sebelum build perangkat/flash. | Masih menunggu bukti; tidak menonaktifkan `CONFIG_MODVERSIONS`. |
 | D-010 | 2026-10-12 | Setiap pekerjaan terdahulu dan selanjutnya perlu dokumentasi yang dapat ditelusuri. | Diterapkan dengan indeks, log, status, dan template kontribusi. |
 
+### D-011 — Tetap tahan flashing setelah identifikasi init_boot Degas
+
+- **Tanggal:** 2026-10-12.
+- **Bukti:** SHA-256 dari `init_boot_a` aktif cocok byte-per-byte dengan
+  stock Degas WNEIDXM, bukan stock Rothko WNNIDXM.
+- **Keputusan:** jangan langsung mengganti `init_boot_a` atau mengubah
+  slot selama Slot A masih boot dan root berjalan; persiapkan backup
+  image aktif, verifikasi source dan prosedur pemulihan sebelum tindakan.
+- **Status:** aturan keselamatan sementara; flashing belum diizinkan.
+- **Referensi:** [audit aktif](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md),
+  [insiden](INCIDENTS.md).
+
 ## Format keputusan baru
 
 ```md
