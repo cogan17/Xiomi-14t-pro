@@ -58,3 +58,69 @@ langsung menggunakan pipe menuju shell.
 4. Uji patch KSU/KSUN/BakaSU serta SUSFS/NoMount terpisah, tanpa
    mengecualikan pengaman ketidakcocokan;
 5. Baru tentukan rencana build dan pemulihan untuk pengujian terbatas.
+
+## Hasil nyata dari HP (12 Oktober 2026)
+
+Sumber: keluaran `scripts/collect_rothko_probe.sh` yang dijalankan melalui
+Termux dengan `su`. Angka-angka ini merekam **apa yang teramati**, bukan
+hasil uji kesetaraan CRC simbol dan bukan izin untuk flashing.
+
+| Properti | Hasil |
+|---|---|
+| `ro.product.device` | `rothko` |
+| `ro.product.vendor.device` | `rothko` |
+| `ro.build.version.release` | `16` |
+| `ro.build.version.security_patch` | `2026-10-02` |
+| `ro.vendor.build.version.security_patch` | Kosong |
+| `ro.build.version.incremental` | `OS3.0.301.0.WNNIDXM` |
+| `ro.boot.hardware` | `mt6989` |
+| `ro.boot.slot_suffix` | `_a` |
+| `bootctl get-current-slot` | Gagal: `Error getting bootctrl v1.0 module.` |
+| Alias partisi `/dev/block/by-name` | `boot_a/b`, `init_boot_a/b`, `vendor_boot_a/b`, `dtbo_a/b` terdeteksi |
+| File `.ko` regular `/vendor_dlkm/lib/modules` | `268` |
+| File `.ko` regular `/vendor/lib/modules` | `0` |
+| File `.ko` regular `/system_dlkm/lib/modules` | `60` |
+| Jumlah baris `/proc/modules` | `519` |
+
+Contoh `vermagic` **file** modul vendor:
+
+```text
+adsp-v2.ko     6.1.138-android14-11-ga418eeb69cb6 SMP preempt mod_unload modversions aarch64
+apu_aov.ko     6.1.138-android14-11-ga418eeb69cb6 SMP preempt mod_unload modversions aarch64
+apu_top.ko     6.1.138-android14-11-ga418eeb69cb6 SMP preempt mod_unload modversions aarch64
+apusys.ko      6.1.138-android14-11-ga418eeb69cb6 SMP preempt mod_unload modversions aarch64
+```
+
+Contoh `vermagic` **file** modul system DLKM:
+
+```text
+6lowpan.ko     6.1.138-android14-11-g6ab8c9a86a33-ab14396278 SMP preempt mod_unload modversions aarch64
+8021q.ko       6.1.138-android14-11-g6ab8c9a86a33-ab14396278 SMP preempt mod_unload modversions aarch64
+aqc111.ko      6.1.138-android14-11-g6ab8c9a86a33-ab14396278 SMP preempt mod_unload modversions aarch64
+asix.ko        6.1.138-android14-11-g6ab8c9a86a33-ab14396278 SMP preempt mod_unload modversions aarch64
+```
+
+Nilai `g6ab8c9a86a33-ab14396278` sesuai dengan versi tertanam pada
+`boot.img` stock Rothko di arsip `WNNIDXM`. Perbedaan akhiran vendor
+`ga418eeb69cb6` dan system `g6ab8c9a86a33` perlu diperiksa terhadap
+asal build masing-masing; **belum** ada bukti CRC modul cocok dengan
+kernel hasil build GKI Cogan `6.1.177`.
+
+**Batasan yang penting:** `vermagic` dari file di disk bukan identitas
+kernel yang sedang berjalan. Perhitungan 519 baris `/proc/modules` juga
+tidak harus sama dengan jumlah berkas `.ko` di dua direktori yang diperiksa.
+Slot aktif `_a` dilaporkan properti boot, tetapi `bootctl` tidak dapat
+membaca status kontrol slot. Tidak ditemukan alias `vendor_dlkm` di path
+partisi yang dicetak; `vendor_dlkm` dapat berupa partisi logis atau mount
+tersendiri sehingga ketiadaan alias **bukan** bukti tidak ada partisi.
+
+### Gerbang selanjutnya (BELUM LULUS)
+
+1. Kumpulkan metadata modul (simbol `__versions` / CRC bila tersedia)
+   dan asal build yang benar pada kernel Cogan r7.
+2. Verifikasi konfigurasi dan KMI/ABI yang dipakai root, SUSFS, NoMount dan
+   modul MediaTek untuk firmware Rothko tertentu.
+3. Jangan melakukan `insmod`, `modprobe`, `bootctl set-active-boot-slot`,
+   flashing, atau mematikan validasi `CONFIG_MODVERSIONS` sebagai jalan pintas.
+
+**Status akhir: audit inventaris berhasil, kompatibilitas ABI belum terbukti.**
