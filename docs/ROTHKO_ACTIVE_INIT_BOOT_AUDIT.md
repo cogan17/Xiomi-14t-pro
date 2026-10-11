@@ -4,8 +4,10 @@
 identik dengan firmware stock **Rothko**, identik dengan firmware stock
 **Degas**, atau berbeda dari keduanya.
 
-**Status:** skrip disiapkan, **belum dijalankan pada HP**. Tidak boleh
-mengganti partisi/root/slot hanya dari hasil checksum.
+**Status diperbarui 2026-10-12:** skrip sudah dijalankan pada HP dan
+membuktikan **init_boot_a aktif identik dengan stock Degas WNEIDXM**, bukan
+stock Rothko WNNIDXM. Hasil ini **tidak** memberi izin mengganti
+partisi/root/slot ataupun membuktikan adanya kerusakan.
 
 ## Referensi berasal dari ZIP yang sudah diaudit
 
@@ -60,13 +62,54 @@ Tidak ada operasi penulisan perangkat; dengan tetap memberi akses root,
 
 ## Belum diketahui / tindak lanjut
 
-- Skrip belum dijalankan pada HP sehingga **hash `init_boot_a` aktif
-  belum diketahui**.
-- Jika hash berbeda dari kedua stock, perlu review image yang aktif secara
-  read-only sebelum membuat klaim tentang LKM, AVB, atau penyebab Slot B
-  unbootable. Jangan unggah image partisi pribadi secara publik.
-- Seluruh modifikasi/restore tetap **ditahan**.
+- **Sudah terjawab:** checksum `init_boot_a` aktif identik dengan stock Degas
+  (hasil Termux; ukuran partisi sudah dicek 8 MiB).
+- **Belum diketahui:** bagaimana/kapan image Degas dipasang; apakah itu
+  menyebabkan kegagalan sebelumnya; apakah ada komponen LKM/patch lain;
+  dan penyebab status Slot B yang ditandai unbootable.
+- Tidak ada bukti dari hash ini bahwa hardware atau Slot A rusak;
+  Slot A saat ini tetap dilaporkan sukses boot dengan BakaSU.
+- Seluruh modifikasi/restore tetap **ditahan**. Jangan unggah image partisi
+  pribadi secara publik.
 
 Lihat juga [backup Slot B](ROTHKO_SLOT_B_BACKUP_AUDIT.md),
 [audit firmware](ROTHKO_STOCK_FIRMWARE_AUDIT.md), dan
 [insiden](INCIDENTS.md).
+
+## Hasil dari HP — 12 Oktober 2026 (bukti read-only)
+
+Sumber: output Termux yang disalin langsung setelah pengguna menjalankan
+`su -c 'sh /data/data/com.termux/files/home/check_active_init_boot.sh'`.
+Skrip sebelumnya diperiksa dan diverifikasi sintaksnya oleh
+[GitHub Actions #38168048874](https://github.com/cogan17/Xiomi-14t-pro/actions/runs/38168048874).
+
+```text
+device=rothko
+slot=_a
+firmware=OS3.0.301.0.WNNIDXM
+partition_size_bytes=8388608
+init_boot_a_sha256=951f096146157773abe4cbbd9b0dacbe9c2fa6400d4c438298353e5fb8a8bf04
+classification=EXACT_DEGAS_STOCK
+```
+
+**Yang terbukti dengan checksum:** seluruh partisi `init_boot_a` berukuran
+8 MiB yang dapat dibaca pada HP identik byte-per-byte dengan `init_boot.img`
+stock **Xiaomi 14T (degas), OS3.0.301.0.WNEIDXM**, dari arsip yang
+sudah diperiksa. Hash ini **tidak cocok** dengan stock
+**Xiaomi 14T Pro (rothko), OS3.0.301.0.WNNIDXM**:
+`4b25ce3f4a321b34aa5f84e7c8b0328065d7038c1a00b91fdcca7e0c17fe463f`.
+
+**Kontras dengan Slot B:** backup `init_boot_b` yang diserahkan pengguna
+**cocok dengan stock Rothko**, tetapi Slot B sebelumnya ditandai
+`Unbootable: Yes`. Bukti ini tidak menerangkan penyebab status tersebut.
+
+**Implikasi terbatas:** keberhasilan boot Slot A dan BakaSU dengan image
+Degas terpasang dapat berkaitan dengan kemiripan isi ramdisk kedua
+perangkat, tetapi tidak menjamin keamanan lintas-model atau mengesahkan
+prosedur flashing Degas. Status root GKI/LKM campuran juga belum
+dibuktikan hanya dengan hash. Jangan mem-flash `init_boot_a`, boot,
+atau mengubah status slot tanpa backup image aktif dan rencana
+pemulihan yang sudah diperiksa.
+
+**Tidak dilakukan:** flashing, restore, penulisan partisi, penggantian
+slot, pengubahan root, atau penonaktifan SUSFS.
