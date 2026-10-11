@@ -1,7 +1,8 @@
 # Tahap 8 — Fingerprint rantai boot Slot A (read-only)
 
-**Status:** skrip dan CI disiapkan; **belum dijalankan pada HP**.
-Perintah pada tahap ini **tidak** memulihkan atau mem-flash partisi.
+**Status: HASIL TERKUMPUL dari HP, 12 Oktober 2026.** Skrip
+read-only selesai di Termux tanpa flashing atau perubahan partisi.
+Backup image Slot A terbaru **belum dikonfirmasi tersedia**.
 
 ## Alasan pemeriksaan
 
@@ -70,3 +71,62 @@ Laporan terkait:
 [audit active init_boot](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md),
 [backup Slot B](ROTHKO_SLOT_B_BACKUP_AUDIT.md),
 [status proyek](PROJECT_STATUS.md).
+
+## Hasil nyata: kelima partisi Slot A aktif
+
+Data dari `su -c 'sh /data/data/com.termux/files/home/collect_active_slot_a_hashes.sh'`:
+
+```text
+device=rothko
+vendor_device=rothko
+active_slot=_a
+firmware=OS3.0.301.0.WNNIDXM
+```
+
+| Partisi | Ukuran (byte) | SHA-256 dari HP | Perbandingan |
+|---|---:|---|---|
+| `boot_a` | 67108864 | `f39b666ead0c5a740a652c62225e343222b4e5fc89a560ff8f850eebf4cf6f8a` | **Tidak identik** dengan stock Rothko yang telah diaudit. Kernel Flasher sebelumnya menampilkan `6.1.177-android14-11-Cogan`, tetapi belum dicocokkan byte-for-byte dengan artefak r7 GitHub. |
+| `init_boot_a` | 8388608 | `951f096146157773abe4cbbd9b0dacbe9c2fa6400d4c438298353e5fb8a8bf04` | **Identik** dengan stock **Degas WNEIDXM**, bukan stock Rothko WNNIDXM. |
+| `vendor_boot_a` | 67108864 | `087e76586bb981bbd1f37334f68707bac1f3b81d9a88caa452a9433feb76a384` | **Identik** dengan stock Rothko WNNIDXM. |
+| `dtbo_a` | 8388608 | `47954740b3e890e0414cc5e5fc0f495c9750fe117d81f3607171d6b65c5eaff7` | **Identik** dengan backup raw Slot B. ZIP pembanding tidak memuat DTBO, jadi belum dibuktikan sebagai stock. |
+| `vbmeta_a` | 8388608 | `bfe79b5ba411e927943b8b918d802dd02ed751da384d4d7752e7e6b19c32b526` | **Identik** dengan backup raw Slot B. Backup B sudah diuji: 12.288 byte awal sama dengan file stock WNNIDXM dan selebihnya padding nol. |
+
+Semua partisi di atas dapat dibaca oleh skrip; tidak ada error ukuran
+atau pembacaan yang dilaporkan. Metode: `blockdev --getsize64` dan
+`sha256sum` langsung dari perangkat blok, tanpa menulis/mencadangkan image.
+
+### Kesimpulan yang dibenarkan bukti
+
+- Ada **susunan boot campuran** pada Slot A: `boot_a` non-stock
+  (dan kernel kustom sebelumnya ditunjukkan oleh Kernel Flasher),
+  `init_boot_a` berisi stock **Degas**, `vendor_boot_a` stock **Rothko**,
+  serta `dtbo_a` dan `vbmeta_a` cocok dengan backup Slot B.
+- Sistem masih boot di Slot A; BakaSU masih digunakan menurut bukti
+  sebelumnya. **Hasil hash tidak membuktikan kerusakan hardware**.
+- **Tidak ada bukti bahwa image Degas menyebabkan Slot B ditandai
+  unbootable.** Data kontrol slot dan kompatibilitas semua partisi
+  tetap belum lengkap.
+- SHA `boot_a` berbeda dari stock sesuai dugaan adanya kernel kustom,
+  tetapi tidak cukup untuk mengidentifikasi versi file r7 yang
+  sebenarnya tanpa membandingkan artefak/backup penuh.
+- `dtbo_a == dtbo_b` hanya menunjukkan kedua backup/partisi cocok.
+  Jangan menyatakan DTBO ini “benar-benar stock” tanpa pembanding
+  firmware yang sesuai.
+- `vbmeta_a == vbmeta_b` dan cocok dengan konten stock dalam backup B
+  tidak membuktikan seluruh status AVB/keamanan boot.
+
+### Keputusan selanjutnya: backup Slot A sebelum pemulihan
+
+**Langkah berikutnya yang disarankan adalah membuat/mengecek backup RAW
+lima partisi Slot A menggunakan fasilitas Backup pada Kernel Flasher**,
+lalu memverifikasi hasil checksum `boot`, `init_boot`, `vendor_boot`,
+`dtbo`, `vbmeta` dan menyimpannya di luar HP. Ini harus dilakukan
+tanpa memilih Flash, Restore, Change Slot, Unmount ataupun Reboot.
+
+Jika backup baru belum ada, **jangan** menimpa `init_boot_a` dengan
+stock Rothko atau mengambil keputusan kehilangan root. Kesamaan hash
+tidak menggantikan berkas cadangan. Jangan unggah image mentah ke repo
+publik; simpan metadata/checksum saja.
+
+**Tidak dilakukan dalam tahap ini:** flashing, modifikasi/root removal,
+perubahan slot, backup image aktif, atau pemeriksaan ABI mendalam.
