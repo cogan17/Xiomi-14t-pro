@@ -1,0 +1,64 @@
+# Dokumentasi Cogan Kernel — Xiaomi 14T Pro (`rothko`)
+
+> **Bahasa Indonesia — pusat dokumentasi kerja**  
+> Repository: [Xiomi-14t-pro](https://github.com/cogan17/Xiomi-14t-pro) ·
+> Cabang kerja: [dev/rothko](https://github.com/cogan17/Xiomi-14t-pro/tree/dev/rothko) ·
+> Source dasar: [bsp-rothko-u-oss](https://github.com/cogan17/Xiomi-14t-pro/tree/bsp-rothko-u-oss).
+
+**Mulai dari [STATUS PROYEK](PROJECT_STATUS.md).** Status kompatibilitas
+image/ABI untuk pengembangan source BSP **belum disetujui**. Dokumen
+tidak pernah menjadi izin otomatis untuk flashing.
+
+## Navigasi utama
+
+| Dokumen | Kegunaan |
+|---|---|
+| [PROJECT_STATUS.md](PROJECT_STATUS.md) | Kondisi proyek saat ini, HP, slot, root, workflow, blocker |
+| [PROJECT_HISTORY.md](PROJECT_HISTORY.md) | Sejarah migrasi, build r7, firmware, insiden dan audit |
+| [WORKLOG.md](WORKLOG.md) | Jurnal pekerjaan dengan tanggal/commit/uji; diperbarui tiap pekerjaan |
+| [DECISIONS.md](DECISIONS.md) | Keputusan dan alasan, termasuk fitur yang disertakan/dikecualikan |
+| [INCIDENTS.md](INCIDENTS.md) | Hal yang bermasalah/belum terbukti, bukti, dan tindak lanjut |
+| [DOCUMENTATION_POLICY.md](DOCUMENTATION_POLICY.md) | Aturan dan format pencatatan berikutnya |
+
+## Audit teknis dan bukti
+
+| Dokumen | Cakupan |
+|---|---|
+| [ROTHKO_ROOT_SOURCE_AUDIT.md](ROTHKO_ROOT_SOURCE_AUDIT.md) | Source KSU, KSUN, BakaSU; opsi All; syarat integrasi |
+| [ROTHKO_LINEAGE.json](ROTHKO_LINEAGE.json) | Identitas terstruktur Xiaomi BSP vs Google GKI |
+| [ROTHKO_STOCK_FIRMWARE_AUDIT.md](ROTHKO_STOCK_FIRMWARE_AUDIT.md) | Perbandingan firmware WNNIDXM Rothko dan WNEIDXM Degas |
+| [ROTHKO_VENDOR_ABI_AUDIT.md](ROTHKO_VENDOR_ABI_AUDIT.md) | KMI, metadata modul, Kernel Flasher Slot A, BakaSU/SUSFS |
+| [ROTHKO_SLOT_B_BACKUP_AUDIT.md](ROTHKO_SLOT_B_BACKUP_AUDIT.md) | Checksum backup Slot B dan pembanding stock |
+
+## Workflow pengembangan
+
+- [Root selection preview](../.github/workflows/Patch%20Kernel%20Features.yml):
+  **KSU, KSUN, BakaSU, All**; bukan build kernel.
+- [Root source check](../.github/workflows/validate-root-sources.yml):
+  pemeriksaan statis source yang dikunci.
+- [Rothko source inventory](../.github/workflows/audit-rothko-compatibility.yml):
+  audit konfigurasi/DTS/ABI GKI.
+- [Kernel lineage](../.github/workflows/check-rothko-lineage.yml):
+  menjaga pemisahan source Xiaomi dan GKI.
+- [Read-only Termux probe](../scripts/collect_rothko_probe.sh):
+  tinjau isi skrip sebelum menjalankannya.
+
+## Pegangan keselamatan
+
+**Jangan flash source atau ROM dari codename lain.** Source Xiaomi
+`6.1.57`, kernel stock image `6.1.138`, dan GKI Cogan `6.1.177`
+tidak dapat dipertukarkan hanya karena semua seri 6.1. Nilai `uname`
+`6.1.170` diketahui sudah di-spoof SUSFS. Slot A aktif dan BakaSU
+berfungsi; Slot B tercatat unbootable dengan penyebab belum jelas.
+Jangan restore `init_boot_a`, mengubah slot, atau mematikan cek ABI
+berdasarkan dugaan.
+
+## Memulai pekerjaan baru
+
+Baca **Status → Keputusan → Insiden → Worklog**; lakukan pekerjaan;
+lalu simpan perubahan, bukti dan hasil pengujian sesuai
+[aturan dokumentasi](DOCUMENTATION_POLICY.md).
+Untuk pull request, gunakan [template](../.github/pull_request_template.md).
+
+Source upstream `README.md` di akar repo tetap dipertahankan
+apa adanya sebagai dokumen historis Android Common Kernel.
