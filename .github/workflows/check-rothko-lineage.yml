@@ -1,0 +1,43 @@
+name: Cogan Rothko - Check Kernel Lineage (No Build)
+
+# Verify declared source ancestry, not live device compatibility.
+on:
+  push:
+    branches:
+      - dev/rothko
+    paths:
+      - '.github/workflows/check-rothko-lineage.yml'
+      - 'scripts/check_rothko_lineage.py'
+      - 'docs/ROTHKO_LINEAGE.json'
+      - 'Makefile'
+      - 'build.config.common'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lineage:
+    name: Check GKI vs Xiaomi source identity (no build)
+    if: github.ref == 'refs/heads/dev/rothko'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout lineage-only source files
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /Makefile
+            /build.config.common
+            /docs/ROTHKO_LINEAGE.json
+            /scripts/check_rothko_lineage.py
+
+      - name: Verify immutable audit assumptions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/check_rothko_lineage.py
