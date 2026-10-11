@@ -32,3 +32,13 @@ Tambahkan entri baru di **akhir** dokumen dengan tanggal, bukti commit/run,
 hasil yang diuji, risiko, serta batasnya. Jika menemukan kesalahan di
 catatan lama, tambahkan **koreksi bertanggal** dan tautkan ke entri asal,
 bukan menghapus jejak kejadian.
+
+
+## 2026-10-12 — Pemeriksaan checksum image aktif
+
+- Menambahkan skrip `scripts/check_active_init_boot.sh` untuk membaca SHA-256 dari `init_boot_a` tanpa mengubah perangkat.
+- Dibandingkan dengan checksum image stock Rothko dan Degas yang telah diaudit.
+- Validasi sintaks skrip di GitHub Actions berhasil: https://github.com/cogan17/Xiomi-14t-pro/actions/runs/38168048874
+- Belum dijalankan pada perangkat, sehingga hasil checksum Slot A belum diketahui.
+- Tidak dilakukan perubahan partisi, flashing, atau penggantian slot.
+- Langkah berikutnya: pengguna meninjau skrip dan mengirim hasilnya.
