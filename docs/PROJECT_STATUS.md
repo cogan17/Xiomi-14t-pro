@@ -57,8 +57,10 @@ disetujui untuk flashing dari proyek ini.
 
 ## Blocker dan tindakan aman selanjutnya
 
-1. Identifikasi **isi aktual `init_boot_a`** secara read-only jika diperlukan
-   untuk menelusuri riwayat LKM/degas. Backup Slot B tidak membuktikan isi A.
+1. Skrip [cek `init_boot_a` aktif](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md) sudah
+   dibuat dan lulus validasi statis di [Actions #38168048874](https://github.com/cogan17/Xiomi-14t-pro/actions/runs/38168048874),
+   tetapi **belum dijalankan pada HP**. Menentukan status LKM/degas masih
+   menunggu hasil hash aktif. Backup Slot B tidak membuktikan isi Slot A.
 2. Cocokkan simbol/CRC modul MediaTek yang dimuat dengan kernel GKI Cogan,
    tanpa menonaktifkan `CONFIG_MODVERSIONS`.
 3. Temukan konfigurasi serta dependensi board/dtb/vendor source yang tepat
