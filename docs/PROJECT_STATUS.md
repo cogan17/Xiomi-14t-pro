@@ -65,13 +65,20 @@ disetujui untuk flashing dari proyek ini.
    (partisi 8 MiB, hasil Termux). Backup `init_boot_b` adalah **stock Rothko**.
    Baca [audit image aktif](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md). Ini
    **tidak membuktikan** penyebab status Slot B unbootable atau kerusakan HP.
-2. Cocokkan simbol/CRC modul MediaTek yang dimuat dengan kernel GKI Cogan,
+2. Pemeriksaan checksum seluruh boot-chain Slot A telah disiapkan lewat
+   [ROTHKO_ACTIVE_SLOT_A_AUDIT.md](ROTHKO_ACTIVE_SLOT_A_AUDIT.md);
+   skrip lulus validasi statis pada
+   [GitHub Actions #38168635728](https://github.com/cogan17/Xiomi-14t-pro/actions/runs/38168635728).
+   **Belum dijalankan pada HP**, sehingga SHA-256 untuk `boot_a`,
+   `vendor_boot_a`, `dtbo_a`, dan `vbmeta_a` belum tercatat. Siapkan
+   backup Slot A terbaru dan cocokkan dengan hasil hash sebelum pemulihan.
+3. Cocokkan simbol/CRC modul MediaTek yang dimuat dengan kernel GKI Cogan,
    tanpa menonaktifkan `CONFIG_MODVERSIONS`.
-3. Temukan konfigurasi serta dependensi board/dtb/vendor source yang tepat
+4. Temukan konfigurasi serta dependensi board/dtb/vendor source yang tepat
    untuk build khusus Rothko.
-4. Telusuri commit `kernel/common` aktual dalam build r7, bukan hanya SHA
+5. Telusuri commit `kernel/common` aktual dalam build r7, bukan hanya SHA
    commit workflow, serta hash image yang terpasang.
-5. Jangan melakukan flash/restore/pergantian slot untuk menguji dugaan.
+6. Jangan melakukan flash/restore/pergantian slot untuk menguji dugaan.
 
 **Pengaman:** Tidak ada otorisasi flashing, reset slot, pemulihan `init_boot`
 aktif, atau publikasi ZIP Rothko siap-flash berdasarkan audit ini.
