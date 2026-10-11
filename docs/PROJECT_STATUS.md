@@ -27,6 +27,9 @@
 - Modul di penyimpanan: `268` di `vendor_dlkm` dan `60` di
   `system_dlkm`; `/proc/modules` memuat `519` baris saat audit.
   `vermagic` modul contoh: `6.1.138-android14-11-...`.
+- Pemeriksaan checksum langsung terhadap **Slot A aktif**: `init_boot_a`
+  **identik dengan stock Degas WNEIDXM**, bukan stock Rothko. Slot A
+  tetap dilaporkan sukses boot; penyebab dan risiko historis belum terbukti.
 - Backup **Slot B** (`backup.json` tanggal `2026-10-12--02-02`)
   memiliki `boot.img`, `init_boot.img`, `vendor_boot.img` identik
   dengan ZIP stock `WNNIDXM`; `vbmeta.img` setara di bagian image dan
@@ -57,10 +60,11 @@ disetujui untuk flashing dari proyek ini.
 
 ## Blocker dan tindakan aman selanjutnya
 
-1. Skrip [cek `init_boot_a` aktif](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md) sudah
-   dibuat dan lulus validasi statis di [Actions #38168048874](https://github.com/cogan17/Xiomi-14t-pro/actions/runs/38168048874),
-   tetapi **belum dijalankan pada HP**. Menentukan status LKM/degas masih
-   menunggu hasil hash aktif. Backup Slot B tidak membuktikan isi Slot A.
+1. **Hasil nyata telah diperoleh:** `init_boot_a` aktif adalah **stock Degas**,
+   SHA-256 `951f096146157773abe4cbbd9b0dacbe9c2fa6400d4c438298353e5fb8a8bf04`
+   (partisi 8 MiB, hasil Termux). Backup `init_boot_b` adalah **stock Rothko**.
+   Baca [audit image aktif](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md). Ini
+   **tidak membuktikan** penyebab status Slot B unbootable atau kerusakan HP.
 2. Cocokkan simbol/CRC modul MediaTek yang dimuat dengan kernel GKI Cogan,
    tanpa menonaktifkan `CONFIG_MODVERSIONS`.
 3. Temukan konfigurasi serta dependensi board/dtb/vendor source yang tepat
