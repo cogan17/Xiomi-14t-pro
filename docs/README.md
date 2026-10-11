@@ -29,7 +29,8 @@ tidak pernah menjadi izin otomatis untuk flashing.
 | [ROTHKO_STOCK_FIRMWARE_AUDIT.md](ROTHKO_STOCK_FIRMWARE_AUDIT.md) | Perbandingan firmware WNNIDXM Rothko dan WNEIDXM Degas |
 | [ROTHKO_VENDOR_ABI_AUDIT.md](ROTHKO_VENDOR_ABI_AUDIT.md) | KMI, metadata modul, Kernel Flasher Slot A, BakaSU/SUSFS |
 | [ROTHKO_SLOT_B_BACKUP_AUDIT.md](ROTHKO_SLOT_B_BACKUP_AUDIT.md) | Checksum backup Slot B dan pembanding stock |
-| [ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md) | Audit checksum `init_boot_a` aktif; prosedur read-only dan batas penafsiran |
+| [ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md) | Bukti checksum: `init_boot_a` aktif identik dengan stock Degas |
+| [ROTHKO_ACTIVE_SLOT_A_AUDIT.md](ROTHKO_ACTIVE_SLOT_A_AUDIT.md) | Audit lanjutan boot, init_boot, vendor_boot, dtbo, vbmeta Slot A (read-only) |
 
 ## Workflow pengembangan
 
