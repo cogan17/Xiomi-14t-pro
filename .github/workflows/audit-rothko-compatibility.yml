@@ -1,0 +1,118 @@
+name: Cogan Rothko - Device Compatibility Audit (No Build)
+
+# Only examine source metadata. No kernel build, root patch, packaging or flashing.
+on:
+  push:
+    branches:
+      - dev/rothko
+    paths:
+      - '.github/workflows/audit-rothko-compatibility.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Static compatibility inventory (NOT device approval)
+    if: github.ref == 'refs/heads/dev/rothko'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      build_ready: ${{ steps.compat.outputs.build_ready }}
+    steps:
+      - name: Read only selected kernel source files
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /Makefile
+            /build.config.common
+            /build.config.gki.aarch64.vendor
+            /android/abi_gki_aarch64_mtk
+            /android/abi_gki_aarch64_xiaomi
+            /arch/arm64/configs/*
+            /arch/arm64/boot/dts/mediatek/*
+
+      - name: Audit source metadata (read only)
+        id: compat
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          import os
+          import re
+
+          def required_text(path):
+              f = Path(path)
+              if not f.is_file():
+                  raise RuntimeError(f"Required source file absent from sparse checkout: {path}")
+              return f.read_text(encoding="utf-8", errors="replace")
+
+          def numeric_assignment(text, key):
+              result = re.search(rf"(?m)^{re.escape(key)}[ \t]*=[ \t]*([0-9]+)", text)
+              return result.group(1) if result else "UNKNOWN"
+
+          mk = required_text("Makefile")
+          common = required_text("build.config.common")
+          vendor = required_text("build.config.gki.aarch64.vendor")
+          defconfigs = sorted(p.name for p in Path("arch/arm64/configs").glob("*") if p.is_file())
+          dts = sorted(p.name for p in Path("arch/arm64/boot/dts/mediatek").glob("*.dt*") if p.is_file())
+          if not defconfigs or not dts:
+              raise RuntimeError("Sparse checkout did not provide config/DTS inventory")
+
+          version = ".".join([
+              numeric_assignment(mk, "VERSION"),
+              numeric_assignment(mk, "PATCHLEVEL"),
+              numeric_assignment(mk, "SUBLEVEL"),
+          ])
+          kmi_generation = numeric_assignment(common, "KMI_GENERATION")
+          specific_configs = [n for n in defconfigs if re.search(r"rothko|mt6989", n, re.I)]
+          specific_dts = [n for n in dts if re.search(r"rothko|mt6989", n, re.I)]
+          has_vendor_override = "VENDOR_DEFCONFIG" in vendor
+          has_mtk_symbols = Path("android/abi_gki_aarch64_mtk").is_file()
+          has_xiaomi_symbols = Path("android/abi_gki_aarch64_xiaomi").is_file()
+
+          report = {
+              "kernel_makefile_version": version,
+              "kmi_generation_declared": kmi_generation,
+              "device_specific_defconfig_in_arch_arm64_configs": specific_configs,
+              "device_specific_dts_in_standard_mediatek_directory": specific_dts,
+              "vendor_defconfig_override_supported": has_vendor_override,
+              "abi_symbol_list_mtk_present": has_mtk_symbols,
+              "abi_symbol_list_xiaomi_present": has_xiaomi_symbols,
+              "device_firmware_and_live_kernel_verified": False,
+              "device_module_kmi_and_abi_verified": False,
+              "flashable_kernel_authorized": False,
+          }
+
+          print(json.dumps(report, indent=2))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write("build_ready=false\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+              f.write("# Cogan Rothko: static source compatibility audit\n\n")
+              f.write("**Compatibility gate: BLOCKED — not ready for a device-specific release.**\n\n")
+              f.write("| Finding | Result |\n|---|---|\n")
+              for label, value in [
+                  ("Makefile kernel version", version),
+                  ("Declared KMI_GENERATION", kmi_generation),
+                  ("MTK GKI ABI symbol list", "present" if has_mtk_symbols else "not found"),
+                  ("Xiaomi GKI ABI symbol list", "present" if has_xiaomi_symbols else "not found"),
+                  ("VENDOR_DEFCONFIG override support", "present" if has_vendor_override else "not found"),
+                  ("Rothko/MT6989 defconfig in standard directory", ", ".join(specific_configs) if specific_configs else "not found"),
+                  ("Rothko/MT6989 DTS in standard MTK directory", ", ".join(specific_dts) if specific_dts else "not found"),
+                  ("Live device kernel and module ABI match", "NOT CHECKED"),
+              ]:
+                  f.write(f"| {label} | {value} |\n")
+              f.write("\n**Evidence still needed:** device firmware/build, uname -r, ")
+              f.write("kernel .config, partition layout, vendor DT/DTBO and vendor_dlkm module ABI.\n\n")
+              f.write("Absence of a device-named file in these standard locations does ")
+              f.write("not prove the vendor sources are absent in other repositories.\n\n")
+              f.write("This audit does **not** compile, patch, package, release or flash anything.\n")
+          print("::warning::Audit completed: device-specific kernel compatibility remains UNVERIFIED; do not flash.")
+          PY
