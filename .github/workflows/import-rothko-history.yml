@@ -1,0 +1,83 @@
+name: Import Xiaomi 14T Pro kernel history
+
+# Bootstrap-only migration, separate from kernel building/flashing.
+# Runs on the first commit in this new independent repository, or manually.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/import-rothko-history.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rothko-history-import
+  cancel-in-progress: false
+
+jobs:
+  import-rothko:
+    if: github.repository == 'cogan17/Xiomi-14t-pro'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SOURCE_URL: https://github.com/cogan17/14t-pro-fork-backup.git
+      TARGET_URL: https://github.com/cogan17/Xiomi-14t-pro.git
+      SOURCE_BRANCH: bsp-rothko-u-oss
+      EXPECTED_SOURCE_SHA: 924d8eb314b764a92dc7d8610def9239f0db566c
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Confirm original and target
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="$(git ls-remote --exit-code "$SOURCE_URL" "refs/heads/$SOURCE_BRANCH" | cut -f1)"
+          echo "Source head: $source_sha"
+          if [[ "$source_sha" != "$EXPECTED_SOURCE_SHA" ]]; then
+            echo "::error::Source branch has changed; review the backup before importing."
+            exit 1
+          fi
+          if git ls-remote --exit-code "$TARGET_URL" "refs/heads/$SOURCE_BRANCH" >/dev/null 2>&1; then
+            echo "::error::Target branch already exists. Aborting to avoid overwriting it."
+            exit 1
+          fi
+          df -h "$RUNNER_TEMP"
+      - name: Clone only rothko branch with full Git history
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --bare --single-branch --branch "$SOURCE_BRANCH" "$SOURCE_URL" "$RUNNER_TEMP/rothko-source.git"
+          actual_sha="$(git -C "$RUNNER_TEMP/rothko-source.git" rev-parse "refs/heads/$SOURCE_BRANCH")"
+          [[ "$actual_sha" == "$EXPECTED_SOURCE_SHA" ]] || {
+            echo "::error::Cloned HEAD changed unexpectedly."
+            exit 1
+          }
+          du -sh "$RUNNER_TEMP/rothko-source.git"
+          df -h "$RUNNER_TEMP"
+      - name: Push standalone branch (never force overwrite)
+        shell: bash
+        run: |
+          set -euo pipefail
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -C "$RUNNER_TEMP/rothko-source.git" \
+            -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
+            push "$TARGET_URL" "refs/heads/$SOURCE_BRANCH:refs/heads/$SOURCE_BRANCH"
+      - name: Verify imported commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          target_sha="$(git ls-remote --exit-code "$TARGET_URL" "refs/heads/$SOURCE_BRANCH" | cut -f1)"
+          [[ "$target_sha" == "$EXPECTED_SOURCE_SHA" ]] || {
+            echo "::error::Target SHA does not match source."
+            exit 1
+          }
+          {
+            echo "### Rothko source migration"
+            echo "- Source: cogan17/14t-pro-fork-backup ($SOURCE_BRANCH)"
+            echo "- Destination: cogan17/Xiomi-14t-pro ($SOURCE_BRANCH)"
+            echo "- Matched commit: \`$target_sha\`"
+            echo "- Full Git history reachable from this branch retained."
+            echo "- Next: change repository default branch to $SOURCE_BRANCH, then audit kernel compatibility."
+            echo "- Backup remains untouched. No kernel build or flash was performed."
+          } >> "$GITHUB_STEP_SUMMARY"
