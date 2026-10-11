@@ -72,8 +72,12 @@ disetujui untuk flashing dari proyek ini.
    `boot_a` berbeda dari stock Rothko; `init_boot_a` identik dengan
    stock Degas; `vendor_boot_a` identik dengan stock Rothko;
    `dtbo_a` dan `vbmeta_a` cocok dengan backup raw Slot B. Semua hash
-   berukuran penuh tercatat; **backup image Slot A terbaru belum tersedia
-   atau belum diverifikasi**. Prioritaskan backup sebelum pemulihan.
+   berukuran penuh tercatat. Metadata **backup RAW Slot A** bernama
+   `2026-10-12--02-40` sudah diterima: **5/5 hash cocok** dengan Termux,
+   dan ada hash baru `system_dlkm` serta `vendor_dlkm`.
+   **Integritas tujuh image backup yang disimpan belum diverifikasi**;
+   metadata JSON saja bukan cadangan partisi. Prioritaskan pemeriksaan
+   file-file image dan simpan salinan terpisah sebelum pemulihan.
 3. Cocokkan simbol/CRC modul MediaTek yang dimuat dengan kernel GKI Cogan,
    tanpa menonaktifkan `CONFIG_MODVERSIONS`.
 4. Temukan konfigurasi serta dependensi board/dtb/vendor source yang tepat
