@@ -83,3 +83,37 @@ bukan menghapus jejak kejadian.
   root/SUSFS, ataupun pengunggahan image mentah.
 - **Berikutnya:** pengguna membaca skrip dan menjalankannya dari Termux,
   kemudian mengirim hasil pemeriksaan sebelum keputusan selanjutnya.
+
+
+## 2026-10-12 — Audit lengkap SHA-256 lima partisi Slot A
+
+- **Tujuan:** mengetahui susunan boot aktual tanpa melakukan perubahan.
+- **Tindakan:** pengguna menjalankan `collect_active_slot_a_hashes.sh`
+  pada Xiaomi 14T Pro, firmware `OS3.0.301.0.WNNIDXM`, Slot A aktif.
+- **Hasil:** `boot_a` (`67108864` B)
+  `f39b666ead0c5a740a652c62225e343222b4e5fc89a560ff8f850eebf4cf6f8a`
+  — berbeda dari stock Rothko.
+- **Hasil:** `init_boot_a` (`8388608` B)
+  `951f096146157773abe4cbbd9b0dacbe9c2fa6400d4c438298353e5fb8a8bf04`
+  — identik dengan stock Degas.
+- **Hasil:** `vendor_boot_a` (`67108864` B)
+  `087e76586bb981bbd1f37334f68707bac1f3b81d9a88caa452a9433feb76a384`
+  — identik dengan stock Rothko.
+- **Hasil:** `dtbo_a` (`8388608` B)
+  `47954740b3e890e0414cc5e5fc0f495c9750fe117d81f3607171d6b65c5eaff7`
+  — cocok dengan backup raw Slot B, tetapi belum terbukti stock.
+- **Hasil:** `vbmeta_a` (`8388608` B)
+  `bfe79b5ba411e927943b8b918d802dd02ed751da384d4d7752e7e6b19c32b526`
+  — cocok dengan backup raw Slot B, yang sebelumnya cocok dengan konten
+  stock Rothko dengan padding nol.
+- **Batas kesimpulan:** kernel image `boot_a` yang tidak stock konsisten
+  dengan Kernel Flasher menunjukkan Cogan 6.1.177; belum diketahui apakah
+  byte-nya identik dengan artefak r7 tertentu. Status Slot B Unbootable
+  tidak dapat dijelaskan dari hash-hash ini.
+- **Perubahan repo:** laporan [Tahap 8](ROTHKO_ACTIVE_SLOT_A_AUDIT.md),
+  status proyek dan insiden diperbarui di `dev/rothko`.
+- **Tidak dilakukan:** flashing, restore, perubahan slot, mematikan
+  SUSFS, membuat backup RAW atau mengubah konfigurasi BakaSU.
+- **Prioritas selanjutnya:** memastikan backup RAW Slot A terbaru
+  tersedia (boot, init_boot, vendor_boot, dtbo, vbmeta) dan memeriksa
+  checksum sebelum merancang opsi pemulihan.
