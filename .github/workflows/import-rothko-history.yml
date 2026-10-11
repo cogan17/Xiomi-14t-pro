@@ -1,7 +1,7 @@
 name: Import Xiaomi 14T Pro kernel history
 
-# Bootstrap-only migration, separate from kernel building/flashing.
-# Runs on the first commit in this new independent repository, or manually.
+# Migration-only workflow. Never builds or flashes kernels.
+# Preserve original Git commit IDs by pushing successive ancestors.
 on:
   push:
     branches: [main]
@@ -20,7 +20,7 @@ jobs:
   import-rothko:
     if: github.repository == 'cogan17/Xiomi-14t-pro'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       SOURCE_URL: https://github.com/cogan17/14t-pro-fork-backup.git
       TARGET_URL: https://github.com/cogan17/Xiomi-14t-pro.git
@@ -28,56 +28,145 @@ jobs:
       EXPECTED_SOURCE_SHA: 924d8eb314b764a92dc7d8610def9239f0db566c
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - name: Confirm original and target
+      - name: Confirm original source and destination
         shell: bash
         run: |
           set -euo pipefail
           source_sha="$(git ls-remote --exit-code "$SOURCE_URL" "refs/heads/$SOURCE_BRANCH" | cut -f1)"
-          echo "Source head: $source_sha"
-          if [[ "$source_sha" != "$EXPECTED_SOURCE_SHA" ]]; then
-            echo "::error::Source branch has changed; review the backup before importing."
+          echo "Source HEAD: $source_sha"
+          [[ "$source_sha" == "$EXPECTED_SOURCE_SHA" ]] || {
+            echo "::error::Source branch changed; review before importing."
             exit 1
-          fi
-          if git ls-remote --exit-code "$TARGET_URL" "refs/heads/$SOURCE_BRANCH" >/dev/null 2>&1; then
-            echo "::error::Target branch already exists. Aborting to avoid overwriting it."
-            exit 1
-          fi
+          }
+          echo "Existing destination refs:"
+          git ls-remote --heads "$TARGET_URL" | cut -f2
           df -h "$RUNNER_TEMP"
-      - name: Clone only rothko branch with full Git history
+
+      - name: Clone source with complete history
         shell: bash
         run: |
           set -euo pipefail
           git clone --bare --single-branch --branch "$SOURCE_BRANCH" "$SOURCE_URL" "$RUNNER_TEMP/rothko-source.git"
           actual_sha="$(git -C "$RUNNER_TEMP/rothko-source.git" rev-parse "refs/heads/$SOURCE_BRANCH")"
           [[ "$actual_sha" == "$EXPECTED_SOURCE_SHA" ]] || {
-            echo "::error::Cloned HEAD changed unexpectedly."
+            echo "::error::Source commit mismatch after clone."
             exit 1
           }
           du -sh "$RUNNER_TEMP/rothko-source.git"
-          df -h "$RUNNER_TEMP"
-      - name: Push standalone branch (never force overwrite)
+
+      - name: Import history in bounded fast-forward pushes
         shell: bash
         run: |
           set -euo pipefail
+          repo="$RUNNER_TEMP/rothko-source.git"
+          branch_ref="refs/heads/$SOURCE_BRANCH"
+          # Deliberately conservative vs GitHub's 2 GiB push limit.
+          # rev-list disk usage is only an estimate of upload pack size.
+          max_estimated_bytes=650000000
           auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
-          git -C "$RUNNER_TEMP/rothko-source.git" \
-            -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
-            push "$TARGET_URL" "refs/heads/$SOURCE_BRANCH:refs/heads/$SOURCE_BRANCH"
-      - name: Verify imported commit
+
+          mapfile -t first_parent < <(git -C "$repo" rev-list --first-parent --reverse "$branch_ref")
+          total="${#first_parent[@]}"
+          (( total > 0 )) || { echo "::error::No source commits found."; exit 1; }
+          echo "First-parent history entries: $total"
+
+          get_remote_head() {
+            git ls-remote "$TARGET_URL" "$branch_ref" | cut -f1
+          }
+          disk_bytes_for_range() {
+            local target="$1" baseline="$2"
+            if [[ -n "$baseline" ]]; then
+              git -C "$repo" rev-list --disk-usage --objects "$target" "^$baseline"
+            else
+              git -C "$repo" rev-list --disk-usage --objects "$target"
+            fi
+          }
+
+          current_sha="$(get_remote_head)"
+          current_index=-1
+          if [[ -n "$current_sha" ]]; then
+            for ((i=0; i<total; i++)); do
+              if [[ "${first_parent[i]}" == "$current_sha" ]]; then
+                current_index="$i"
+                break
+              fi
+            done
+            (( current_index >= 0 )) || {
+              echo "::error::Destination branch is not on the source first-parent chain. Not overwriting it."
+              exit 1
+            }
+            echo "Resuming after existing ancestor: $current_sha"
+          fi
+
+          batch=0
+          while (( current_index < total - 1 )); do
+            lo=$(( current_index + 1 ))
+            hi=$(( total - 1 ))
+            best=-1
+            best_bytes=0
+            while (( lo <= hi )); do
+              mid=$(( (lo + hi) / 2 ))
+              estimate="$(disk_bytes_for_range "${first_parent[mid]}" "$current_sha")"
+              if (( estimate <= max_estimated_bytes )); then
+                best="$mid"
+                best_bytes="$estimate"
+                lo=$((mid + 1))
+              else
+                hi=$((mid - 1))
+              fi
+            done
+            (( best >= 0 )) || {
+              next_index=$((current_index + 1))
+              required_bytes="$(disk_bytes_for_range "${first_parent[next_index]}" "$current_sha")"
+              echo "::error::Even one next first-parent commit needs $required_bytes estimated bytes. Manual object staging required; no force-push attempted."
+              exit 1
+            }
+
+            candidate="${first_parent[best]}"
+            batch=$((batch + 1))
+            echo "::group::Batch $batch: commit $((best + 1))/$total, estimated $best_bytes bytes"
+            echo "Target commit: $candidate"
+            if ! git -C "$repo" \
+              -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
+              push "$TARGET_URL" "$candidate:$branch_ref"; then
+              observed="$(get_remote_head)"
+              if [[ "$observed" != "$candidate" ]]; then
+                echo "::error::Push failed and target did not reach proposed SHA. Existing history is untouched."
+                exit 1
+              fi
+              echo "Push reported an error but remote commit matches; proceeding safely."
+            fi
+
+            observed="$(get_remote_head)"
+            [[ "$observed" == "$candidate" ]] || {
+              echo "::error::Remote SHA mismatch. Stopping without force-push."
+              exit 1
+            }
+            current_index="$best"
+            current_sha="$candidate"
+            echo "::endgroup::"
+          done
+          [[ "$current_sha" == "$EXPECTED_SOURCE_SHA" ]] || {
+            echo "::error::Final imported SHA mismatch."
+            exit 1
+          }
+          echo "Successfully imported original source history in $batch batch(es)."
+
+      - name: Verify exact final source commit
         shell: bash
         run: |
           set -euo pipefail
           target_sha="$(git ls-remote --exit-code "$TARGET_URL" "refs/heads/$SOURCE_BRANCH" | cut -f1)"
           [[ "$target_sha" == "$EXPECTED_SOURCE_SHA" ]] || {
-            echo "::error::Target SHA does not match source."
+            echo "::error::Imported branch HEAD does not match source."
             exit 1
           }
           {
-            echo "### Rothko source migration"
+            echo "### Xiaomi 14T Pro Rothko source migration"
             echo "- Source: cogan17/14t-pro-fork-backup ($SOURCE_BRANCH)"
             echo "- Destination: cogan17/Xiomi-14t-pro ($SOURCE_BRANCH)"
-            echo "- Matched commit: \`$target_sha\`"
-            echo "- Full Git history reachable from this branch retained."
-            echo "- Next: change repository default branch to $SOURCE_BRANCH, then audit kernel compatibility."
-            echo "- Backup remains untouched. No kernel build or flash was performed."
+            echo "- Verified identical Git commit ID: $target_sha"
+            echo "- History reachable from the source branch preserved."
+            echo "- Backup remains untouched; no kernel built or flashed."
+            echo "- Still needed: set default branch and audit configurations."
           } >> "$GITHUB_STEP_SUMMARY"
