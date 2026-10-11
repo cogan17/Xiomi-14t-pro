@@ -1,105 +1,141 @@
-name: Patch Kernel Features
+name: Cogan Rothko - Root Selection (Development)
 
+# Stage 1: root-flavor selection / matrix preview ONLY.
+# Does not install root implementations, apply kernel patches, compile, or flash.
 on:
   workflow_dispatch:
     inputs:
       root_flavor:
-        description: 'Root Implementations'
+        description: 'Root manager: one or All (separate variants)'
         required: true
         type: choice
+        default: 'KernelSU'
         options:
-          - 'KernelSU-Next'
           - 'KernelSU'
-          - 'ReSukiSU'
+          - 'KernelSU-Next'
+          - 'BakaSU'
+          - 'All (KSU + KSUN + BakaSU)'
       susfs:
-        description: 'susfs4ksu - root hiding (Ptrace & Unicode Fix)'
+        description: '[Planning only] SUSFS compatibility'
         type: boolean
         default: true
       nomount:
-        description: 'NoMount / Mountify - mount metamodules'
+        description: '[Planning only] NoMount compatibility'
         type: boolean
         default: true
       baseband_guard:
-        description: 'Baseband Guard - partition protection'
+        description: '[Planning only] Baseband Guard compatibility'
         type: boolean
         default: false
       networking:
-        description: 'Networking - WireGuard, BBR, IPSet, CIFS'
+        description: '[Planning only] Networking compatibility'
         type: boolean
         default: false
       tmpfs:
-        description: 'TMPFS - xattr / POSIX ACLs'
+        description: '[Planning only] TMPFS ACL/xattr compatibility'
         type: boolean
         default: false
       bpf:
-        description: 'BPF - BTF / eBPF / FUSE-BPF'
+        description: '[Planning only] BPF compatibility'
         type: boolean
         default: false
       performance:
-        description: 'Performance - incl. NTSync'
+        description: '[Planning only] Performance (NO NTSync)'
         type: boolean
         default: false
-      droidspaces:
-        description: 'DroidSpaces - container runtime'
-        type: boolean
-        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rothko-plan-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  patch-kernel:
+  plan:
+    name: Validate root selection (no build)
     runs-on: ubuntu-latest
+    outputs:
+      root_matrix: ${{ steps.flavors.outputs.root_matrix }}
+    env:
+      ROOT_FLAVOR: ${{ inputs.root_flavor }}
     steps:
-      - name: Checkout Source Kernel Rothko
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository }}
-          ref: bsp-rothko-u-oss
-
-      - name: Tampilkan Pilihan Fitur
+      - name: Restrict experimental workflow to dev/rothko
+        shell: bash
         run: |
-          echo "Mempersiapkan patch berdasarkan pilihan:"
-          echo "Root: ${{ github.event.inputs.root_flavor }}"
-          echo "SusFS: ${{ github.event.inputs.susfs }}"
-          echo "NoMount: ${{ github.event.inputs.nomount }}"
-
-      - name: Setup KernelSU-Next
-        if: ${{ github.event.inputs.root_flavor == 'KernelSU-Next' }}
-        run: |
-          echo "Memasang KernelSU-Next..."
-          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
-
-      - name: Setup KernelSU (Resmi)
-        if: ${{ github.event.inputs.root_flavor == 'KernelSU' }}
-        run: |
-          echo "Memasang KernelSU..."
-          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
-
-      - name: Setup ReSukiSU
-        if: ${{ github.event.inputs.root_flavor == 'ReSukiSU' }}
-        run: |
-          echo "Memasang ReSukiSU..."
-          curl -LSs "https://raw.githubusercontent.com/backslashxx/ReSukiSU/main/kernel/setup.sh" | bash -
-
-      - name: Setup SusFS (Root Hiding, Ptrace, Unicode Fix)
-        if: ${{ github.event.inputs.susfs == 'true' }}
-        run: |
-          echo "Mengkloning repositori SusFS..."
-          git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android14-6.1
-          
-          echo "Menyalin file SusFS ke direktori kernel..."
-          cp susfs4ksu/kernel_patches/fs/* fs/
-          cp susfs4ksu/kernel_patches/include/linux/* include/linux/
-          
-          echo "Menerapkan patch utama SusFS ke kernel 6.1..."
-          patch -p1 < susfs4ksu/kernel_patches/50_add_susfs_in_kernel-6.1.patch
-          
-          echo "Menerapkan hook SusFS ke modul Root..."
-          if [ -d "KernelSU-Next" ]; then
-            cd KernelSU-Next
-          elif [ -d "KernelSU" ]; then
-            cd KernelSU
-          else
-            echo "Folder root tidak ditemukan!"
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/dev/rothko" ]]; then
+            echo "::error::This development-only workflow must be run from dev/rothko."
             exit 1
           fi
-          patch -p1 < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
-          cd
+
+      - name: Validate root flavor and create separate variants
+        id: flavors
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+
+          variants = {
+              "KernelSU": ["KernelSU"],
+              "KernelSU-Next": ["KernelSU-Next"],
+              "BakaSU": ["BakaSU"],
+              "All (KSU + KSUN + BakaSU)": ["KernelSU", "KernelSU-Next", "BakaSU"],
+          }
+          selected = os.environ["ROOT_FLAVOR"]
+          if selected not in variants:
+              raise SystemExit(f"Unsupported root_flavor: {selected!r}")
+          roots = variants[selected]
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write("root_matrix=" + json.dumps(roots, separators=(",", ":")) + "\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+              f.write("# Cogan Rothko: root selection (development only)\n\n")
+              f.write(f"Selected: **{selected}**\n\n")
+              f.write("Separate planned kernel/root variants:\n")
+              for root in roots:
+                  f.write(f"- {root}\n")
+              f.write("\nNo root framework installed. No source patches applied. ")
+              f.write("No compilation, artifacts, releases, or flashable images.\n")
+          PY
+
+  preview-variant:
+    name: Preview ${{ matrix.root }} (no build)
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        root: ${{ fromJSON(needs.plan.outputs.root_matrix) }}
+    env:
+      ROOT_VARIANT: ${{ matrix.root }}
+      SUSFS: ${{ inputs.susfs }}
+      NOMOUNT: ${{ inputs.nomount }}
+      BBG: ${{ inputs.baseband_guard }}
+      NETWORKING: ${{ inputs.networking }}
+      TMPFS: ${{ inputs.tmpfs }}
+      BPF: ${{ inputs.bpf }}
+      PERFORMANCE: ${{ inputs.performance }}
+    steps:
+      - name: Show proposed variant and feature flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### Planned variant: $ROOT_VARIANT"
+            echo
+            echo "| Planned feature | Requested |"
+            echo "|---|---|"
+            echo "| SUSFS | $SUSFS |"
+            echo "| NoMount | $NOMOUNT |"
+            echo "| Baseband Guard | $BBG |"
+            echo "| Networking | $NETWORKING |"
+            echo "| TMPFS | $TMPFS |"
+            echo "| BPF | $BPF |"
+            echo "| Performance (no NTSync) | $PERFORMANCE |"
+            echo
+            echo "**Status: planning only — NOT BUILT or FLASHABLE.**"
+            echo
+            echo "DroidSpaces and NTSync deliberately excluded."
+          } >> "$GITHUB_STEP_SUMMARY"
