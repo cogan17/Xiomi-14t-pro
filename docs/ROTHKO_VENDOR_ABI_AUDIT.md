@@ -124,3 +124,57 @@ tersendiri sehingga ketiadaan alias **bukan** bukti tidak ada partisi.
    flashing, atau mematikan validasi `CONFIG_MODVERSIONS` sebagai jalan pintas.
 
 **Status akhir: audit inventaris berhasil, kompatibilitas ABI belum terbukti.**
+
+## Bukti tambahan: BakaSU Manager + Kernel Flasher Slot A (12 Oktober 2026)
+
+Dua screenshot pengguna memberikan bukti tambahan yang lebih spesifik
+dibanding `uname` yang di-spoof SUSFS. Angka yang dilaporkan aplikasi
+dicatat sebagai **observasi dari antarmuka**, bukan pengujian ABI atau
+verifikasi kriptografis partisi.
+
+| Data | Observasi |
+|---|---|
+| Perangkat pada BakaSU | Xiaomi 14T Pro |
+| BakaSU kernel driver | `v4.2.0-rc3-5b76b884 (35222/5)` |
+| BakaSU manager | `v4.2.0-rc3 (35222/5)` |
+| SUSFS pada manager | `v2.3.0` |
+| SELinux | `Enforcing` |
+| Kernel Flasher | `Slot A [Active]` |
+| Slot A kernel version field | `6.1.177-android14-11-Cogan` |
+| Slot A build timestamp | `2026-10-10 03:36:04 UTC` |
+| Slot A boot SHA1 prefix | `82d969f0` (hanya prefiks yang ditampilkan) |
+| Slot A boot/init_boot format | `lz4_legacy` |
+| Slot A Vendor DLKM | `Exists, Mounted` |
+| Slot A Unbootable | `No` |
+| Slot A Successful | `Yes` |
+
+### Interpretasi yang diperbolehkan
+
+- **Slot A ditandai aktif, bootable, dan sukses**, serta Kernel Flasher
+  mengidentifikasi image kernel sebagai `6.1.177-android14-11-Cogan`.
+  Ini menguatkan bahwa kernel Cogan terpasang pada Slot A, tetapi belum
+  memastikan bahwa byte dari image Slot A identik dengan aset r7 tertentu.
+- Kode versi BakaSU Manager dan driver **sama** (`35222/5`),
+  sementara SUSFS melaporkan `v2.3.0`. Ini bukti konsistensi
+  versi yang tertera, bukan verifikasi keseluruhan root/NoMount.
+- Kernel vendor/system DLKM yang tersimpan menggunakan `vermagic`
+  `6.1.138-android14-11-...`; ini **tidak otomatis berarti modul gagal
+  dimuat** pada GKI 6.1.177. Diperlukan audit simbol/CRC dan log
+  pemuatan untuk menentukan kompatibilitas sebenarnya.
+- Slot B sebelumnya dilaporkan `Unbootable: Yes`, `Successful: No`.
+  Status tersebut bukan diagnosis kerusakan hardware, dan tidak ada
+  hubungan kausal yang terbukti dengan `init_boot.img` model degas.
+- **Isi `init_boot_a` saat ini belum diidentifikasi.** Kemiripan ramdisk
+  stock `degas` dan `rothko` serta root yang berjalan tidak dapat
+  memastikan apakah `init_boot_a` masih hasil patch dari model lain.
+- Pada konfigurasi root GKI, root driver umumnya ada di `boot.img`.
+  Mengganti `init_boot.img` dapat menghapus perubahan ramdisk/LKM bila
+  masih digunakan; **tidak disarankan flashing tanpa audit mode root
+  dan image aktif**.
+
+### Larangan perubahan saat ini
+
+Jangan mengubah slot, me-restore `init_boot` secara membabi buta,
+mem-flash firmware degas, mengabaikan pengecekan ABI modul, atau
+menyatakan kompatibilitas 6.1.177 berdasarkan tampilan aplikasi saja.
+Simpan backup stock Rothko yang benar dan catatan build Cogan r7.
