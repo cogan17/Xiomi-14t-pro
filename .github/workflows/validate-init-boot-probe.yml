@@ -1,0 +1,56 @@
+name: Cogan Rothko - Validate Read-Only Init Boot Probe
+
+on:
+  push:
+    branches:
+      - dev/rothko
+    paths:
+      - '.github/workflows/validate-init-boot-probe.yml'
+      - 'scripts/check_active_init_boot.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-script:
+    if: github.ref == 'refs/heads/dev/rothko'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout: |
+            scripts/check_active_init_boot.sh
+          sparse-checkout-cone-mode: false
+      - name: Validate script syntax and allowed operation scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh -n scripts/check_active_init_boot.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          script = Path('scripts/check_active_init_boot.sh').read_text()
+          sha = re.findall(r'^[A-Z_]+_STOCK_SHA="([a-f0-9]{64})"$', script, re.M)
+          assert len(sha) == 2 and sha[0] != sha[1], "Expected two distinct stock hashes"
+          for required in ('ro.product.device', 'ro.boot.slot_suffix',
+                           '/dev/block/by-name/init_boot_a', 'sha256sum',
+                           'EXACT_ROTHKO_STOCK', 'EXACT_DEGAS_STOCK',
+                           'DIFFERENT_FROM_BOTH_STOCK_IMAGES'):
+              assert required in script, f"Missing expected safety element: {required}"
+          for forbidden in ('dd if=', 'dd of=', 'flash_image ', 'fastboot ',
+                            'set-active-boot-slot', 'set-active', 'mkfs.',
+                            'reboot ', 'insmod ', 'modprobe '):
+              assert forbidden not in script, f"Unexpected operation: {forbidden}"
+          print('Syntax and static safety checks passed.')
+          PY
+          {
+            echo '### Active init_boot_a check: static validation only'
+            echo
+            echo 'Shell syntax and expected classifications validated.'
+            echo 'No device connected; no partition was read or written.'
+            echo 'Does not prove active image identity or flash safety.'
+          } >> "$GITHUB_STEP_SUMMARY"
