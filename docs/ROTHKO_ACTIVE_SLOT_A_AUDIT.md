@@ -2,7 +2,10 @@
 
 **Status: HASIL TERKUMPUL dari HP, 12 Oktober 2026.** Skrip
 read-only selesai di Termux tanpa flashing atau perubahan partisi.
-Backup image Slot A terbaru **belum dikonfirmasi tersedia**.
+**Metadata backup RAW Slot A bertanggal `2026-10-12--02-40` sudah diterima.**
+SHA-256 lima partisi dalam `backup.json` cocok dengan pemeriksaan Termux,
+namun berkas image cadangan individual **belum diterima/dihitung ulang**.
+Ketersediaan serta integritas backup nyata masih perlu diverifikasi.
 
 ## Alasan pemeriksaan
 
@@ -130,3 +133,46 @@ publik; simpan metadata/checksum saja.
 
 **Tidak dilakukan dalam tahap ini:** flashing, modifikasi/root removal,
 perubahan slot, backup image aktif, atau pemeriksaan ABI mendalam.
+
+## Bukti baru: `backup.json` Slot A — 12 Oktober 2026, 02.40
+
+Pengguna mengirim metadata Kernel Flasher `backup.json` sebagai tindak lanjut
+permintaan backup aktif. Nama backup `2026-10-12--02-40`, tipe `raw`,
+algoritma SHA-256. Identitas kernel yang tercatat:
+
+```text
+kernelVersion=6.1.177-android14-11-Cogan #1 SMP PREEMPT 2026-10-10 03:36:04 UTC
+bootSha1=82d969f0cab5e7f17f5d499b847e7cba64a08932
+```
+
+| Nama dalam metadata | SHA-256 di `backup.json` | Perbandingan dengan hash perangkat |
+|---|---|---|
+| `boot` | `f39b666ead0c5a740a652c62225e343222b4e5fc89a560ff8f850eebf4cf6f8a` | **Cocok** dengan Termux `boot_a` |
+| `init_boot` | `951f096146157773abe4cbbd9b0dacbe9c2fa6400d4c438298353e5fb8a8bf04` | **Cocok** dengan Termux `init_boot_a` (stock Degas) |
+| `vendor_boot` | `087e76586bb981bbd1f37334f68707bac1f3b81d9a88caa452a9433feb76a384` | **Cocok** dengan Termux `vendor_boot_a` (stock Rothko) |
+| `dtbo` | `47954740b3e890e0414cc5e5fc0f495c9750fe117d81f3607171d6b65c5eaff7` | **Cocok** dengan Termux `dtbo_a` |
+| `vbmeta` | `bfe79b5ba411e927943b8b918d802dd02ed751da384d4d7752e7e6b19c32b526` | **Cocok** dengan Termux `vbmeta_a` |
+| `system_dlkm` | `361be1dfdf7fa5d84f4712e005d4d1925100b3e94cf04954619fd45ba18defda` | **Baru**, belum diukur independen pada perangkat |
+| `vendor_dlkm` | `596cce7cd8e8a4a44c47080ce914facc9580004b5c18a8627c90551a3da5d536` | **Baru**, belum diukur independen pada perangkat |
+
+### Tingkat kepastian dan pembatasan
+
+**Terverifikasi:** isi `backup.json` sudah dibaca; 5/5 SHA-256
+`boot/init_boot/vendor_boot/dtbo/vbmeta` cocok dengan keluaran Termux
+read-only sebelumnya. Identitas kernel Cogan dan SHA-1 boot selaras
+dengan screenshot Kernel Flasher Slot A.
+
+**Belum terverifikasi:** 7 berkas image asli yang dirujuk metadata
+**tidak diunggah bersama `backup.json`**; belum ada SHA-256 yang
+dihitung ulang dari file backup tersimpan, ukuran berkasnya, atau
+bukti backup disalin ke penyimpanan terpisah. **Tidak benar** untuk
+mengatakan "backup lengkap aman" hanya dari file JSON. `system_dlkm`
+dan `vendor_dlkm` juga belum memiliki pembanding hash dari Termux.
+
+**Langkah aman:** pengguna memastikan ketujuh berkas image ada di lokasi
+backup Kernel Flasher, dihitung SHA-256 **file**-nya tanpa flashing,
+dan hasilnya cocok dengan metadata. Simpan set backup lengkap beserta
+`backup.json` di lokasi lain. Hindari publikasi image mentah di GitHub.
+
+**Tetap ditahan:** pemulihan `init_boot_a`, perubahan slot, flashing
+GKI/ROM lain, atau tindakan yang dapat mengganggu root BakaSU.
