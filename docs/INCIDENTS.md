@@ -22,6 +22,11 @@ bukti. Tiap insiden memiliki keadaan dan kriteria penutupan.
 - **Referensi:** [Audit firmware](ROTHKO_STOCK_FIRMWARE_AUDIT.md),
   [pemeriksaan `init_boot_a` aktif](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md)
   (hasil checksum dari HP sudah diperoleh).
+- **Audit boot-chain tambahan:** `boot_a` berbeda dari stock Rothko,
+  `vendor_boot_a` cocok dengan stock Rothko, `dtbo_a` dan `vbmeta_a`
+  cocok dengan backup Slot B. [Laporan lengkap](ROTHKO_ACTIVE_SLOT_A_AUDIT.md).
+  **Belum ada backup RAW Slot A terbaru yang dikonfirmasi**; risiko
+  kehilangan keadaan root sekarang menjadi alasan menahan flashing.
 
 ## I-002 — Slot B bertanda `Unbootable: Yes`
 
