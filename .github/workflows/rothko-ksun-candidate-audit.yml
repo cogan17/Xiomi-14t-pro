@@ -9,6 +9,7 @@ on:
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
       - .github/workflows/rothko-ksun-candidate-audit.yml
+      - scripts/rothko_ksun_security_contract.py
   pull_request:
     paths:
       - patches/rothko-ksun-sucompat-fail-closed-candidate.patch
@@ -16,6 +17,7 @@ on:
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
       - .github/workflows/rothko-ksun-candidate-audit.yml
+      - scripts/rothko_ksun_security_contract.py
   workflow_dispatch:
 permissions:
   contents: read
@@ -102,3 +104,6 @@ jobs:
           echo "BLOCK: credential authorization before commit_creds not demonstrated"
           echo "BLOCK: authenticated post-exec session FD not implemented"
           echo "This job validates patch applicability ONLY; it is not release approval."
+      - name: Verify KSUN authorization and FD source contracts (no release)
+        shell: bash
+        run: python3 "$GITHUB_WORKSPACE/scripts/rothko_ksun_security_contract.py" "/tmp/ksun/kernel"
