@@ -122,17 +122,25 @@ EXPECTED_SUSFS_SHA="5192aa2d33b381b58c1051532f9e1dfa5de6e8d3"
 mkdir -p "$tmp/susfs"
 git -C "$tmp/susfs" init --quiet
 git -C "$tmp/susfs" remote add origin "$SUSFS_URL"
+# GitLab may intermittently reject raw commit fetches under load.
+# Try the immutable branch only as a transport fallback; never accept its tip.
+# The fetched commit AND tree must still match the pinned identities below.
+susfs_fetched=0
 for attempt in 1 2 3; do
   if git -C "$tmp/susfs" -c http.version=HTTP/1.1 fetch --quiet --depth=1 origin "$EXPECTED_SUSFS_SHA"; then
+    susfs_fetched=1
     break
   fi
   echo "WARN: pinned SUSFS fetch failed (attempt $attempt/3)" >&2
-  if [[ "$attempt" == 3 ]]; then
-    echo "FAIL: pinned SUSFS commit unavailable; audit cannot proceed" >&2
+  if [[ "$attempt" != 3 ]]; then sleep $((attempt * 5)); fi
+done
+if [[ "$susfs_fetched" != 1 ]]; then
+  echo "WARN: trying pinned SUSFS branch as transport fallback; exact commit remains mandatory" >&2
+  if ! git -C "$tmp/susfs" -c http.version=HTTP/1.1 fetch --quiet --depth=1 origin "$SUSFS_REF"; then
+    echo "FAIL: pinned SUSFS source unavailable via SHA or branch" >&2
     exit 16
   fi
-  sleep $((attempt * 5))
-done
+fi
 git -C "$tmp/susfs" checkout --quiet --detach FETCH_HEAD
 sha="$(git -C "$tmp/susfs" rev-parse HEAD)"
 if [[ "$sha" != "$EXPECTED_SUSFS_SHA" ]]; then
