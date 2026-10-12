@@ -156,6 +156,25 @@ if any(not checks[k] for k in blocking):
 PY
 echo "===== END EXECVE / ARM64 PREBUILD CONTRACT GATE ====="
 
+# Capture rejected patch hunks as machine-readable evidence without applying them.
+echo "===== SUSFS PATCH REJECT SUMMARY ====="
+python3 - "$patch" <<'PY'
+from pathlib import Path
+import re, sys
+patch = Path(sys.argv[1]).read_text(errors="replace").splitlines()
+targets = {"fs/exec.c", "fs/namei.c", "fs/proc/base.c",
+           "fs/proc/task_mmu.c", "mm/memory.c"}
+current = None
+for line in patch:
+    if line.startswith("diff --git a/"):
+        parts = line.split()
+        current = parts[2][2:] if len(parts) > 3 else None
+    elif current in targets and line.startswith("@@ "):
+        print(f"HUNK {current} {line}", flush=True)
+PY
+echo "===== END SUSFS PATCH REJECT SUMMARY ====="
+
+
 
 if git -C "$tmp/rothko" apply --check --verbose "$patch"; then
   echo "PASS: official 6.1 patch passes git apply --check against pristine Rothko BSP"
