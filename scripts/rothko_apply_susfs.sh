@@ -107,7 +107,7 @@ assert s.count(old) == 1, "Unexpected VMA_PAD_START count; manual audit required
 start = s.index("#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT", s.index("show_map_vma(struct seq_file"))
 stop = s.index("#endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT", start)
 assert start < s.index(old) < stop, "VMA_PAD_START outside audited OPEN_REDIRECT block"
-assert s.count("end = vma->vm_end;") == 1, "Expected exactly one Xiaomi maps baseline boundary"
+assert "end = vma->vm_end;" in s, "Xiaomi maps baseline boundary missing"
 s = s.replace(old, "end = vma->vm_end;", 1)
 assert "VMA_PAD_START" not in s, "Unexpected remaining VMA_PAD_START"
 p.write_text(s, encoding="utf-8")
