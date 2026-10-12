@@ -24,6 +24,7 @@ jobs:
           persist-credentials: false
           sparse-checkout: |
             scripts/rothko_susfs_source_probe.sh
+            patches/rothko-ksun-sucompat-fail-closed-candidate.patch
       - name: Validate audit shell syntax
         shell: bash
         run: bash -n scripts/rothko_susfs_source_probe.sh
