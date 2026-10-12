@@ -286,3 +286,30 @@ bukan menghapus jejak kejadian.
   risiko sebelum mempertimbangkan perubahan `init_boot_a`.
 
 - **Validasi skrip:** [GitHub Actions #38192045412](https://github.com/cogan17/Xiomi-14t-pro/actions/runs/38192045412) selesai **success** untuk pemeriksaan sintaks shell dan batas operasi read-only. **Belum diuji pada HP** dan belum membuktikan kompatibilitas modul.
+
+## 2026-10-12 — Inventaris aktual enam belas modul BakaSU
+
+- **Bukti dari HP:** skrip `collect_bakasu_module_inventory.sh` berhasil
+  berjalan melalui `su`, perangkat `rothko`, Slot A, Android 16
+  firmware `OS3.0.301.0.WNNIDXM`, SELinux `Enforcing`.
+- **Ringkasan:** 16 modul terpasang; 16 berstatus enabled-on-disk;
+  disabled=0; remove=0; seluruh modul memiliki metadata `module.prop`.
+- **Jejak fitur:** 12 layanan `service.sh`, 9 `post-fs-data.sh`,
+  3 `system.prop`, 4 `sepolicy.rule`, 4 `zygisk/`,
+  0 `skip_mount`.
+- **Data tambahan:** direktori `modules_update`, `ksu`,
+  `metamodule`, `nomount`, `service.d`, `post-fs-data.d`
+  ada; file `.ko` 268 di vendor, 60 di system; `/proc/modules` 519 baris.
+- **Privasi:** ID, versi, dan daftar modul pribadi tidak dicatat pada
+  laporan GitHub publik. Skrip tidak membaca isi konfigurasi atau
+  data akses root.
+- **Hasil terbatas:** enabled-on-disk bukan bukti semua 16 modul benar-benar
+  berjalan; kehadiran modul Zygisk tidak otomatis berarti konflik;
+  keberadaan NoMount/MetaModule perlu cek peran/runtime lebih lanjut.
+- **Belum dilakukan:** backup data dan konfigurasi semua modul di
+  `/data`, pemeriksaan runtime spesifik, flashing, restore,
+  atau perubahan slot/daemon/fitur root.
+- **Tindak lanjut:** kelompokkan ketergantungan dan buat rencana cadangan
+  *private/offline* untuk modul serta konfigurasi penting. Jangan
+  menyamakan backup image `boot` dan `*_dlkm` dengan backup modul.
+- **Laporan:** [ROTHKO_BAKASU_MODULE_SAFETY.md](ROTHKO_BAKASU_MODULE_SAFETY.md).
