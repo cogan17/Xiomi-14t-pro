@@ -9,10 +9,18 @@ bukti. Tiap insiden memiliki keadaan dan kriteria penutupan.
   `WNNIDXM` (`rothko/mt6989`).
 - **Diketahui:** `init_boot.img` kedua model memiliki isi ramdisk sangat
   mirip; ini dapat menjelaskan mengapa root manager dapat melakukan patch.
-- **Terverifikasi baru (12 Oktober 2026):** checksum SHA-256 image
-  `init_boot_a` aktif (8 MiB) **persis sama dengan stock Degas WNEIDXM**:
+- **Snapshot pra-flash `07-19` (12 Oktober 2026):** checksum SHA-256
+  `init_boot_a` yang saat itu aktif (8 MiB) **persis sama dengan stock
+  Degas WNEIDXM**:
   `951f096146157773abe4cbbd9b0dacbe9c2fa6400d4c438298353e5fb8a8bf04`.
-  Ini bukan lagi dugaan atau sekadar image yang pernah diunduh.
+  Ini fakta tentang **kondisi sebelum** tindakan terbaru, bukan kondisi sekarang.
+- **Snapshot pasca-flash `09-09` (12 Oktober 2026):** pengguna memasang
+  `init_boot.img` stock Rothko WNNIDXM lalu Cogan r7, reboot masuk home,
+  dan mengirim tujuh image backup. Ketujuh SHA-256 **PASS** saat dihitung
+  ulang; `init_boot.img` kini **persis stock Rothko WNNIDXM**
+  `4b25ce3f4a321b34aa5f84e7c8b0328065d7038c1a00b91fdcca7e0c17fe463f`.
+  Keenam image lain termasuk `boot` Cogan r7 tetap identik.
+  [Laporan pasca-flash](ROTHKO_POST_FLASH_INIT_BOOT_0909.md).
 - **Masih belum diketahui:** kapan/dengan proses apa image itu dipasang,
   apakah pernah menimbulkan kegagalan, dan apakah berkaitan dengan status
   Slot B unbootable. Tidak ada bukti kerusakan hardware/Slot A dari hash.
