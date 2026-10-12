@@ -37,8 +37,10 @@ yang merupakan perintah untuk flashing.
 - **Keputusan:** prioritas berikutnya inventaris metadata modul secara
   read-only dan rencanakan backup konfigurasi/modul yang sesuai,
   **bukan** langsung flashing atau restore `init_boot_a`.
-- **Status:** rencana audit disetujui; kondisi tiap modul masih
-  menunggu bukti aktual dari HP.
+- **Status terkini (12 Oktober 2026):** inventaris metadata telah
+  berhasil dijalankan (16 modul, seluruhnya enabled-on-disk), tetapi
+  **perilaku runtime dan backup konfigurasi masih menunggu bukti**.
+  Daftar modul pribadi tidak dipublikasikan.
 - **Referensi:** [audit modul BakaSU](ROTHKO_BAKASU_MODULE_SAFETY.md).
 
 ## Format keputusan baru
