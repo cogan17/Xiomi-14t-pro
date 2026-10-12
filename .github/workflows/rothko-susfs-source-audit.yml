@@ -102,6 +102,10 @@ jobs:
                   lines.append(f"- {hunk[0]}: {kind}; non-include context lines present in BSP {matched}/{len(anchors)}; new include directives already present {existing}/{len(added_includes)}")
                   if include_additions:
                       lines.append(f"  - Includes added: {len(include_additions)}; other nonblank additions: {len(other_additions)}; removed lines: {len(removed)}")
+                      for directive in include_additions:
+                          lines.append(f"  - Header: \`{directive}\`; present in pristine BSP: {'yes' if directive in [y.strip() for y in src] else 'no'}")
+                  if file in {"fs/namei.c", "fs/proc/base.c", "fs/proc/task_mmu.c", "mm/memory.c"} and (matched != len(anchors) or include_additions):
+                      lines.append("  - REVIEW REQUIRED: positional/context match is not proof of semantic equivalence")
                   if include_only or additive_include_only:
                       lines.append("  - Context-only drift candidate; include dependencies and build still require verification")
               lines.append("")
