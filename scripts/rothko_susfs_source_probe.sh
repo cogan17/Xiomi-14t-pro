@@ -61,6 +61,43 @@ for line in patch:
         print(line)
 PY
 echo "===== END PINNED SUSFS DIFF ====="
+echo "===== OFFICIAL SUSFS KSUN POST-EXECVE COMPANION PATCH ====="
+companion="$tmp/susfs/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
+test -s "$companion" || { echo "FAIL: missing official KSUN companion patch"; exit 10; }
+# Print only the official patch hunks that reference post-execve, plus their
+# file and hunk headers, so implementation can follow upstream semantics.
+python3 - "$companion" <<'PY'
+from pathlib import Path
+import sys
+lines = Path(sys.argv[1]).read_text(errors="replace").splitlines()
+sections = []
+current = []
+for line in lines:
+    if line.startswith("diff --git "):
+        if current:
+            sections.append(current)
+        current = [line]
+    else:
+        current.append(line)
+if current:
+    sections.append(current)
+found = False
+for section in sections:
+    if not any("ksu_handle_post_execveat_sucompat" in line for line in section):
+        continue
+    found = True
+    print("COMPANION FILE:", section[0], flush=True)
+    for i, line in enumerate(section):
+        if "ksu_handle_post_execveat_sucompat" in line:
+            lo, hi = max(0, i - 18), min(len(section), i + 45)
+            print(f"CONTEXT lines {lo + 1}-{hi}:", flush=True)
+            for context in section[lo:hi]:
+                print(context, flush=True)
+if not found:
+    print("FAIL: companion patch does not define/reference expected post-execve hook", flush=True)
+    raise SystemExit(11)
+PY
+echo "===== END OFFICIAL SUSFS KSUN POST-EXECVE COMPANION PATCH ====="
 echo "===== KSUN PINNED EXECVE / SELINUX SYMBOL AUDIT ====="
 git clone --quiet --filter=blob:none https://github.com/pershoot/KernelSU-Next.git "$tmp/ksun"
 git -C "$tmp/ksun" checkout --quiet "$KSUN_SHA"
