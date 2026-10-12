@@ -74,9 +74,9 @@ jobs:
               src=(root/file).read_text(errors="replace").splitlines() if (root/file).is_file() else []
               lines.append("## "+file)
               for hunk in chunks.get(file,[]):
-                  added=[x[1:] for x in hunk[1:] if x.startswith("+") and not x.startswith("+++")]
-                  removed=[x[1:] for x in hunk[1:] if x.startswith("-") and not x.startswith("---")]
-                  context=[x[1:] for x in hunk[1:] if x.startswith(" ")]
+                  # Hunk content must stop at the next diff metadata line.\n                  # Otherwise trailing --git / index / --- / +++ lines pollute classification.\n                  body=[]\n                  for x in hunk[1:]:\n                      if x.startswith(("diff --git ", "index ", "--- ", "+++ ", "@@ ")):\n                          break\n                      if x.startswith((" ", "+", "-", "\\\\")):\n                          body.append(x)\n                  added=[x[1:] for x in body if x.startswith("+")]
+                  removed=[x[1:] for x in body if x.startswith("-")]
+                  context=[x[1:] for x in body if x.startswith(" ")]
                   include_only=bool(added or removed) and all(x.strip().startswith("#include ") or not x.strip() for x in added+removed)
                   # Classify additive include hunks separately from source behavior.
                   # Do not treat an include-only hunk as an approved port.
