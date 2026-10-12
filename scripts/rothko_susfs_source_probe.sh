@@ -98,7 +98,7 @@ if not all(checks.values()):
 lines = patch.splitlines()
 def pos(needle):
     return next((i for i, line in enumerate(lines) if needle in line), -1)
-allocation = pos("+    struct filename *replacement = getname_kernel(ksud_path);")
+allocation = pos("+    replacement = getname_kernel(ksud_path);")
 escape = pos("     ret = escape_with_root_profile();")
 transfer = pos("+    *filename_ptr = replacement;")
 release = pos("+    putname(filename);")
