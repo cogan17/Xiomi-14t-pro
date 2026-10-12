@@ -1,5 +1,9 @@
 name: Rothko SUSFS source audit (read-only)
 on:
+  pull_request:
+    paths:
+      - scripts/rothko_susfs_source_probe.sh
+      - .github/workflows/rothko-susfs-source-audit.yml
   push:
     branches:
       - feat/rothko-ksun-susfs-compat-audit
