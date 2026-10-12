@@ -214,3 +214,11 @@ bukan menghapus jejak kejadian.
   root/BakaSU, atau commit file image mentah ke GitHub.
 - **Selanjutnya:** salin seluruh folder backup utuh beserta JSON ke
   PC/SSD/USB, verifikasi checksum kembali dan jaga Slot A tetap bekerja.
+
+## 2026-10-12 — Tahap 10: rencana salinan independen backup Slot A
+
+- **Bukti sebelum tahap ini:** tujuh image backup 07.19 terunggah dan seluruhnya lulus SHA-256 terhadap metadata, 7/7.
+- **Tindakan:** menerbitkan prosedur salin folder tanpa menghapus asli ke Windows atau SSD, disertai perintah PowerShell yang membandingkan tujuh hash independen dengan file hasil salinan.
+- **Dokumentasi:** [Tahap 10 di laporan integritas](ROTHKO_SLOT_A_BACKUP_INTEGRITY.md).
+- **Belum dilakukan:** menyalin folder ke PC/SSD serta menjalankan pengecekan PowerShell pada salinan, maupun pengujian restore.
+- **Keamanan:** tidak ada flashing, penulisan partisi, perubahan slot atau pengubahan BakaSU.
