@@ -61,3 +61,11 @@ Status: **AUDIT ONLY — NO FLASH / NO MERGE / NO KERNEL IMAGE**.
 
 ### Additional decision
 Continue **source-level audit only**. Do not pin a guessed SUSFS SHA, assert compatibility, compile, or merge. Next concrete dependency: obtain immutable upstream file contents and compare hooks plus kernel BSP context, then build real programmatic checks.
+
+## Third investigation — developer statement and source access (2026-10-12)
+- **Direct developer statement:** pershoot explicitly describes `pershoot/KernelSU-Next@dev-susfs` and `pershoot/susfs4ksu@gki-android14-6.1-dev` as personal development repos, intended to be in flux (May 31, 2026): https://github.com/KernelSU-Next/KernelSU-Next/issues/1293
+- WildKernels main workflow uses `pershoot/KernelSU-Next@dev-susfs` for KSUN kernel-side integration when SUSFS is enabled, but official KSUN manager source; its Android14-6.1 SUSFS pin table includes `24743360ea08d98f6ad72b856851abed8de5854f`: https://github.com/WildKernels/GKI_KernelSU_SUSFS/blob/main/.github/workflows/main.yml
+- KSUN official installation docs warn dev branch has not been fully tested: https://kernelsu-next.github.io/webpage/pages/installation.html
+- Verified live source access limitation: container `git ls-remote` failed due DNS for github.com; direct GitHub pinned `kernel/Kbuild` page could not be fetched. **Do not claim any source-level hook comparison has been completed.**
+- Explicitly distinguish **permission to run a non-flashable CI compile** from **permission to flash/merge**. Neither is approved yet: missing source-level interface comparison and vendor ABI/KMI evidence.
+- **Next action required:** obtain readable immutable KSUN kernel source and Simonpunk patch source, inspect hook symbols/headers and `git apply --check` against Rothko; then prepare non-flashable isolated CI only after a clean preflight.
