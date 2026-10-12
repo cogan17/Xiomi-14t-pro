@@ -100,3 +100,13 @@ Source read directly from `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53
 - The official indexed patch includes SUSFS command identifiers `CMD_SUSFS_ADD_SUS_PATH_LOOP`, `CMD_SUSFS_SHOW_ENABLED_FEATURES`, `CMD_SUSFS_SHOW_VARIANT`, `CMD_SUSFS_SHOW_VERSION` and calls `susfs_add_sus_path_loop`, `susfs_get_enabled_features`, `susfs_show_variant`, `susfs_show_version`. These match names observed in pinned KSUN `kernel/supercall/dispatch.c`; **name matching is partial evidence, not header/prototype/ABI compatibility**.
 - GitLab branch listing for pershoot `gki-android14-6.1-dev` shows active divergence from Simonpunk and is described as experimental. Must pin and audit exact paired GitLab/GitHub commits.
 - Direct GitLab raw-file retrieval in the available tools failed and local git could not resolve gitlab.com. Therefore no complete SUSFS header/function-signature audit or `git apply --check` has been performed. Build gate stays closed.
+
+## Eighth investigation — concrete KSUN/Simonpunk patch overlap (2026-10-12)
+Source: GitLab-indexed official Simonpunk `kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch` on `gki-android14-6.1` (search snapshot, not pinned raw bytes); compared with directly fetched `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161` files.
+**Verified overlap**:
+1. Simonpunk patch adds `CONFIG_KSU_SUSFS` in `kernel/Kconfig`; pershoot KSUN already defines it.
+2. Simonpunk patch changes `kernel/Kbuild` to remove syscall hook objects and add SUSFS version detection; pershoot KSUN already has conditional exclusion and version detection.
+3. Simonpunk patch inserts `susfs_init()` in `kernel/core/init.c`; pershoot KSUN already calls it when `CONFIG_KSU_SUSFS`.
+4. Simonpunk patch adds `ksu_handle_sys_reboot` and SUSFS command dispatch in `kernel/supercall/dispatch.c`; pershoot KSUN already implements the function.
+**Decision**: the generic Simonpunk **KernelSU integration patch is not an appropriate direct input to this KSUN fork**. Do not apply it wholesale. Instead, treat pershoot KSUN as kernel-side integration and select only matching **Linux kernel-side SUSFS patches** after exact-source verification. These overlapping additions are concrete duplicate/conflict risks, not a substitute for a dry-run.
+**Unresolved**: raw Simonpunk `susfs.h`, `susfs_def.h`, `fs/susfs.c`, exact kernel patch and commit SHA; GitLab raw/API and git clone unavailable from this environment, and GitLab web pages return loading. Full signature/ABI comparison and `git apply --check --whitespace=error` remain unperformed. No CI compile.
