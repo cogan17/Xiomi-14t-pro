@@ -68,8 +68,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git clone --depth 1 --single-branch --branch gki-android14-6.1 \
-            https://gitlab.com/simonpunk/susfs4ksu.git "$RUNNER_TEMP/susfs"
+          git init "$RUNNER_TEMP/susfs"
+          git -C "$RUNNER_TEMP/susfs" remote add origin https://gitlab.com/simonpunk/susfs4ksu.git
+          git -C "$RUNNER_TEMP/susfs" fetch --depth 1 origin "$SUSFS_PIN"
+          git -C "$RUNNER_TEMP/susfs" checkout --detach FETCH_HEAD
           actual="$(git -C "$RUNNER_TEMP/susfs" rev-parse HEAD)"
           echo "Official SUSFS full upstream SHA: $actual"
           [[ "$actual" == "$SUSFS_PIN" ]] || {
