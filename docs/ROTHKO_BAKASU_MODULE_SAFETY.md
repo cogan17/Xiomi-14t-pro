@@ -1,7 +1,7 @@
 # Tahap 11 — Perlindungan BakaSU, SUSFS, NoMount dan seluruh modul
 
 **Tanggal:** 12 Oktober 2026  
-**Status:** rencana audit; skrip inventaris **belum dijalankan di HP**.  
+**Status 12 Oktober 2026:** skrip inventaris **sudah dijalankan di perangkat**. Terdapat 16 direktori modul dan semua berstatus enabled-on-disk, tanpa penanda disable/remove. **Modul dan pengaturannya belum dicadangkan secara terpisah**. Audit fungsi runtime belum selesai.  
 **Perangkat:** Xiaomi 14T Pro (`rothko`), Android 16, firmware WNNIDXM.
 
 > **Gerbang keselamatan:** tidak ada operasi flash, restore,
@@ -22,8 +22,9 @@
 - `init_boot_a` saat ini **identik dengan stock Degas** menurut
   pemeriksaan byte. `vendor_boot_a` identik dengan stock Rothko.
   Tidak boleh menyimpulkan penyebab status Slot B Unbootable dari bukti ini.
-- Pada screenshot lama BakaSU terdapat angka badge **16** pada tab
-  modul. Ini **bukan** inventaris nama/versi/status modul saat ini.
+- Screenshot lama BakaSU menampilkan badge modul **16**, dan audit
+  Termux terbaru kini mengonfirmasi **16 direktori modul**. Kesamaan
+  hitungan bukan bukti fungsi runtime modul.
 
 ## Dua kategori modul yang TIDAK boleh disamakan
 
@@ -105,3 +106,82 @@ Audit ini selesai jika: semua modul BakaSU yang penting telah
 diinventarisasi, dependensi root/no-mount diidentifikasi,
 rencana backup dan pemulihan konfigurasi modul tersedia,
 dan pengguna memahami risiko yang tersisa. **Belum terpenuhi.**
+
+## Hasil terbaru dari Termux: inventaris modul aktif (12 Oktober 2026)
+
+**Sumber data:** keluaran langsung dari
+`su -c 'sh /data/data/com.termux/files/home/collect_bakasu_module_inventory.sh'`.
+Skrip dijalankan pada `rothko`, Slot A aktif, firmware
+`OS3.0.301.0.WNNIDXM`, SELinux `Enforcing`.
+
+**Privasi:** laporan publik ini sengaja tidak memuat ID/nama/versi
+16 modul root atau data akses aplikasi. Inventaris terperinci terdapat
+pada laporan pribadi pengguna. Hindari mengunggah isi `/data/adb`
+ke repository publik.
+
+| Metrik | Hasil dari perangkat |
+|---|---:|
+| Direktori modul di `/data/adb/modules` | **16** |
+| Modul berstatus `enabled_on_disk` | **16** |
+| Modul berstatus `disabled_on_disk` | **0** |
+| Modul bertanda `remove` | **0** |
+| Direktori modul tanpa `module.prop` | **0** |
+| Modul memiliki `service.sh` | **12** |
+| Modul memiliki `post-fs-data.sh` | **9** |
+| Modul memiliki `system.prop` | **3** |
+| Modul memiliki `sepolicy.rule` | **4** |
+| Modul memiliki direktori `zygisk/` | **4** |
+| Modul memiliki `skip_mount` | **0** |
+| File `.ko` di `/vendor_dlkm/lib/modules` | **268** |
+| File `.ko` di `/system_dlkm/lib/modules` | **60** |
+| Baris `/proc/modules` saat audit | **519** |
+
+Direktori tambahan yang **ada** di `/data/adb`:
+`modules_update`, `ksu`, `metamodule`, `nomount`,
+`service.d`, `post-fs-data.d`.
+
+**Batas observasi:** keberadaan `modules_update` tidak membuktikan
+ada pembaruan modul yang sedang menunggu. Keberadaan `metamodule` dan
+`nomount` tidak dengan sendirinya menjelaskan versi, status runtime,
+atau hubungan keduanya. `enabled_on_disk` tidak membuktikan
+modul berhasil menjalankan skripnya saat boot; indikator direktori
+`zygisk/` juga bukan satu-satunya cara modul menggunakan Zygisk.
+Jumlah baris `/proc/modules` tidak boleh disamakan dengan jumlah
+modul root maupun hanya jumlah `.ko` dari dua lokasi tersebut.
+
+### Kelompok risiko untuk diperiksa secara privat
+
+1. **Fondasi root dan mount:** BakaSU Manager/kernel driver,
+   SUSFS, NoMount, MetaModule. Pastikan versi, kompatibilitas
+   antarkomponen, metode mount, dan perilaku saat boot.
+2. **Lingkungan Zygisk:** inventaris membuktikan ada modul berisi
+   `zygisk/` dan modul terkait layanan boot. Integrasi/runtime harus
+   diperiksa sebelum menyimpulkan ada konflik atau kecocokan.
+3. **Kustomisasi dan pengendali perangkat:** beberapa modul memakai
+   `service.sh`, `post-fs-data.sh`, atau `system.prop`; data
+   konfigurasi di `/data` mungkin tidak tercakup backup partisi.
+4. **Keamanan/perlindungan boot:** tanda `sepolicy.rule` atau layanan
+   tidak menjamin kesesuaian setelah perubahan kernel/ramdisk. Modul
+   pelindung bootloop sendiri tidak menjamin recovery dari bootloader.
+5. **Driver `.ko`:** image `system_dlkm` dan `vendor_dlkm`
+   sudah ada dalam backup partisi 7/7 PASS, tetapi kompatibilitas
+   CRC simbol/KMI dengan kernel GKI yang berjalan masih belum tuntas.
+
+### Hal yang masih perlu dilakukan sebelum mempertimbangkan restore
+
+- Inventaris status dan ketergantungan **runtime** di BakaSU Manager
+  (termasuk fitur NoMount, integrasi MetaModule dan Zygisk).
+- Rencana cadangan privat untuk **modul dan konfigurasi**, terpisah
+  dari tujuh image partisi. Perhatikan izin file, label SELinux,
+  dan data yang sensitif. Tidak ada tindakan penyalinan/arsip modul
+  dalam audit ini.
+- Periksa installer module yang dapat dipakai untuk memulihkan
+  versi yang sama jika diperlukan, beserta opsi recovery di luar HP.
+- Evaluasi jalur kehilangan root saat `init_boot_a` diganti,
+  dan jangan menganggap root akan hilang/bertahan dengan pasti
+  hanya berdasarkan identitas image.
+- **Tunda** flashing, restore, perubahan slot, reboot pengujian,
+  atau pengubahan status 16 modul sampai dependensi diketahui.
+
+**Status:** tahap inventaris metadata telah selesai; tahap
+perlindungan konfigurasi modul dan uji runtime **BELUM** selesai.
