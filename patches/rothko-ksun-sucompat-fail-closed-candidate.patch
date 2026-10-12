@@ -1,7 +1,7 @@
 diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
 --- a/kernel/feature/sucompat.c
 +++ b/kernel/feature/sucompat.c
-@@ -257,13 +257,16 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
+@@ -257,13 +257,18 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
                                                           (const char __user *const __user *)argv_ptr->ptr.native,
                                                           GFP_KERNEL);
  
@@ -11,7 +11,7 @@ diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
 -    if (ret)
 +    if (ret) {
          pr_err("escape_with_root_profile() failed: %d\n", ret);
-+        /* Do not redirect to ksud when the requested root profile failed. */
++        /* Do not redirect to ksud if privilege escalation was denied. */
 +        ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
 +        return 0;
 +    }
