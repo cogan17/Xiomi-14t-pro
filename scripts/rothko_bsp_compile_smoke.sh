@@ -24,27 +24,32 @@ if not Path("arch/arm64/configs/gki_defconfig").is_file():
 print("PASS: Xiaomi source 6.1.57, KMI generation 11, and GKI defconfig")
 PY
     ;;
-  compile)
+  config)
     bash scripts/rothko_bsp_compile_smoke.sh provenance
-    if [[ "$ARCH" != arm64 || "$LLVM" != 1 ]]; then
+    if [[ "${ARCH:-}" != arm64 || "${LLVM:-}" != 1 ]]; then
       echo "::error::Expected ARCH=arm64 and LLVM=1" >&2
       exit 1
     fi
     command -v clang
     command -v ld.lld
     mkdir -p out
-    echo "Generating generic GKI config (NOT Rothko board defconfig)"
+    echo "Generating generic GKI config only (NOT verified for Rothko)"
     make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 gki_defconfig
-    if grep -Eq '^CONFIG_(KSU|KSU_SUSFS)=y' out/.config; then
-      echo "::error::No root variants permitted in this stock source smoke compile." >&2
+    if grep -Eq '^CONFIG_(KSU|KSU_SUSFS|KERNELSU)(_[[:upper:]_0-9]+)?=(y|m)$' out/.config; then
+      echo "::error::Root feature enabled, stopping diagnostic run" >&2
       exit 1
     fi
-    echo "Compiling ARM64 Image from actual Xiaomi 6.1.57 BSP source"
+    test -s out/.config
+    echo "PASS: baseline config generated; no kernel Image or flashable package created"
+    ;;
+  compile)
+    bash scripts/rothko_bsp_compile_smoke.sh config
+    echo "Compiling ARM64 Image from Xiaomi 6.1.57 common source (diagnostic, not flash-ready)"
     make -j2 O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 Image
     test -s out/arch/arm64/boot/Image
     ;;
   *)
-    echo "Usage: bash scripts/rothko_bsp_compile_smoke.sh {provenance|compile}" >&2
+    echo "Usage: bash scripts/rothko_bsp_compile_smoke.sh {provenance|config|compile}" >&2
     exit 2
     ;;
 esac
