@@ -157,6 +157,18 @@ if any(not checks[k] for k in blocking):
 PY
 echo "===== END EXECVE / ARM64 PREBUILD CONTRACT GATE ====="
 
+echo "===== WHOLE-TREE ARM64 FLAG COLLISION AUDIT ====="
+# Search tracked files only, avoiding generated/untracked content. A textual
+# match is evidence for manual review, not proof of runtime flag collision.
+if git -C "$tmp/rothko" grep -nE '^[[:space:]]*#[[:space:]]*define[[:space:]]+TIF_[A-Za-z0-9_]+[[:space:]]+34([[:space:]]|$)' -- 'arch/arm64/**' 'include/**'; then
+  echo "BLOCK: existing TIF bit-34 definitions require manual collision review"
+  printf 'blocked\\n' > "$tmp/arm64_collision_status"
+else
+  echo "PASS: no other literal TIF bit-34 definition found in tracked ARM64/include source"
+fi
+echo "===== END WHOLE-TREE ARM64 FLAG COLLISION AUDIT ====="
+
+
 # Capture rejected patch hunks as machine-readable evidence without applying them.
 echo "===== SUSFS PATCH REJECT SUMMARY ====="
 python3 - "$patch" <<'PY'
@@ -182,6 +194,10 @@ if git -C "$tmp/rothko" apply --check --verbose "$patch"; then
 else
   echo "FAIL: official 6.1 patch does not apply cleanly to pristine Rothko BSP"
   patch_status=6
+fi
+if [[ -f "$tmp/arm64_collision_status" ]]; then
+  echo "FAIL: ARM64 TIF collision review required"
+  exit 9
 fi
 if [[ -f "$tmp/contract_status" ]]; then
   echo "FAIL: KSUN/SUSFS contract gate blocked; see full audit above"
