@@ -80,3 +80,33 @@ Termux saat verifikasi berlangsung.
 **Referensi:** [audit Slot A](ROTHKO_ACTIVE_SLOT_A_AUDIT.md);
 [status proyek](PROJECT_STATUS.md);
 [insiden](INCIDENTS.md).
+
+## Hasil inspeksi visual terbaru: video File Manager+ (12 Oktober 2026)
+
+Pengguna mengirim video layar berdurasi sekitar 11 detik.
+Folder `KernelFlasher/backups/2026-10-12--07-19` dibuka di File Manager+.
+Terdapat tepat **8 entri** berikut menurut daftar tampilan:
+
+| Nama file | Ukuran menurut File Manager+ |
+|---|---:|
+| `backup.json` | 874 B |
+| `boot.img` | 67,11 MB |
+| `dtbo.img` | 8,39 MB |
+| `init_boot.img` | 8,39 MB |
+| `system_dlkm.img` | 7,47 MB |
+| `vbmeta.img` | 8,39 MB |
+| `vendor_boot.img` | 67,11 MB |
+| `vendor_dlkm.img` | 21,97 MB |
+
+**Interpretasi:** file manager menampilkan ketujuh image dan
+`backup.json` pada folder 07.19, sesuai log `Backup ... saved` yang
+sudah dilaporkan. Ukuran dibulatkan menurut tampilan aplikasi; **bukan**
+hasil pengukuran ukuran byte lengkap atau verifikasi checksum.
+
+**Tahap yang masih menunggu:** jalankan verifikator *read-only*
+untuk membaca tiap file dan membandingkan dengan `backup.json`
+yang **ada di folder 07.19**, bukan memakai JSON dari folder 02.40.
+Sejauh ini belum ada hasil `verified=7 / failed=0` dari HP.
+
+**Larangan tetap:** jangan mem-flash, restore, mengganti slot,
+atau menghapus file backup lama hanya karena file-file ini terlihat.
