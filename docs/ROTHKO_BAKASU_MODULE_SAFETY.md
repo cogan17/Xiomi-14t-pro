@@ -185,3 +185,36 @@ modul root maupun hanya jumlah `.ko` dari dua lokasi tersebut.
 
 **Status:** tahap inventaris metadata telah selesai; tahap
 perlindungan konfigurasi modul dan uji runtime **BELUM** selesai.
+
+## Penyederhanaan strategi: installer ZIP dahulu (kesepakatan 12 Oktober 2026)
+
+Pengguna tidak membutuhkan backup penuh file dan konfigurasi seluruh
+16 modul jika dapat memasangnya kembali. Strategi tahap selanjutnya
+adalah **simpan installer ZIP versi yang sesuai secara offline,
+lalu instal ulang jika diperlukan**.
+
+- **Backup wajib yang sudah selesai:** tujuh image RAW Cogan r7
+  dan salinan USB OTG, SHA-256 PASS 7/7.
+- **Tahap belum dilakukan:** memeriksa bahwa pengguna benar-benar
+  memiliki installer ZIP untuk 16 modul yang sedang dipakai;
+  belum ada daftar hash ZIP atau salinan installer terverifikasi.
+- **Pengecualian:** konfigurasi pribadi sulit direplikasi
+  (contoh setelan ACC/Project Raco, integrasi Zygisk,
+  konfigurasi modul yang memakai data aplikasi, ataupun kunci pribadi)
+  mungkin **tidak pulih dari ZIP saja**. Cadangkan hanya jika memang
+  ingin mempertahankan setelan tersebut dan jaga tetap privat.
+- **Urutan pemulihan:** pulihkan root/kernel yang sesuai terlebih
+  dahulu, lalu komponen mount/Zygisk yang kompatibel sesuai
+  ketergantungan sebelum modul lain. Tidak ada urutan instalasi yang
+  diklaim telah diuji untuk perangkat ini.
+- **Batasan:** flash atau restore `init_boot_a` tidak otomatis
+  menghapus `/data/adb/modules`, namun juga tidak menjamin fungsi
+  BakaSU/modul tetap normal. Tidak boleh melakukan flashing berdasarkan
+  kepemilikan ZIP semata.
+
+**Keputusan operasional:** **tidak wajib mengarsipkan semua
+`/data/adb`**, dan tidak perlu pengujian pemulihan masing-masing modul
+pada tahap ini. Fokus pada ketersediaan installer,
+catatan versi, dependensi penting dan jalur pemulihan
+root/kernel yang benar. Status = direncanakan, belum diverifikasi.
+
