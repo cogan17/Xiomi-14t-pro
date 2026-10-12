@@ -35,9 +35,10 @@ jobs:
         run: bash scripts/rothko_susfs_source_probe.sh
 
   gitlab-transport:
-    # One read-only GitLab availability/provenance check on this PR's workflow
-    # update. Do NOT unblock the existing full SUSFS audit or initiate a build.
-    if: github.event_name == 'pull_request'
+    # Upstream GitLab is intermittent (#11): no automatic retries on PR/push.
+    # Explicit manual source-only dispatch can retry once when appropriate.
+    # Do NOT unblock full SUSFS audit or initiate a build.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
