@@ -25,8 +25,10 @@ bukti. Tiap insiden memiliki keadaan dan kriteria penutupan.
 - **Audit boot-chain tambahan:** `boot_a` berbeda dari stock Rothko,
   `vendor_boot_a` cocok dengan stock Rothko, `dtbo_a` dan `vbmeta_a`
   cocok dengan backup Slot B. [Laporan lengkap](ROTHKO_ACTIVE_SLOT_A_AUDIT.md).
-  **Belum ada backup RAW Slot A terbaru yang dikonfirmasi**; risiko
-  kehilangan keadaan root sekarang menjadi alasan menahan flashing.
+  **Addendum 12 Oktober 2026:** backup RAW Slot A terbaru
+  `2026-10-12--07-19` dan salinan USB sudah diverifikasi SHA-256
+  **7/7 PASS**, namun kemampuan restore belum diuji dan
+  konfigurasi root/modul bukan cakupan backup tujuh image.
 
 ## I-002 — Slot B bertanda `Unbootable: Yes`
 
