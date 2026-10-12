@@ -551,3 +551,14 @@ bukan menghapus jejak kejadian.
 - **Belum** diuji bersama driver KSU/KSUN/BakaSU, SUSFS, MetaModule,
   konfigurasi board Rothko/MT6989, maupun modul vendor.
 - Tidak ada boot.img, AK3, release, artifact siap-flash, atau tindakan HP.
+
+## 2026-10-12 — Uji kompilasi gabungan BakaSU + NoMount
+
+- Workflow `rothko-bakasu-nomount-combined.yml` menjalankan integrasi
+  source BakaSU dan NoMount dari SHA terpin dalam **checkout yang sama**,
+  dengan `CONFIG_KSU=y`, `CONFIG_NOMOUNT=y`, `CONFIG_MODVERSIONS=y`.
+- Kompilasi menggunakan generic GKI defconfig di source BSP 6.1.57;
+  SUSFS sengaja belum dinyalakan sampai patch kernel tervalidasi.
+- Tidak ada output siap-flash, release, perintah fastboot, atau perubahan HP.
+- Status kompilasi final harus diambil dari GitHub Actions PR; tidak
+  membuktikan ABI/KMI/modul/DT vendor khusus Rothko.

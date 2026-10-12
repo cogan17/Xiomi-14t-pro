@@ -1,0 +1,103 @@
+name: Cogan Rothko - BakaSU and NoMount Combined Compile (Experimental)
+
+# First combined source compilation. Generic GKI config, NOT Rothko board verified.
+# No upload, release, packaging, flashing, or permission to override ABI/KMI.
+on:
+  pull_request:
+    branches:
+      - dev/rothko
+    paths:
+      - '.github/workflows/rothko-bakasu-nomount-combined.yml'
+      - 'scripts/rothko_install_root_driver.py'
+      - 'scripts/rothko_install_nomount.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  combined-compile:
+    name: Compile BakaSU + NoMount ARM64 (NOT FLASHABLE)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ARCH: arm64
+      LLVM: '1'
+      LLVM_IAS: '1'
+      ROOT_PIN: f6cb7e70c10ebde149f3121ae68b945514fd0801
+      NOMOUNT_PIN: 8005194827ca3edc7e75b9523a874307b2c3e883
+    steps:
+      - name: Checkout current BSP source on Linux
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Confirm dev-only CI context and source scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f scripts/rothko_install_root_driver.py
+          test -f scripts/rothko_install_nomount.py
+          grep -Fq 'KMI_GENERATION=11' build.config.common
+      - name: Install build prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq clang lld llvm bc bison flex libssl-dev libelf-dev dwarves cpio rsync python3
+      - name: Fetch exactly pinned upstream root and NoMount revisions
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in bakasu nomount; do
+            mkdir -p "$RUNNER_TEMP/$name"
+            git -C "$RUNNER_TEMP/$name" init
+          done
+          git -C "$RUNNER_TEMP/bakasu" remote add origin https://github.com/Baka-SU/BakaSU.git
+          git -C "$RUNNER_TEMP/nomount" remote add origin https://github.com/maxsteeel/nomount.git
+          git -C "$RUNNER_TEMP/bakasu" fetch --depth=1 origin "$ROOT_PIN"
+          git -C "$RUNNER_TEMP/nomount" fetch --depth=1 origin "$NOMOUNT_PIN"
+          git -C "$RUNNER_TEMP/bakasu" checkout --detach FETCH_HEAD
+          git -C "$RUNNER_TEMP/nomount" checkout --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/bakasu" rev-parse HEAD)" = "$ROOT_PIN"
+          test "$(git -C "$RUNNER_TEMP/nomount" rev-parse HEAD)" = "$NOMOUNT_PIN"
+      - name: Integrate both components into same isolated source checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/rothko_install_root_driver.py --root BakaSU --tree "$GITHUB_WORKSPACE" --upstream-checkout "$RUNNER_TEMP/bakasu"
+          python3 scripts/rothko_install_nomount.py --tree "$GITHUB_WORKSPACE" --upstream-checkout "$RUNNER_TEMP/nomount"
+          test -f drivers/kernelsu/Kconfig
+          test -f fs/nomount/Kconfig
+          grep -Fqx 'obj-$(CONFIG_KSU) += kernelsu/' drivers/Makefile
+          grep -Fqx 'obj-$(CONFIG_NOMOUNT) += nomount/' fs/Makefile
+          git diff --check
+      - name: Enable BakaSU and NoMount, verify root and module version protection
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 gki_defconfig
+          scripts/config --file out/.config --enable KSU --enable KSU_TRACEPOINT_HOOK --disable KSU_SUSFS --enable NOMOUNT --enable MODVERSIONS
+          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 olddefconfig
+          grep -qx 'CONFIG_KSU=y' out/.config
+          grep -qx 'CONFIG_NOMOUNT=y' out/.config
+          grep -qx 'CONFIG_MODVERSIONS=y' out/.config
+          if grep -qx 'CONFIG_KSU_SUSFS=y' out/.config; then
+            echo '::error::SUSFS kernel patches unverified: forbidden in combined smoke test'; exit 1
+          fi
+      - name: Compile real BakaSU + NoMount ARM64 kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          make -j2 O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 Image
+          test -s out/arch/arm64/boot/Image
+          {
+            echo '### Combined source compile succeeded: BakaSU + NoMount'
+            echo
+            echo "- BakaSU pinned: $ROOT_PIN"
+            echo "- NoMount pinned: $NOMOUNT_PIN"
+            echo '- Enabled: CONFIG_KSU=y, CONFIG_NOMOUNT=y, CONFIG_MODVERSIONS=y'
+            echo '- Source: Xiaomi 6.1.57 / generic GKI diagnostic defconfig'
+            echo '- No SUSFS, MTK board DT, vendor ABI or module CRC validation.'
+            echo '- No artifact upload, AK3 ZIP, boot.img, release, or device flash.'
+          } >> "$GITHUB_STEP_SUMMARY"
