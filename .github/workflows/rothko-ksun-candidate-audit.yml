@@ -10,6 +10,7 @@ on:
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
       - .github/workflows/rothko-ksun-candidate-audit.yml
       - scripts/rothko_ksun_security_contract.py
+      - tests/test_rothko_ksun_security_contract.py
   pull_request:
     paths:
       - patches/rothko-ksun-sucompat-fail-closed-candidate.patch
@@ -18,6 +19,7 @@ on:
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
       - .github/workflows/rothko-ksun-candidate-audit.yml
       - scripts/rothko_ksun_security_contract.py
+      - tests/test_rothko_ksun_security_contract.py
   workflow_dispatch:
 permissions:
   contents: read
@@ -107,3 +109,6 @@ jobs:
       - name: Verify KSUN authorization and FD source contracts (no release)
         shell: bash
         run: python3 "$GITHUB_WORKSPACE/scripts/rothko_ksun_security_contract.py" "/tmp/ksun/kernel"
+      - name: Mutation regression tests (expect security checks to reject unsafe changes)
+        shell: bash
+        run: python3 "$GITHUB_WORKSPACE/tests/test_rothko_ksun_security_contract.py" "/tmp/ksun/kernel" "$GITHUB_WORKSPACE/scripts/rothko_ksun_security_contract.py"
