@@ -7,12 +7,14 @@ on:
       - patches/rothko-ksun-sucompat-fail-closed-candidate.patch
       - patches/rothko-ksun-groups-fail-closed-candidate.patch
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
+      - patches/rothko-ksun-selinux-fail-closed-candidate.patch
       - .github/workflows/rothko-ksun-candidate-audit.yml
   pull_request:
     paths:
       - patches/rothko-ksun-sucompat-fail-closed-candidate.patch
       - patches/rothko-ksun-groups-fail-closed-candidate.patch
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
+      - patches/rothko-ksun-selinux-fail-closed-candidate.patch
       - .github/workflows/rothko-ksun-candidate-audit.yml
   workflow_dispatch:
 permissions:
@@ -43,18 +45,25 @@ jobs:
           git -C /tmp/ksun apply "$GITHUB_WORKSPACE/patches/rothko-ksun-sucompat-fail-closed-candidate.patch"
           git -C /tmp/ksun apply --check --verbose "$GITHUB_WORKSPACE/patches/rothko-ksun-seccomp-prealloc-candidate.patch"
           git -C /tmp/ksun apply "$GITHUB_WORKSPACE/patches/rothko-ksun-seccomp-prealloc-candidate.patch"
-          echo "PASS: three candidates apply sequentially to pinned KSUN source"
+          git -C /tmp/ksun apply --check --verbose "$GITHUB_WORKSPACE/patches/rothko-ksun-selinux-fail-closed-candidate.patch"
+          git -C /tmp/ksun apply "$GITHUB_WORKSPACE/patches/rothko-ksun-selinux-fail-closed-candidate.patch"
+          echo "PASS: four candidates apply sequentially to pinned KSUN source"
           python3 - <<'PY'
           from pathlib import Path
           import re
           root = Path("/tmp/ksun/kernel")
           su = (root / "feature/sucompat.c").read_text()
           policy = (root / "policy/app_profile.c").read_text()
+          selinux = (root / "selinux/selinux.c").read_text()
+          selinux_h = (root / "selinux/selinux.h").read_text()
           checks = {
               "no in-place filename overwrite": "memcpy((void *)filename->name, ksud_path" not in su,
               "allocated filename before profile escape": su.find("replacement = getname_kernel(ksud_path)") < su.find("ret = escape_with_root_profile()"),
               "post-escape root/domain check": "susfs_is_current_ksu_domain()" in su and "current_euid()" in su,
               "profile commit exists": "commit_creds(cred)" in policy,
+              "SELinux helper returns status": "int setup_selinux(const char *, struct cred *);" in selinux_h and "return ret;" in selinux.split("int setup_selinux(",1)[1].split("void setup_ksu_cred(",1)[0],
+              "root profile aborts on SELinux failure": "ret = setup_selinux(profile->selinux_domain, cred);\n    if (ret)\n        goto out_abort_creds;" in policy,
+              "init root aborts on SELinux failure": "if (setup_selinux(KERNEL_SU_CONTEXT, cred)) {\n        abort_creds(cred);" in policy,
               "seccomp scratch reserved before commit": policy.index("seccomp_scratch = kmalloc(") < policy.index("commit_creds(cred);", policy.index("int escape_with_root_profile(void)")),
               "post-commit seccomp uses reserved scratch": "disable_seccomp_with_scratch(seccomp_scratch);" in policy,
               "seccomp scratch allocation returns ENOMEM": "if (!seccomp_scratch)\n            return -ENOMEM;" in policy,
@@ -78,13 +87,13 @@ jobs:
           print("BLOCK: seccomp scratch candidate still needs Rothko BSP compile and runtime review")
           # Explicit release gate: source-level audits must never claim authorization.
           precommit = escape.split("commit_creds(cred);", 1)[0]
-          if "setup_selinux(profile->selinux_domain, cred);" not in precommit:
+          if "ret = setup_selinux(profile->selinux_domain, cred);" not in precommit:
               raise SystemExit("FAIL: SELinux profile setup must precede credential commit")
           if "ksu_get_root_profile(cred->uid.val)" not in precommit:
               raise SystemExit("FAIL: root profile lookup must precede credential commit")
           print("PASS: SELinux profile setup and profile lookup precede commit (ordering only)")
           print("BLOCK: profile lookup alone is not an authorization decision")
-          print("BLOCK: setup_selinux return semantics and domain transition not proven")
+          print("BLOCK: SELinux error propagation is source-only; actual BSP behavior not proven")
           print("BLOCK: no verified pre-commit domain authorization guarantee")
           print("PASS: textual ordering within escape_with_root_profile (not runtime proof)")
           print("BLOCK: no credential rollback after commit_creds")
