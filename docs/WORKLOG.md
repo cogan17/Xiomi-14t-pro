@@ -328,3 +328,24 @@ bukan menghapus jejak kejadian.
   perlindungan terpisah; audit modul read-only sudah selesai;
   tidak ada flashing, restore, atau perubahan konfigurasi HP.
 
+## 2026-10-12 — Screenshot koleksi installer modul tersusun
+
+- **Bukti:** tiga screenshot File Manager memperlihatkan direktori
+  `Penyimpanan Utama/ARoot/modulKSU/Simpan` dengan banyak subfolder
+  berdasarkan kategori modul, termasuk root/systemless, Zygisk,
+  MetaModule, SUSFS, dan kustomisasi perangkat.
+- **Interpretasi:** arsip installer sudah **disusun oleh pengguna**;
+  isi ZIP, versi installer yang tersimpan, dan kecocokan dengan
+  16 modul terpasang tidak dapat dipastikan dari screenshot folder saja.
+- **Catatan:** tidak terlihat folder bernama khusus ACC, YouTube Morphe,
+  zygisk-detach, ataupun NoMount pada daftar yang tampil;
+  keberadaan file-file itu di folder lain masih mungkin.
+- **Rencana:** tidak perlu menggandakan seluruh `/data/adb` jika
+  installer dan konfigurasi penting dapat disiapkan manual.
+  Cadangkan koleksi installer ke USB OTG seperti backup kernel.
+- **Batas bukti:** salinan dan checksum tujuh image kernel pada USB
+  sudah PASS 7/7; koleksi installer yang tampak berada di
+  Penyimpanan Utama **belum terbukti tersalin dan terverifikasi** di USB.
+- **Tidak dilakukan:** tindakan flash, restore, hapus modul,
+  ganti slot atau ubah BakaSU.
+
