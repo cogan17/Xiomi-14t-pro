@@ -78,6 +78,9 @@ disetujui untuk flashing dari proyek ini.
    **Screenshot tambahan 07.19 menunjukkan log `Backup 2026-10-12--07-19 saved`**
    untuk tujuh partisi, namun belum ada daftar file atau checksum backup baru.
    Backup 02.40 dan 07.19 harus ditangani terpisah.
+   **Verifier berkas backup [Tahap 9](ROTHKO_SLOT_A_BACKUP_INTEGRITY.md)
+   sudah dibuat**, dengan tes sintetik di GitHub Actions. Verifikasi
+   folder 07.19 pada HP **belum dilakukan**.
    **Integritas tujuh image backup yang disimpan belum diverifikasi**;
    metadata JSON saja bukan cadangan partisi. Prioritaskan pemeriksaan
    file-file image dan simpan salinan terpisah sebelum pemulihan.
