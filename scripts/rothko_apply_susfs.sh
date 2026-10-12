@@ -29,18 +29,17 @@ grep -Eq '^SUBLEVEL = 57$' "$tree/Makefile" || {
   echo "::error::Expected actual Xiaomi BSP 6.1.57"; exit 1;
 }
 
-# Initial upstream observation is a SHORT GitLab commit prefix. Reject an
-# upstream branch update; DO NOT silently fetch latest in production builds.
-[[ "$SUSFS_EXPECTED_PREFIX" =~ ^[a-f0-9]{8,40}$ ]] || {
-  echo "::error::Invalid expected SUSFS revision prefix"; exit 1;
+# Require the FULL audited GitLab commit SHA. Reject any upstream branch update.
+[[ "$SUSFS_PIN" =~ ^[a-f0-9]{40}$ ]] || {
+  echo "::error::SUSFS pin must be an exact 40-character lowercase SHA"; exit 1;
 }
 actual="$(git -C "$susfs" rev-parse HEAD)"
 remote="$(git -C "$susfs" remote get-url origin)"
 [[ "$remote" == "https://gitlab.com/simonpunk/susfs4ksu.git" ]] || {
   echo "::error::SUSFS source must be the official Simonpunk GitLab"; exit 1;
 }
-[[ "$actual" == "$SUSFS_EXPECTED_PREFIX"* ]] || {
-  echo "::error::Upstream SUSFS revision changed ($actual). Stop for repin and code review."; exit 1;
+[[ "$actual" == "$SUSFS_PIN" ]] || {
+  echo "::error::SUSFS SHA mismatch: expected $SUSFS_PIN, got $actual. Review upstream before repinning."; exit 1;
 }
 echo "Simonpunk GitLab commit: $actual"
 
