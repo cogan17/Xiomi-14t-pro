@@ -176,3 +176,39 @@ dan hasilnya cocok dengan metadata. Simpan set backup lengkap beserta
 
 **Tetap ditahan:** pemulihan `init_boot_a`, perubahan slot, flashing
 GKI/ROM lain, atau tindakan yang dapat mengganggu root BakaSU.
+
+## Bukti tambahan: screenshot backup 07.19 pada 12 Oktober 2026
+
+Screenshot Kernel Flasher yang baru diterima menunjukkan log:
+
+```text
+Saving backup 2026-10-12--07-19
+Saving boot
+Saving dtbo
+Saving init_boot
+Saving system_dlkm
+Saving vbmeta
+Saving vendor_boot
+Saving vendor_dlkm
+Backup 2026-10-12--07-19 saved
+```
+
+**Bukti yang didukung screenshot:** aplikasi melaporkan selesai menyimpan
+backup baru bernama `2026-10-12--07-19`, mencakup tujuh partisi yang
+disebutkan. Ini **berbeda** dari backup `2026-10-12--02-40` yang metadata
+`backup.json`-nya sudah dicocokkan dengan Termux.
+
+**Yang belum terbukti:** screenshot ini bukan tampilan isi folder.
+Belum ada daftar file, ukuran file, `backup.json` pukul 07.19, ataupun
+hash SHA-256 hasil pembacaan **berkas backup 07.19**. Tampilan log saja
+tidak membuktikan data pemulihan tersedia dan utuh. Screenshot juga
+tidak menampilkan label slot secara eksplisit; keterkaitan dengan Slot A
+mengikuti konteks bahwa sebelumnya Slot A aktif, bukan verifikasi
+terpisah mengenai target backup.
+
+**Tindak lanjut:** buka folder `2026-10-12--07-19` melalui file
+manager, pastikan `backup.json` dan tujuh image tersimpan, kemudian
+hitung ulang SHA-256 file di folder itu dan bandingkan dengan
+`backup.json` yang **berasal dari folder yang sama**. Pertahankan
+backup 02.40 tanpa menimpa, dan salin backup lengkap ke lokasi berbeda
+setelah terverifikasi. Tidak perlu flashing, restore atau mengubah slot.
