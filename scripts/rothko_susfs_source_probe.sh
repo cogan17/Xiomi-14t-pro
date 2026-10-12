@@ -305,12 +305,13 @@ status = Path(sys.argv[3])
 added = [line[1:] for line in patch.splitlines() if line.startswith("+") and not line.startswith("+++")]
 all_lines = patch.splitlines()
 escape_at = next((i for i, line in enumerate(all_lines) if "ret = escape_with_root_profile();" in line), -1)
-redirect_at = next((i for i, line in enumerate(all_lines) if line.startswith("+") and "memcpy((void *)filename->name, ksud_path" in line), -1)
+redirect_at = next((i for i, line in enumerate(all_lines) if line.startswith("+") and "*filename_ptr = replacement;" in line), -1)
 required = {
-    "profile escape precedes redirect": escape_at >= 0 and redirect_at > escape_at,
+    "profile escape precedes filename ownership transfer": escape_at >= 0 and redirect_at > escape_at,
     "failure branch guards redirect": all(fragment in added for fragment in [
         "    if (ret) {", "        return 0;", "    }"]),
     "upstream still uses mutable filename buffer": "memcpy((void *)filename->name, ksud_path" in source,
+    "candidate avoids filename buffer overwrite": not any("memcpy((void *)filename->name" in line for line in added),
 }
 for label, ok in required.items():
     print(("PASS" if ok else "BLOCK") + ": " + label, flush=True)
