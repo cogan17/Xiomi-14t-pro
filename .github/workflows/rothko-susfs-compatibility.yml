@@ -1,0 +1,104 @@
+name: Cogan Rothko - Simonpunk SUSFS Patch Compatibility (Experimental)
+
+# Real patch application + kernel compile if clean. No boot.img/AK3/release.
+# GitLab short commit prefix is temporary: lock full SHA after recording it.
+on:
+  pull_request:
+    branches:
+      - dev/rothko
+    paths:
+      - '.github/workflows/rothko-susfs-compatibility.yml'
+      - 'scripts/rothko_apply_susfs.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  susfs-compatibility:
+    name: Apply official SUSFS + compile BakaSU and NoMount (NO FLASH)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ARCH: arm64
+      LLVM: '1'
+      LLVM_IAS: '1'
+      BAKASU_PIN: f6cb7e70c10ebde149f3121ae68b945514fd0801
+      NOMOUNT_PIN: 8005194827ca3edc7e75b9523a874307b2c3e883
+      SUSFS_EXPECTED_PREFIX: '153f88df'
+    steps:
+      - name: Checkout Xiaomi BSP kernel source on Linux
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Validate shell script syntax and required Cogan integrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/rothko_apply_susfs.sh
+          test -s scripts/rothko_install_root_driver.py
+          test -s scripts/rothko_install_nomount.py
+      - name: Install host build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq clang lld llvm bc bison flex libssl-dev libelf-dev dwarves cpio rsync python3
+      - name: Checkout pinned BakaSU and NoMount into disposable directories
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in bakasu nomount; do
+            git init "$RUNNER_TEMP/$name"
+          done
+          git -C "$RUNNER_TEMP/bakasu" remote add origin https://github.com/Baka-SU/BakaSU.git
+          git -C "$RUNNER_TEMP/nomount" remote add origin https://github.com/maxsteeel/nomount.git
+          git -C "$RUNNER_TEMP/bakasu" fetch --depth=1 origin "$BAKASU_PIN"
+          git -C "$RUNNER_TEMP/nomount" fetch --depth=1 origin "$NOMOUNT_PIN"
+          git -C "$RUNNER_TEMP/bakasu" checkout --detach FETCH_HEAD
+          git -C "$RUNNER_TEMP/nomount" checkout --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/bakasu" rev-parse HEAD)" = "$BAKASU_PIN"
+          test "$(git -C "$RUNNER_TEMP/nomount" rev-parse HEAD)" = "$NOMOUNT_PIN"
+          python3 scripts/rothko_install_root_driver.py --root BakaSU \
+            --tree "$GITHUB_WORKSPACE" --upstream-checkout "$RUNNER_TEMP/bakasu"
+          python3 scripts/rothko_install_nomount.py \
+            --tree "$GITHUB_WORKSPACE" --upstream-checkout "$RUNNER_TEMP/nomount"
+      - name: Retrieve Simonpunk official GitLab source with revision guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --single-branch --branch gki-android14-6.1 \
+            https://gitlab.com/simonpunk/susfs4ksu.git "$RUNNER_TEMP/susfs"
+          actual="$(git -C "$RUNNER_TEMP/susfs" rev-parse HEAD)"
+          echo "Official SUSFS full upstream SHA: $actual"
+          [[ "$actual" == "$SUSFS_EXPECTED_PREFIX"* ]] || {
+            echo '::error::SUSFS upstream moved; manually review and pin new revision'; exit 1;
+          }
+          echo "- Simonpunk SUSFS source: $actual" >> "$GITHUB_STEP_SUMMARY"
+      - name: Attempt STRICT upstream 6.1 SUSFS patch application
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/rothko_apply_susfs.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/susfs"
+      - name: Enable SUSFS with BakaSU and NoMount then build ARM64 Image
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 gki_defconfig
+          scripts/config --file out/.config --enable KSU --disable KSU_TRACEPOINT_HOOK \
+            --disable KSU_MANUAL_HOOK --enable KSU_SUSFS --enable NOMOUNT --enable MODVERSIONS
+          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 olddefconfig
+          for key in KSU KSU_SUSFS NOMOUNT MODVERSIONS; do
+            grep -qx "CONFIG_${key}=y" out/.config || {
+              echo "::error::Required CONFIG_${key}=y was dropped by Kconfig"; exit 1;
+            }
+          done
+          make -j2 O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 Image
+          test -s out/arch/arm64/boot/Image
+          {
+            echo '### Strict SUSFS patch + BakaSU + NoMount compile succeeded'
+            echo '- Experimental generic GKI defconfig on Xiaomi 6.1.57 source.'
+            echo '- Board, vendor ABI/KMI symbol CRC, DT/DTBO NOT verified.'
+            echo '- No kernel Image upload, APK, AK3 ZIP, boot.img, release or flashing.'
+          } >> "$GITHUB_STEP_SUMMARY"
