@@ -129,11 +129,25 @@ checks = {
  "SUSFS thread flag defined": bool(re.search(r"^#define\s+TIF_PROC_NO_SU\s+34\b", defs, re.M)),
  "Rothko reserves/defines TIF_PROC_NO_SU": bool(re.search(r"^#define\s+TIF_PROC_NO_SU\s+34\b", arm, re.M)),
 }
+# ARM64 thread_info.flags is unsigned long (64 bits on arm64); bit 34 is in
+# range but must also be checked against all existing TIF assignments.
+assigned = [(name, int(value)) for name, value in re.findall(
+    r"^#define\\s+(TIF_[A-Z0-9_]+)\\s+(\\d+)\\b", arm, re.M)]
+collisions = [name for name, value in assigned if value == 34 and name != "TIF_PROC_NO_SU"]
+print("ARM64 TIF bit 34: 64-bit storage, existing assignments:",
+      ", ".join(collisions) if collisions else "none in thread_info.h", flush=True)
+checks["ARM64 bit 34 unassigned in thread_info.h"] = not collisions
+checks["ARM64 thread flags use unsigned long"] = bool(re.search(
+    r"unsigned\\s+long\\s+flags\\s*;", arm))
+# This is only a local header check: a whole-tree collision audit is still
+# required before claiming the flag safe to add.
 for label, ok in checks.items():
     print(("PASS" if ok else "BLOCK") + ": " + label, flush=True)
 blocking = [
     "KSUN provides post-execve hook",
     "Rothko reserves/defines TIF_PROC_NO_SU",
+    "ARM64 bit 34 unassigned in thread_info.h",
+    "ARM64 thread flags use unsigned long",
 ]
 if any(not checks[k] for k in blocking):
     print("BLOCKED: KSUN/SUSFS source contract unresolved. No build allowed.", flush=True)
