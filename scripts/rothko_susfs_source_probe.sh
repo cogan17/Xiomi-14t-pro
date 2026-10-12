@@ -481,6 +481,36 @@ else
   echo "FAIL: official 6.1 patch does not apply cleanly to pristine Rothko BSP"
   patch_status=6
 fi
+# Report independent blockers before exiting; never hide patch conflicts behind
+# an earlier credential-flow failure. This summary is diagnostic, not approval.
+echo "===== INDEPENDENT RELEASE BLOCKER SUMMARY ====="
+if [[ "${patch_status:-0}" -ne 0 ]]; then
+  echo "BLOCK: official SUSFS 6.1 patch conflicts with pristine Rothko BSP"
+fi
+if [[ -f "$tmp/candidate_semantics_status" ]]; then
+  echo "BLOCK: credential escape / post-exec session FD lifecycle unproven"
+fi
+if [[ -f "$tmp/companion_status" ]]; then
+  echo "BLOCK: upstream KSUN companion patch does not apply to pinned KSUN"
+fi
+if [[ -f "$tmp/contract_status" ]]; then
+  echo "BLOCK: execve / ARM64 prebuild source contract"
+fi
+if [[ -f "$tmp/arm64_collision_status" ]]; then
+  echo "BLOCK: ARM64 TIF flag collision review"
+fi
+if [[ -f "$tmp/candidate_status" ]]; then
+  echo "BLOCK: local KSUN sucompat candidate applicability"
+fi
+echo "===== END INDEPENDENT RELEASE BLOCKER SUMMARY ====="
+{
+  echo "### SUSFS pinned-source diagnostic (not release approval)"
+  echo "- Official SUSFS 6.1 patch applies cleanly: $([[ "${patch_status:-0}" -eq 0 ]] && echo yes || echo no)"
+  echo "- Credential/FD semantics cleared: $([[ ! -f "$tmp/candidate_semantics_status" ]] && echo yes || echo no)"
+  echo "- Upstream KSUN companion applies: $([[ ! -f "$tmp/companion_status" ]] && echo yes || echo no)"
+  echo "- Execve/ARM64 contract cleared: $([[ ! -f "$tmp/contract_status" ]] && echo yes || echo no)"
+  echo "- Release: BLOCKED; no build or flashing"
+} >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 if [[ -f "$tmp/candidate_semantics_status" ]]; then
   echo "FAIL: privilege flow requires source-level credential/FD proof"
   exit 14
