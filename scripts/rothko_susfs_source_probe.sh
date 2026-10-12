@@ -103,7 +103,8 @@ for label, paths in sources.items():
                 shown += 1
         print("MATCHES", shown, flush=True)
 print("AUDIT NOTE: matches are evidence only; inspect conditional compilation and signatures before patching.", flush=True)
-PYecho "===== END KSUN SYMBOL AUDIT ====="
+PY
+echo "===== END KSUN SYMBOL AUDIT ====="
 
 echo "===== EXECVE / ARM64 PREBUILD CONTRACT GATE ====="
 python3 - "$tmp/ksun" "$tmp/susfs" "$tmp/rothko" <<'PY'
