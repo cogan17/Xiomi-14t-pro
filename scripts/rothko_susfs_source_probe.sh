@@ -143,6 +143,18 @@ print("AUDIT NOTE: matches are evidence only; inspect conditional compilation an
 PY
 echo "===== END KSUN SYMBOL AUDIT ====="
 
+echo "===== KSUN COMPANION PATCH APPLICABILITY (ISOLATED, READ-ONLY) ====="
+# Test against the exact KSUN pin. This does not mutate the repository or
+# the isolated checkout; mismatched context is an integration blocker.
+if git -C "$tmp/ksun" apply --check --verbose "$companion"; then
+  echo "PASS: KSUN companion patch applies to pinned source"
+else
+  echo "BLOCK: KSUN companion patch requires manual port to pinned KSUN"
+  printf 'blocked\\n' > "$tmp/companion_status"
+fi
+echo "===== END KSUN COMPANION PATCH APPLICABILITY ====="
+
+
 # Verify the script parses before costly upstream acquisitions on every CI run.
 # This check also runs at workflow startup; retain here for manual invocation.
 echo "Audit script syntax: validated by bash parser at workflow entry"
@@ -241,6 +253,10 @@ if git -C "$tmp/rothko" apply --check --verbose "$patch"; then
 else
   echo "FAIL: official 6.1 patch does not apply cleanly to pristine Rothko BSP"
   patch_status=6
+fi
+if [[ -f "$tmp/companion_status" ]]; then
+  echo "FAIL: official KSUN companion patch not compatible with pinned KSUN"
+  exit 12
 fi
 if [[ -f "$tmp/arm64_collision_status" ]]; then
   echo "FAIL: ARM64 TIF collision review required"
