@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 export GIT_TERMINAL_PROMPT=0
 ROOT="$(git rev-parse --show-toplevel)"
-KERNEL_REF="${KERNEL_REF:-dev/rothko}"
+KERNEL_REF="${KERNEL_REF:-feat/rothko-ksun-susfs-compat-audit}"
 SUSFS_REF="${SUSFS_REF:-gki-android14-6.1}"
 KSUN_SHA="3438d6aa431f96a23f9e625bec3d53ce1fb14161"
 SUSFS_URL="https://gitlab.com/simonpunk/susfs4ksu.git"
