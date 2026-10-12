@@ -92,8 +92,8 @@ fi
 # Fail early if the patched /proc maps path references Android's
 # page-size-migration helper without a definition in the kernel headers.
 # This is a diagnostic guard, NOT a substitute for a semantic BSP port.
-if grep -Eq 'VMA_PAD_START[[:space:]]*\\(' "$tree/fs/proc/task_mmu.c"; then
-  if ! grep -RqE '^[[:space:]]*#[[:space:]]*define[[:space:]]+VMA_PAD_START([[:space:]]|\\()' "$tree/include" "$tree/arch/arm64/include"; then
+if grep -Eq 'VMA_PAD_START[[:space:]]*[(]' "$tree/fs/proc/task_mmu.c"; then
+  if ! grep -RqE '^[[:space:]]*#[[:space:]]*define[[:space:]]+VMA_PAD_START([[:space:]]|[(])' "$tree/include" "$tree/arch/arm64/include"; then
     echo "::error::Patched task_mmu.c calls VMA_PAD_START but the Xiaomi BSP headers provide no definition."
     echo "::error::Semantic page-size-migration port required; refusing to synthesize a macro or alter /proc semantics."
     exit 1
