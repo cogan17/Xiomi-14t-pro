@@ -52,6 +52,13 @@ jobs:
               print(("PASS" if ok else "FAIL") + ": " + label, flush=True)
           if not all(checks.values()):
               raise SystemExit("Source-level candidate invariant failure")
+          # These are unresolved source hazards, not CI pass criteria.
+          escape = policy.split("int escape_with_root_profile(void)", 1)[1].split("int escape_to_root_for_init(void)", 1)[0]
+          groups = policy.split("void setup_groups(", 1)[1].split("void seccomp_filter_release(", 1)[0]
+          if "void setup_groups(" in policy and "groups_alloc(" in groups and "return;" in groups:
+              print("BLOCK: setup_groups can silently return on allocation/validation failure")
+          if escape.index("commit_creds(cred);") < escape.index("disable_seccomp();"):
+              print("BLOCK: disable_seccomp occurs after irreversible credential commit")
           print("BLOCK: no verified pre-commit domain authorization guarantee")
           print("PASS: textual ordering within escape_with_root_profile (not runtime proof)")
           print("BLOCK: no credential rollback after commit_creds")
