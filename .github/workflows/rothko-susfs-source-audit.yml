@@ -14,9 +14,8 @@ permissions:
   contents: read
 jobs:
   provenance:
-    # GitLab acquisition is temporarily on hold: issue #11.
-    # Preserve this workflow for manual reactivation after upstream recovers.
-    if: ${{ false }}
+    # Read-only provenance audit resumed after exact pinned GitLab fetch succeeded.
+    # This is not permission to build, integrate, release, or flash.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
