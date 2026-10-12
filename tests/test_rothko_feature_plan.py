@@ -43,10 +43,10 @@ class RothkoFormTests(unittest.TestCase):
         self.assertNotRegex(form.lower(), "droidspaces|ntsync|zram|re.kernel|cve")
         for key in ("susfs", "nomount", "baseband_guard", "networking",
                     "ptrace_patch", "unicode_fix", "bpf_stack"):
-            block = form.split(f"      {key}:\n")[1].split("\n      ")[0]
+            block = re.search(rf"(?m)^      {key}:\n((?:^        .*\n)+)", form).group(1)
             self.assertIn("default: true", block)
         for key in ("performance", "release_notes_preview"):
-            block = form.split(f"      {key}:\n")[1].split("\n      ")[0]
+            block = re.search(rf"(?m)^      {key}:\n((?:^        .*\n)+)", form).group(1)
             self.assertIn("default: false", block)
 
     def test_cli_writes_expected_no_build_outputs(self):
