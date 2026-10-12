@@ -36,3 +36,12 @@ The public MiCode kernel index identifies `bsp-rothko-u-oss` with Redmi K70 Ultr
 **Gate PATCH-01:** for each upstream rejected hunk, capture both its original upstream function and its Rothko function counterpart before authoring a change. A passing textual apply check is not sufficient for VFS, VMA, exec, or privilege behavior.
 
 **Evidence state:** source identity and complete upstream header manifest still need exact-tree verification; neither is claimed as passed here.
+
+
+## Verified upstream header provenance — CI run 38324010643
+
+The successful read-only `context-drift` job fetched and verified the pinned SUSFS commit/tree and reported `kernel_patches/include/linux/susfs_def.h` in the upstream tree. The official Android 14 / Linux 6.1 patch references `#include <linux/susfs_def.h>` in fifteen added lines (patch lines 52, 124, 566, 900, 1021, 1082, 1164, 1263, 1399, 1641, 1903, 2035, 2143, 2192, 2320). Five inspected conflict-sensitive hunks require semantic review and the directive was absent in their pristine BSP targets.
+
+**Disposition:** header location is verified, but presence is not proof that all companion headers, implementation sources, configuration symbols, exports and include paths are integrated. Do not copy this header alone or auto-apply mixed hunks. Next source-only task: build an exact pinned-tree dependency manifest for `susfs_def.h` and map its referenced types/functions to the BSP before creating the first isolated port candidate.
+
+The same run's `provenance` job deliberately failed with exit code 14 on the official patch applicability and security gates; `context-drift` succeeded. This is expected and must remain release-blocking.
