@@ -49,6 +49,10 @@ def main() -> int:
                      "#endif\n\nstatic ssize_t")
     consumer = block(runtime, "static void load_module_rc_once(void)\n{",
                      "\n}\n\nstatic void free_module_rc")
+    rc_hook = block(runtime, "static void ksu_install_rc_hook(struct file *file)\n{",
+                    "\n}\n\nvoid ksu_handle_sys_read")
+    fstat = block(runtime, "static long ksu_sys_fstat(const struct pt_regs *regs)\n{",
+                  "\n}\n\nstatic int input_handle_event_handler_pre")
     findings = []
 
     def check(label: str, ok: bool) -> None:
@@ -88,6 +92,18 @@ def main() -> int:
           "out_revert_creds:" in consumer and
           consumer.index("out_revert_creds:") < consumer.index("revert_creds(old_cred);"))
 
+    check("module rc one-shot flag is set before checking shared credential",
+          "loaded = true;" in consumer and "override_creds(ksu_cred)" in consumer and
+          consumer.index("loaded = true;") < consumer.index("override_creds(ksu_cred)"))
+    check("init rc hook becomes one-shot before invoking module rc loader",
+          "rc_hooked = true;" in rc_hook and "load_module_rc_once();" in rc_hook and
+          rc_hook.index("rc_hooked = true;") < rc_hook.index("load_module_rc_once();"))
+    check("init rc hook deactivates before invoking module rc loader",
+          "stop_init_rc_hook();" in rc_hook and
+          rc_hook.index("stop_init_rc_hook();") < rc_hook.index("load_module_rc_once();"))
+    check("non-SUSFS fstat hook can invoke same module rc loader",
+          "if (is_init_rc(file)) {" in fstat and "load_module_rc_once();" in fstat)
+
     if not all(findings):
         print("AUDIT: FAILED — source evidence drifted; review upstream and tests.", file=sys.stderr)
         return 1
@@ -102,6 +118,8 @@ def main() -> int:
     print("BLOCK: late-load proceeds to root transition without verifying shared-cred setup.")
     print("BLOCK: SUSFS startup clears stage flags without a checked shared-cred setup result.")
     print("BLOCK: module rc reader uses override_creds(ksu_cred) without a verified SELinux-ready contract.")
+    print("BLOCK: loaded/rc_hooked one-shot flags are set before checked credential readiness;")
+    print("BLOCK: merely adding a readiness check after those flags can suppress modules.rc permanently.")
     print("BLOCK: ownership, concurrency, error unwinding, late-load and module rc read must be reviewed together.")
     print("RELEASE GATE: BLOCKED — no device build, boot, integration, or post-exec session proof.")
     if args.require_reviewed_remediation:
