@@ -1,6 +1,13 @@
 diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
 --- a/kernel/feature/sucompat.c
 +++ b/kernel/feature/sucompat.c
+@@ -227,6 +227,7 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
+ {
+     struct filename *filename;
++    struct filename *replacement;
+     struct user_arg_ptr *argv_ptr = (struct user_arg_ptr *)argv_user;
+     struct ksu_sulog_pending_event *pending_sucompat = NULL;
+     int ret;
 @@ -257,13 +257,35 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
                                                           (const char __user *const __user *)argv_ptr->ptr.native,
                                                           GFP_KERNEL);
@@ -8,7 +15,7 @@ diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
 -    memcpy((void *)filename->name, ksud_path, sizeof(ksud_path));
 -
 +    /* Allocate before credential changes; allocation failure stays unprivileged. */
-+    struct filename *replacement = getname_kernel(ksud_path);
++    replacement = getname_kernel(ksud_path);
 +    if (IS_ERR(replacement)) {
 +        ksu_sulog_emit_pending(pending_sucompat, PTR_ERR(replacement), GFP_KERNEL);
 +        return 0;
