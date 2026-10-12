@@ -76,7 +76,7 @@ python3 - "$patchfile" "$tree/fs/proc/task_mmu.c" <<'PY_AUDIT'
 import pathlib, re, sys
 patch = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
 source = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
-match = re.search(r"(?m)^diff --git a/fs/proc/task_mmu\\.c b/fs/proc/task_mmu\\.c\\n", patch)
+match = re.search(r"(?m)^diff --git a/fs/proc/task_mmu\.c b/fs/proc/task_mmu\.c$", patch)
 if not match:
     raise SystemExit("::error::Pinned SUSFS patch lacks task_mmu.c diff")
 next_file = re.search(r"(?m)^diff --git a/", patch[match.end():])
