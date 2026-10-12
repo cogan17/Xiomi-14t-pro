@@ -239,3 +239,28 @@ bukan menghapus jejak kejadian.
   yang benar, hasil `verified=7 failed=0` menjadi gerbang penutupan.
 - **Tidak dilakukan:** flashing, restore, mengganti slot, mengubah
   BakaSU, atau menerbitkan image mentah ke GitHub.
+
+## 2026-10-12 — Verifikasi SHA-256 USB OTG final PASS 7/7
+
+- **Bukti:** pengguna menjalankan
+  `verify_kernel_flasher_backup.sh` terhadap salinan flashdisk
+  di `/storage/C44C5A2F4C5A1C8C/KernelFlasher/backups/2026-10-12--07-19`.
+- **Hasil langsung dari USB:** `boot`, `init_boot`,
+  `vendor_boot`, `dtbo`, `vbmeta`, `system_dlkm`,
+  `vendor_dlkm` masing-masing `result=PASS` setelah
+  SHA-256 dihitung ulang dari image dalam folder USB.
+- **Ringkasan output:** `verified=7`, `failed=0`,
+  `BACKUP_FILE_VERIFICATION=PASS`.
+- **Triangulasi:** tujuh file yang sebelumnya dikirim pengguna juga
+  lulus 7/7 terhadap metadata asli; copy eksternal kini diverifikasi
+  memiliki SHA-256 yang sama.
+- **Batas pengujian:** hanya memeriksa integritas file backup, belum
+  menguji fungsi pemulihan/boot, ketahanan flashdisk, ataupun
+  kompatibilitas ABI/KMI/AVB dan status Slot B.
+- **Keselamatan:** Slot A berjalan, kernel Cogan 6.1.177 dan BakaSU
+  tidak diubah; tidak ada flashing, restore, perubahan slot atau
+  pengunggahan file image ke GitHub.
+- **Status tugas:** verifikasi salinan eksternal **selesai**.
+- **Langkah selanjutnya:** persiapan rencana pemulihan terkontrol
+  dan pemeriksaan konsekuensi root `init_boot_a` Degas, **tanpa
+  menulis partisi** sampai ada keputusan setelah review.
