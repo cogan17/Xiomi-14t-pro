@@ -37,6 +37,24 @@ patch="$tmp/susfs/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch"
 test -s "$patch" || { echo "FAIL: expected Android 14 / 6.1 patch absent"; exit 5; }
 git clone --quiet --filter=blob:none --single-branch --branch "$KERNEL_REF" "https://github.com/cogan17/Xiomi-14t-pro.git" "$tmp/rothko"
 echo "Rothko source SHA: $(git -C "$tmp/rothko" rev-parse HEAD)"
+# Evidence-only report of the exact upstream diff; do not apply it.
+# Limit console output to the five rejected files; preserve full upstream
+# context, added and removed lines in the workflow log for human review.
+echo "===== PINNED SUSFS DIFF: FIVE REJECTED FILES ====="
+python3 - "$patch" <<'PY'
+import pathlib, sys
+patch = pathlib.Path(sys.argv[1]).read_text(errors="replace").splitlines()
+targets = {"fs/exec.c", "fs/namei.c", "fs/proc/base.c",
+           "fs/proc/task_mmu.c", "mm/memory.c"}
+active = False
+for line in patch:
+    if line.startswith("diff --git a/"):
+        fields = line.split()
+        active = len(fields) >= 4 and fields[2][2:] in targets
+    if active:
+        print(line)
+PY
+echo "===== END PINNED SUSFS DIFF ====="
 if git -C "$tmp/rothko" apply --check --verbose "$patch"; then
   echo "PASS: official 6.1 patch passes git apply --check against pristine Rothko BSP"
 else
