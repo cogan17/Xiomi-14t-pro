@@ -526,3 +526,16 @@ bukan menghapus jejak kejadian.
   tidak mengubah partisi HP/slot. Hasil CI akan dinilai dari GitHub.
 - Langkah berikut: gunakan hasil kompilasi untuk menindaklanjuti
   toolchain/konfigurasi board + modul vendor, bukan menandai flash-ready.
+
+## 2026-10-12 — Integrasi driver KSU/KSUN/BakaSU pada source BSP (eksperimental)
+
+- Skrip `rothko_install_root_driver.py` memasang tepat satu driver
+  root pada checkout kernel sementara dengan SHA upstream yang dipin.
+  Tidak menjalankan `setup.sh` upstream, menolak integrasi duplikat,
+  dan mempertahankan versi source Xiaomi 6.1.57 serta KMI 11.
+- Workflow menguji ketiga varian di workspace masing-masing dan
+  mencoba kompilasi diagnostik `Image` BakaSU dengan root aktif.
+- SUSFS, NoMount dan patch fitur lain **belum** diterapkan;
+  konfigurasi GKI generik belum dinyatakan cocok perangkat Rothko.
+- Tidak ada image APK/AK3/boot.img yang dipublikasikan atau di-flash.
+- Keberhasilan atau kegagalan kompilasi ditentukan oleh hasil CI PR.
