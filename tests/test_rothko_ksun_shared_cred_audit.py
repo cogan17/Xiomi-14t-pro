@@ -95,8 +95,12 @@ def main():
             # Keep mutations within the requested function/config variant.
             if label.startswith("SUSFS") and i > original.find("#else\nvoid ksu_handle_execveat_ksud", a):
                 raise RuntimeError(f"{label}: mutation escaped the SUSFS CONFIG branch")
-            if label.startswith("non-SUSFS") and i > original.find("#endif\n\nstatic ssize_t", a):
+            if label == "non-SUSFS init second stage setup removed" and i > original.find("#endif\n\nstatic ssize_t", a):
                 raise RuntimeError(f"{label}: mutation escaped non-SUSFS CONFIG branch")
+            if label == "non-SUSFS fstat module rc load removed":
+                func_end = original.find("static int input_handle_event_handler_pre", a)
+                if func_end < 0 or i >= func_end:
+                    raise RuntimeError(f"{label}: mutation escaped the fstat function")
             dest = root / relative
             dest.write_text(original[:i] + new + original[i + len(old):], encoding="utf-8")
             result = run()
