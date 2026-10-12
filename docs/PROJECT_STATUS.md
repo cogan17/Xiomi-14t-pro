@@ -96,13 +96,20 @@ disetujui untuk flashing dari proyek ini.
    [audit integritas USB](ROTHKO_SLOT_A_BACKUP_INTEGRITY.md).
    **Tidak berarti restore otomatis aman**; status Slot B,
    kecocokan ABI/KMI/AVB, dan langkah pemulihan masih belum terbukti.
-3. Cocokkan simbol/CRC modul MediaTek yang dimuat dengan kernel GKI Cogan,
+3. **Audit keamanan BakaSU dan seluruh modul sebagai prioritas sebelum
+   pemulihan `init_boot_a`**. Backup RAW Slot A dan USB sudah tervalidasi,
+   tetapi tidak mencakup semua modul di `/data/adb` maupun preferensi
+   Manager/NoMount. Skrip read-only dan panduan ada di
+   [ROTHKO_BAKASU_MODULE_SAFETY.md](ROTHKO_BAKASU_MODULE_SAFETY.md).
+   Belum dijalankan di HP; nama/status modul yang aktif masih belum
+   diinventarisasi dan belum dibackup secara terpisah.
+4. Cocokkan simbol/CRC modul MediaTek yang dimuat dengan kernel GKI Cogan,
    tanpa menonaktifkan `CONFIG_MODVERSIONS`.
-4. Temukan konfigurasi serta dependensi board/dtb/vendor source yang tepat
+5. Temukan konfigurasi serta dependensi board/dtb/vendor source yang tepat
    untuk build khusus Rothko.
-5. Telusuri commit `kernel/common` aktual dalam build r7, bukan hanya SHA
+6. Telusuri commit `kernel/common` aktual dalam build r7, bukan hanya SHA
    commit workflow, serta hash image yang terpasang.
-6. Jangan melakukan flash/restore/pergantian slot untuk menguji dugaan.
+7. Jangan melakukan flash/restore/pergantian slot untuk menguji dugaan.
 
 **Pengaman:** Tidak ada otorisasi flashing, reset slot, pemulihan `init_boot`
 aktif, atau publikasi ZIP Rothko siap-flash berdasarkan audit ini.
