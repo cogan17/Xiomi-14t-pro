@@ -367,3 +367,24 @@ bukan menghapus jejak kejadian.
   PASS 7/7; belum mengklaim koleksi installer juga sudah
   diverifikasi di USB. Tidak dilakukan flashing atau perubahan root.
 
+## 2026-10-12 — Konfirmasi fokus referensi stock Rothko
+
+- **Bukti:** screenshot pengguna memperlihatkan folder
+  `Penyimpanan Utama/OS3.0.301.0.WNNIDXM` dengan
+  `boot.img`, `init_boot.img`, `vendor_boot.img`,
+  `vbmeta.img`, `vbmeta_system.img`, `vbmeta_vendor.img`,
+  `preloader_raw.img`, teks metadata, dan ZIP WNNIDXM.
+- **Arahan utama:** file stock adalah bahan pembanding rantai boot
+  `rothko`, khususnya untuk analisis `init_boot_a` aktif
+  yang identik dengan stock `degas`, sementara `boot_a`
+  adalah Cogan r7 yang saat ini berhasil boot.
+- **Perhatian:** jangan mengasumsikan gambar folder berarti
+  checksum file yang disimpan sekarang telah diperiksa;
+  zip yang diaudit sebelumnya berbeda bukti dari screenshot.
+- **Batas keselamatan:** tidak menyentuh `preloader_raw`,
+  tidak flashing/restore/ganti slot/ubah BakaSU atau modul;
+  tetap menuntut analisis AVB, kompatibilitas kernel/root,
+  dan rencana pemulihan sebelum keputusan apa pun.
+- **Referensi:** [audit firmware stock](ROTHKO_STOCK_FIRMWARE_AUDIT.md),
+  [audit init_boot aktif](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md).
+
