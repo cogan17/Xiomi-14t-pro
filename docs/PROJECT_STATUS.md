@@ -88,13 +88,14 @@ disetujui untuk flashing dari proyek ini.
    dibaca utuh, dan diverifikasi SHA-256: PASS 7/7** terhadap
    `backup.json` dari folder yang sama. Total 188,825,600 byte.
    Baca [laporan integritas lengkap](ROTHKO_SLOT_A_BACKUP_INTEGRITY.md).
-   **Video MT Manager menunjukkan backup 07.19 telah DISALIN ke flashdisk
-   USB OTG**, termasuk `backup.json` dan tujuh image; lokasi folder
-   dan isi metadata terlihat. Tetapi **hash SHA-256 dari salinan USB
-   belum dihitung ulang**, jadi integritas media kedua belum
-   terverifikasi. Ikuti [panduan audit USB](ROTHKO_SLOT_A_BACKUP_INTEGRITY.md)
-   sebelum tindakan pemulihan. Status Slot B dan kelayakan
-   restore tidak otomatis terbukti.
+   **USB OTG BACKUP TELAH TERVERIFIKASI: 7/7 SHA-256 PASS**, menggunakan
+   skrip verifikasi yang membaca tujuh image *langsung dari flashdisk*
+   pada folder `2026-10-12--07-19` serta mencocokkan dengan `backup.json`.
+   Ketujuh image yang diunggah sebelumnya juga PASS 7/7; salinan
+   eksternal kini terbukti identik secara SHA-256. Baca
+   [audit integritas USB](ROTHKO_SLOT_A_BACKUP_INTEGRITY.md).
+   **Tidak berarti restore otomatis aman**; status Slot B,
+   kecocokan ABI/KMI/AVB, dan langkah pemulihan masih belum terbukti.
 3. Cocokkan simbol/CRC modul MediaTek yang dimuat dengan kernel GKI Cogan,
    tanpa menonaktifkan `CONFIG_MODVERSIONS`.
 4. Temukan konfigurasi serta dependensi board/dtb/vendor source yang tepat
