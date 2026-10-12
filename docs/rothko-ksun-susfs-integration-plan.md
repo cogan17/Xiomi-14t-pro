@@ -68,3 +68,26 @@ Required candidate design before enabling any integration: reserve the scratch t
 - Consequently, `kernel/policy/app_profile.c` may continue to `commit_creds(cred)` after a failed SELinux domain transition, on both `escape_with_root_profile()` and `escape_to_root_for_init()`. This is a confirmed release blocker, not merely an unverified concern.
 - A future candidate must change the helper contract to return an error, propagate it through **all callers** (including `setup_ksu_cred()` in `selinux.c`), and abort prepared credentials before commit. `setup_ksu_cred()` needs separate ownership/lifecycle review because it does not directly call `commit_creds()`.
 - Do not merge, release, or flash based on a passing source-only audit.
+
+
+### Source-level permission/FD boundary audit (2026-10-12)
+
+Scope: independent, read-only review of pinned `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161`, plus the four candidate patches applied sequentially only to the temporary GitHub Actions checkout. No Rothko BSP compilation or patch integration. Additional audit: `scripts/rothko_ksun_security_contract.py`, invoked by `.github/workflows/rothko-ksun-candidate-audit.yml`. **A green audit means expected source structures were observed, not that root authorization or a flashable kernel was approved.**
+
+**Verified entry-point checks (scoped, not universal):**
+- `kernel/feature/sucompat.c:ksu_handle_execveat_sucompat` checks `current_chrooted()` and `ksu_is_allow_uid_for_current(current_uid().val)` before calling `escape_with_root_profile()`. This only covers the inspected SUSFS-style `su` path.
+- `kernel/supercall/perm.c:allowed_for_su` permits manager identity or a currently allowed UID. In `kernel/supercall/dispatch.c`, the `KSU_IOCTL_GRANT_ROOT` entry maps to `allowed_for_su`, and `ksu_supercall_handle_ioctl()` executes a command-specific permission check. It is incorrect to say this particular root-grant ioctl has no permission gate.
+- `kernel/policy/allowlist.c:__ksu_is_allow_uid_for_current` treats UID 0 specially by checking the KSU security domain, and the allowlist distinguishes manager/shell/allowed profiles. `ksu_get_root_profile()` chooses a profile (including default fallback); **profile selection is not itself a permission decision**. All callers and build-config alternatives still require review.
+
+**FD finding — distinguish two different contracts:**
+- `kernel/supercall/supercall.c:ksu_install_fd()` already allocates an anonymous `ksu_driver` FD with `O_CLOEXEC`. Under `CONFIG_KSU_SUSFS`, `ksu_supercall_reboot_handler()` schedules its installation via `task_work_add(..., TWA_RESUME)`.
+- Its `anon_ksu_ioctl` delegates to `ksu_supercall_handle_ioctl`, which checks individual ioctl permissions. `kernel/sulog/fd.c` also implements a **separate log FD**, not a substitute for the privileged driver/session contract.
+- `O_CLOEXEC` closes a previously installed descriptor on successful exec. The reboot/task-work installer does **not** prove an authenticated *post-exec* FD installation after a successful `execve`. The SUSFS kernel patch refers to `ksu_handle_post_execveat_sucompat`; this was not found in inspected pinned KSUN `sucompat.c` or the syscall bridge. Never replace the missing hook with a no-op or automatically install an ioctl-capable FD on every exec.
+- Remaining required proof: trusted session origin, UID/security-domain binding, successful-exec-only timing, installation and rollback order, fork inheritance, descriptor ownership/cleanup, repeated/denied exec behavior.
+
+**Still-blocking candidate concerns:**
+- The SELinux candidate returns errors from `setup_selinux` and aborts prepared credentials in `escape_with_root_profile` and `escape_to_root_for_init`. Yet `setup_ksu_cred()` **still only logs** a failed transition on `ksu_cred`; ownership and failure propagation of that separate state remain unresolved. The source audit checks that this blocker is still present.
+- The groups and seccomp scratch candidates adjust ordering and error handling, but memory/lock/credential lifetime and ABI behavior against Rothko remain unproven. Do not infer runtime safety from substring checks.
+- No universal pre-commit authorization proof, post-exec session mechanism, linking test, device ABI/KMI gate, or boot validation exists.
+
+**Gate disposition: BLOCKED.** Do not merge Draft PR #9, enable the suspended GitLab source job, publish artifacts, or flash. Unexpected changes in the pinned-source patterns must fail the source-evidence audit instead of silently marking a release compatible.
