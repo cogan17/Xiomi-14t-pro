@@ -1,0 +1,56 @@
+name: Cogan Rothko - Validate BakaSU Inventory (No Device)
+
+on:
+  push:
+    branches:
+      - dev/rothko
+    paths:
+      - 'scripts/collect_bakasu_module_inventory.sh'
+      - '.github/workflows/validate-bakasu-module-inventory.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/dev/rothko'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Check shell syntax and read-only scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh -n scripts/collect_bakasu_module_inventory.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('scripts/collect_bakasu_module_inventory.sh').read_text()
+          for expected in (
+              'ro.product.device', 'ro.boot.slot_suffix',
+              '/data/adb/modules', 'module.prop', 'module_disk_state',
+              'modules_count_in_directory', 'getenforce',
+              '/vendor_dlkm/lib/modules', '/system_dlkm/lib/modules',
+              'DO NOT upload'):
+              assert expected in s, f'Missing inventory field: {expected}'
+          for banned in (
+              'dd if=', 'dd of=', 'fastboot ', 'flash_image ',
+              'bootctl ', 'reboot ', 'insmod ', 'modprobe ', 'setprop ',
+              'rm -rf ', 'chmod ', 'chown ', 'mount -o rw',
+              'tar -c', 'unzip ', 'curl ', 'wget ',
+          ):
+              assert banned not in s, f'Unexpected operation: {banned}'
+          assert 'module_root=' in s
+          print('Shell syntax and static scope verified, no device was connected.')
+          PY
+          {
+            echo '### Read-only BakaSU module inventory: static verification'
+            echo
+            echo 'The tool only inspects on-disk metadata and counts modules.'
+            echo 'It was not run on the phone. No module data was uploaded.'
+            echo 'This does not prove module runtime compatibility or preservation.'
+          } >> "$GITHUB_STEP_SUMMARY"
