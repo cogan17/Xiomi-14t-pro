@@ -41,6 +41,16 @@ MUTATIONS = (
      "static void load_module_rc_once(void)", "revert_creds(old_cred);", "/* missing revert */"),
     ("shared credential not released", "core/init.c",
      "void __exit kernelsu_exit(void)", "put_cred(ksu_cred);", "/* missing put */"),
+    ("module rc loaded latch removed", "runtime/ksud_integration.c",
+     "static void load_module_rc_once(void)", "loaded = true;", "/* latch removed */"),
+    ("init rc one-shot latch removed", "runtime/ksud_integration.c",
+     "static void ksu_install_rc_hook(struct file *file)", "rc_hooked = true;", "/* latch removed */"),
+    ("init rc loader skipped", "runtime/ksud_integration.c",
+     "static void ksu_install_rc_hook(struct file *file)", "load_module_rc_once();", "/* loader skipped */"),
+    ("init rc cleanup hook removed", "runtime/ksud_integration.c",
+     "static void ksu_install_rc_hook(struct file *file)", "stop_init_rc_hook();", "/* hook not stopped */"),
+    ("non-SUSFS fstat module rc load removed", "runtime/ksud_integration.c",
+     "static long ksu_sys_fstat(const struct pt_regs *regs)", "load_module_rc_once();", "/* fstat loader removed */"),
 )
 
 
