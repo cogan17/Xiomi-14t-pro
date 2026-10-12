@@ -181,11 +181,11 @@ checks = {
  "SUSFS kernel patch requires post-execve hook": "ksu_handle_post_execveat_sucompat" in kernel_patch,
  "KSUN provides post-execve hook": "ksu_handle_post_execveat_sucompat" in (su + hdr + bridge),
  "KSUN has su session FD installer definition": any(re.search(r"(?m)^[ \\t]*(?:static[ \\t]+)?(?:inline[ \\t]+)?(?:int|long|unsigned[ \\t]+int|unsigned[ \\t]+long)[ \\t]+ksu_install_su_fd[ \\t]*\\([^;{}]*\\)[ \\t]*(?:\\n[ \\t]*)?\\{", p.read_text(errors="replace")) for p in (ksun / "kernel").rglob("*.c")),
- "KSUN post-execve references session installer": bool(re.search(r"\\bksu_handle_post_execveat_sucompat[ \\t]*\\([^;{}]*\\)[ \\t]*\\{[^}]*\\bksu_install_su_fd[ \\t]*\\(", su, re.S)),
+ "KSUN post-execve references session installer": bool(re.search(r"\bksu_handle_post_execveat_sucompat\s*\([^;{}]*\)\s*\{[^}]*\bksu_install_su_fd\s*\(", su, re.S)),
  "KSUN sucompat checks UID allowlist": "ksu_is_allow_uid_for_current(current_uid().val)" in su,
  "KSUN sucompat blocks chroot": "current_chrooted()" in su,
  "KSUN sucompat checks profile escape result": bool(re.search(r"ret\s*=\s*escape_with_root_profile\s*\(\s*\)", su)),
- "KSUN sucompat propagates profile escape failure": bool(re.search(r"ret\s*=\s*escape_with_root_profile\s*\(\s*\)\s*;(?:(?!\n\}).){0,260}if\s*\(\s*ret\s*\)\s*return\s+ret\s*;", su, re.S)),
+ "KSUN sucompat propagates profile escape failure": bool(re.search(r"ret\s*=\s*escape_with_root_profile\s*\(\s*\)\s*;\s*if\s*\(\s*ret\s*\)\s*(?:\{\s*)?return\s+ret\s*;", su, re.S)),
  "SUSFS thread flag defined": bool(re.search(r"^#define\s+TIF_PROC_NO_SU\s+34\b", defs, re.M)),
  "Rothko reserves/defines TIF_PROC_NO_SU": bool(re.search(r"^#define\s+TIF_PROC_NO_SU\s+34\b", arm, re.M)),
 }
