@@ -111,3 +111,21 @@ CI runs `tests/test_rothko_ksun_security_contract.py` against a **temporary copy
 A passing mutation suite indicates only that **these exact regressions are detected by the static validator**. It is not a proof of complete control-flow dominance, hook authorization, Kconfig compatibility, FD lifecycle or kernel safety. The reported `setup_ksu_cred` path still merely logs failures. The seccomp candidate also requires review of task-state changes between preallocation and credential commit, plus real kernel seccomp locking semantics.
 
 No kernel compilation, GitLab fetching, changes to Rothko BSP, artifact creation, merge, release or flashing are performed by this suite. **PR #9 remains Draft; RELEASE BLOCKED.**
+
+
+### Pinned ioctl permission matrix — source audit only (2026-10-12)
+
+Source: `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161`, `kernel/supercall/dispatch.c`, `kernel/supercall/perm.c`, `kernel/supercall/supercall.c`. An ioctl-capable anonymous `ksu_driver` FD exists and uses `O_CLOEXEC`; per-command permission checks still apply independently. A reachable FD is **not proof of a privileged session or an unconditional root grant**.
+
+The new `scripts/rothko_ksun_ioctl_matrix.py` pins the exact permission class for **all 26 known ioctl commands** in this KSUN snapshot, including:
+- `GRANT_ROOT` → `allowed_for_su` (manager or allowlisted UID);
+- `SET_SEPOLICY` and `GET_SULOG_FD` → `only_root`;
+- `GET_APP_PROFILE` / `SET_APP_PROFILE` → `only_manager`;
+- `SET_FEATURE` / `GET_WRAPPER_FD` → `manager_or_root`;
+- `GET_INFO` and `GET_INFO_LEGACY` → `always_allow` (intentional upstream snapshot).
+
+The complete table is checked for unexpected additions/deletions and permission-class changes. The audit also checks the definitions of all five permission helpers, and that `ksu_supercall_handle_ioctl` checks permission **before** dispatch. `tests/test_rothko_ksun_ioctl_matrix.py` injects **12 negative permission mutations** into a temporary copy of `supercall/{dispatch,perm}.c`; all must be rejected.
+
+**Important security boundary:** In the pinned upstream, `only_root()` means `current_uid().val == 0`; it does **not** itself establish the KernelSU SELinux domain. Changing this guard, adding a privileged ioctl, or assuming all root processes belong to a KSUN-authenticated session requires separate review. The manager/allowlist checks restrict `GRANT_ROOT`, but do not establish a persistent authenticated post-`execve` session. Avoid conflating the existing reboot/task-work FD installer with the missing SUSFS post-execve contract.
+
+**Gate: BLOCKED.** A successful matrix or mutation test confirms only an unchanged source-permission snapshot and test sensitivity, not the absence of other vulnerabilities, the safety of post-credential-commit operations, or ROM ABI/KMI/boot compatibility. No code from this track is included in the live Rothko BSP; no build, merge, release or flashing authorization is given.
