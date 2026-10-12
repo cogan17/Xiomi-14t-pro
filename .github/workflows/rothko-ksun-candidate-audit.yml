@@ -13,6 +13,8 @@ on:
       - tests/test_rothko_ksun_security_contract.py
       - scripts/rothko_ksun_ioctl_matrix.py
       - tests/test_rothko_ksun_ioctl_matrix.py
+      - scripts/rothko_ksun_shared_cred_audit.py
+      - tests/test_rothko_ksun_shared_cred_audit.py
   pull_request:
     paths:
       - patches/rothko-ksun-sucompat-fail-closed-candidate.patch
@@ -24,6 +26,8 @@ on:
       - tests/test_rothko_ksun_security_contract.py
       - scripts/rothko_ksun_ioctl_matrix.py
       - tests/test_rothko_ksun_ioctl_matrix.py
+      - scripts/rothko_ksun_shared_cred_audit.py
+      - tests/test_rothko_ksun_shared_cred_audit.py
   workflow_dispatch:
 permissions:
   contents: read
@@ -122,3 +126,9 @@ jobs:
       - name: Negative ioctl permission mutation tests (12 regressions)
         shell: bash
         run: python3 "$GITHUB_WORKSPACE/tests/test_rothko_ksun_ioctl_matrix.py" "/tmp/ksun/kernel" "$GITHUB_WORKSPACE/scripts/rothko_ksun_ioctl_matrix.py"
+      - name: Inspect shared KSUN credentials across init and module rc (source only)
+        shell: bash
+        run: python3 "$GITHUB_WORKSPACE/scripts/rothko_ksun_shared_cred_audit.py" "/tmp/ksun/kernel"
+      - name: Reject incomplete shared-credential contract and 11 unsafe mutations
+        shell: bash
+        run: python3 "$GITHUB_WORKSPACE/tests/test_rothko_ksun_shared_cred_audit.py" "/tmp/ksun/kernel" "$GITHUB_WORKSPACE/scripts/rothko_ksun_shared_cred_audit.py"
