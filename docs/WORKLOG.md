@@ -155,3 +155,21 @@ bukan menghapus jejak kejadian.
 - **Tindak lanjut:** verifikasi file dalam folder 07.19 secara read-only,
   lalu cocokkan tiap SHA-256 dengan metadata dari folder yang sama.
 - **Tidak dilakukan:** flashing, restore, perubahan root atau slot.
+
+## 2026-10-12 — Tahap 9: verifier backup 07.19
+
+- **Tujuan:** memverifikasi `backup.json` dan tujuh file backup raw
+  pada folder `2026-10-12--07-19`, tanpa menyentuh partisi aktif.
+- **Referensi kode sumber:** Kernel Flasher upstream menyimpan ke
+  `/sdcard/KernelFlasher/backups/<timestamp>/<partition>.img` dan
+  menulis hash SHA-256 ke `backup.json`.
+- **Tindakan:** menambahkan `scripts/verify_kernel_flasher_backup.sh`,
+  [petunjuk Tahap 9](ROTHKO_SLOT_A_BACKUP_INTEGRITY.md), dan
+  workflow uji sintetik `test-backup-checker.yml`.
+- **Uji lokal:** 7/7 file benar → pass; satu image dikorupsi → fail;
+  satu image hilang → fail. GitHub Actions mengulangi skenario sintetis.
+- **Belum dilakukan:** eksekusi verifier di HP, hash ulang tujuh image
+  backup 07.19, validasi media penyimpanan kedua, restore, flashing.
+- **Keputusan:** hanya nilai `BACKUP_FILE_VERIFICATION=PASS` setelah
+  dieksekusi pada folder riil yang memvalidasi checksum file terhadap
+  metadata pada folder yang sama. Ini bukan sertifikasi restore aman.
