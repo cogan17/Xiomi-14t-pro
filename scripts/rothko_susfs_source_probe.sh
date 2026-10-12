@@ -143,6 +143,13 @@ echo "Resolved SUSFS SHA: $sha"
 # Pin provenance evidence for all files consumed by the compatibility audit.
 # A matching commit ID alone does not establish that a later port compiles.
 echo "SUSFS pinned tree: $(git -C "$tmp/susfs" rev-parse HEAD^{tree})"
+EXPECTED_SUSFS_TREE="b39cd4117178ce73d2973f7bcdae5c74defc8f68"
+ACTUAL_SUSFS_TREE="$(git -C "$tmp/susfs" rev-parse HEAD^{tree})"
+if [[ "$ACTUAL_SUSFS_TREE" != "$EXPECTED_SUSFS_TREE" ]]; then
+  echo "FAIL: pinned SUSFS tree mismatch ($ACTUAL_SUSFS_TREE)" >&2
+  exit 21
+fi
+echo "PASS: pinned SUSFS commit and tree provenance verified"
 git -C "$tmp/susfs" status --porcelain
 
 echo "Upstream SUSFS patch inventory:"
