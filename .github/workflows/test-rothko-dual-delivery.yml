@@ -49,19 +49,23 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            tools/platform-tools/
-          sparse-checkout-cone-mode: false
+      # Windows cannot check out some Linux kernel paths (e.g. aux.c).
+      # Fetch ONLY the candidate script by immutable PR SHA.
+      - name: Download the PowerShell file without checking out kernel sources
+        shell: powershell
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $url = "https://raw.githubusercontent.com/${{ github.repository }}/$env:SOURCE_SHA/tools/platform-tools/Flash-Rothko.ps1"
+          Invoke-WebRequest -Uri $url -OutFile (Join-Path $env:RUNNER_TEMP 'Flash-Rothko.ps1')
       - name: Parse Flash-Rothko.ps1 without executing it
         shell: powershell
         run: |
           $tokens = $null
           $errors = $null
+          $scriptPath = Join-Path $env:RUNNER_TEMP 'Flash-Rothko.ps1'
           [System.Management.Automation.Language.Parser]::ParseFile(
-            (Join-Path $PWD 'tools/platform-tools/Flash-Rothko.ps1'),
-            [ref]$tokens, [ref]$errors
+            $scriptPath, [ref]$tokens, [ref]$errors
           ) | Out-Null
           if ($errors.Count -gt 0) {
             $errors | ForEach-Object { Write-Error $_.Message }
