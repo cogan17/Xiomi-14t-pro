@@ -46,13 +46,14 @@ jobs:
               "allocated filename before profile escape": su.find("replacement = getname_kernel(ksud_path)") < su.find("ret = escape_with_root_profile()"),
               "post-escape root/domain check": "susfs_is_current_ksu_domain()" in su and "current_euid()" in su,
               "profile commit exists": "commit_creds(cred)" in policy,
-              "namespace setup follows commit": policy.find("commit_creds(cred)") < policy.find("setup_mnt_ns("),
+              "namespace setup call exists": "setup_mnt_ns(" in policy,
           }
           for label, ok in checks.items():
               print(("PASS" if ok else "FAIL") + ": " + label, flush=True)
           if not all(checks.values()):
               raise SystemExit("Source-level candidate invariant failure")
           print("BLOCK: no verified pre-commit domain authorization guarantee")
+          print("BLOCK: namespace call ordering requires function-scoped control-flow review")
           print("BLOCK: no credential rollback after commit_creds")
           print("BLOCK: post-exec session FD lifecycle absent")
           PY
