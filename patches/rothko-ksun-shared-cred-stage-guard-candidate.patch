@@ -1,0 +1,45 @@
+diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration.c
+--- a/kernel/runtime/ksud_integration.c
++++ b/kernel/runtime/ksud_integration.c
+@@ -181,8 +181,11 @@
+                 ksu_selinux_hide_handle_second_stage();
+                 apply_kernelsu_rules();
+                 cache_sid();
+-                setup_ksu_cred();
+-                static_branch_disable(&is_init_second_stage_not_executed);
++                if (setup_ksu_cred()) {
++                    pr_err("KernelSU shared credentials not ready; startup stage left pending\n");
++                    return 0;
++                }
++                static_branch_disable(&is_init_second_stage_not_executed);
+             }
+         }
+     }
+@@ -194,8 +197,11 @@
+                 pr_info("exec zygote, /data prepared, second_stage: %d\n", !static_key_enabled(&is_init_second_stage_not_executed));
+                 on_post_fs_data();
+                 cache_sid();
+-                setup_ksu_cred();
+-                static_branch_disable(&is_first_zygote);
++                if (setup_ksu_cred()) {
++                    pr_err("KernelSU shared credentials not ready; startup stage left pending\n");
++                    return 0;
++                }
++                static_branch_disable(&is_first_zygote);
+             }
+         }
+     }
+@@ -219,8 +225,11 @@
+                 ksu_selinux_hide_handle_second_stage();
+                 apply_kernelsu_rules();
+                 cache_sid();
+-                setup_ksu_cred();
+-                static_branch_disable(&is_init_second_stage_not_executed);
++                if (setup_ksu_cred()) {
++                    pr_err("KernelSU shared credentials not ready; startup stage left pending\n");
++                    return;
++                }
++                static_branch_disable(&is_init_second_stage_not_executed);
+             }
+         }
+     }
