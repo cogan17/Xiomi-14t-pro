@@ -15,6 +15,9 @@ on:
       - tests/test_rothko_ksun_ioctl_matrix.py
       - scripts/rothko_ksun_shared_cred_audit.py
       - tests/test_rothko_ksun_shared_cred_audit.py
+      - patches/rothko-ksun-shared-cred-status-candidate.patch
+      - scripts/rothko_ksun_shared_cred_candidate_audit.py
+      - tests/test_rothko_ksun_shared_cred_candidate.py
   pull_request:
     paths:
       - patches/rothko-ksun-sucompat-fail-closed-candidate.patch
@@ -28,6 +31,9 @@ on:
       - tests/test_rothko_ksun_ioctl_matrix.py
       - scripts/rothko_ksun_shared_cred_audit.py
       - tests/test_rothko_ksun_shared_cred_audit.py
+      - patches/rothko-ksun-shared-cred-status-candidate.patch
+      - scripts/rothko_ksun_shared_cred_candidate_audit.py
+      - tests/test_rothko_ksun_shared_cred_candidate.py
   workflow_dispatch:
 permissions:
   contents: read
@@ -132,3 +138,15 @@ jobs:
       - name: Reject incomplete shared-credential contract and 16 unsafe mutations
         shell: bash
         run: python3 "$GITHUB_WORKSPACE/tests/test_rothko_ksun_shared_cred_audit.py" "/tmp/ksun/kernel" "$GITHUB_WORKSPACE/scripts/rothko_ksun_shared_cred_audit.py"
+      - name: Verify isolated G1 helper candidate applicability (no kernel build)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-shared-cred-status-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 "$GITHUB_WORKSPACE/scripts/rothko_ksun_shared_cred_candidate_audit.py" "/tmp/ksun/kernel"
+          python3 "$GITHUB_WORKSPACE/tests/test_rothko_ksun_shared_cred_candidate.py" "/tmp/ksun/kernel" "$GITHUB_WORKSPACE/scripts/rothko_ksun_shared_cred_candidate_audit.py"
+          echo "BLOCK: fifth G1 patch is a source-only candidate; caller/FD/ABI/release gates remain denied"
