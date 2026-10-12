@@ -55,6 +55,29 @@ PY
 
 
 
+# Check the independently pinned KSUN candidate before GitLab access.
+# Network errors remain failures; no fallback to a moving branch.
+mkdir -p "$tmp/ksun"
+git -C "$tmp/ksun" init --quiet
+git -C "$tmp/ksun" remote add origin https://github.com/pershoot/KernelSU-Next.git
+if ! git -C "$tmp/ksun" -c http.version=HTTP/1.1 fetch --quiet --depth=1 --filter=blob:none origin "$KSUN_SHA"; then
+  echo "FAIL: pinned KSUN source unavailable" >&2
+  exit 17
+fi
+git -C "$tmp/ksun" checkout --quiet --detach FETCH_HEAD
+if [[ "$(git -C "$tmp/ksun" rev-parse HEAD)" != "$KSUN_SHA" ]]; then
+  echo "FAIL: pinned KSUN commit mismatch" >&2
+  exit 15
+fi
+echo "===== EARLY PINNED KSUN CANDIDATE CHECK ====="
+if git -C "$tmp/ksun" apply --check --verbose "$ROOT/patches/rothko-ksun-sucompat-fail-closed-candidate.patch"; then
+  echo "PASS: candidate applies to pinned KSUN (no compile or security proof)"
+else
+  echo "FAIL: candidate does not apply to pinned KSUN"
+  exit 18
+fi
+echo "===== END EARLY PINNED KSUN CANDIDATE CHECK ====="
+
 # Fetch the immutable SUSFS commit rather than the moving branch tip.
 # This does not bypass provenance: the checked-out HEAD must equal the pin.
 EXPECTED_SUSFS_SHA="5192aa2d33b381b58c1051532f9e1dfa5de6e8d3"
@@ -166,11 +189,6 @@ echo "===== END OFFICIAL SUSFS KSUN POST-EXECVE COMPANION PATCH ====="
 echo "===== KSUN PINNED EXECVE / SELINUX SYMBOL AUDIT ====="
 # Pinned checkout: fetch only the required commit instead of repository history.
 # A network failure must fail the audit, never turn a compatibility block green.
-mkdir -p "$tmp/ksun"
-git -C "$tmp/ksun" init --quiet
-git -C "$tmp/ksun" remote add origin https://github.com/pershoot/KernelSU-Next.git
-git -C "$tmp/ksun" -c http.version=HTTP/1.1 fetch --quiet --depth=1 --filter=blob:none origin "$KSUN_SHA"
-git -C "$tmp/ksun" checkout --quiet --detach FETCH_HEAD
 test "$(git -C "$tmp/ksun" rev-parse HEAD)" = "$KSUN_SHA" || {
   echo "FAIL: pinned KSUN commit mismatch"; exit 15;
 }
