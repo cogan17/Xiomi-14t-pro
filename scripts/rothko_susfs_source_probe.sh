@@ -107,6 +107,11 @@ ordered = 0 <= allocation < escape < transfer < release and len(cleanup) >= 2 an
 print(("PASS" if ordered else "FAIL") + ": allocation precedes escape; cleanup precedes transfer; old name released after transfer", flush=True)
 if not ordered:
     raise SystemExit(20)
+# Credential escalation can already have committed when domain verification fails.
+# This is a hard security blocker until source-level rollback or pre-commit
+# authorization is implemented; a token-order PASS must never clear it.
+print("BLOCK: post-escape domain rejection may occur after commit_creds; no rollback proof", flush=True)
+print("BLOCK: session FD authorization and post-exec lifecycle not implemented", flush=True)
 print("BLOCK: static checks cannot prove credential rollback or filename ownership", flush=True)
 PY
 
