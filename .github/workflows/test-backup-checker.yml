@@ -1,0 +1,74 @@
+name: Cogan Rothko - Verify Backup Checker (No Device)
+
+on:
+  push:
+    branches:
+      - dev/rothko
+    paths:
+      - 'scripts/verify_kernel_flasher_backup.sh'
+      - '.github/workflows/test-backup-checker.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Shell syntax and synthetic backup tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh -n scripts/verify_kernel_flasher_backup.sh
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+          import subprocess
+          import tempfile
+
+          script = Path("scripts/verify_kernel_flasher_backup.sh").resolve()
+          names = ["boot", "init_boot", "vendor_boot", "dtbo", "vbmeta",
+                   "system_dlkm", "vendor_dlkm"]
+          with tempfile.TemporaryDirectory() as temp:
+              folder = Path(temp) / "2026-10-12--07-19"
+              folder.mkdir()
+              hashes = {}
+              for index, name in enumerate(names):
+                  payload = (f"test-{index}-{name}-" * 100).encode("ascii")
+                  (folder / (name + ".img")).write_bytes(payload)
+                  hashes[name] = hashlib.sha256(payload).hexdigest()
+              metadata = {"name": folder.name, "type": "raw",
+                          "hashes": hashes, "hashAlgorithm": "SHA-256"}
+              (folder / "backup.json").write_text(
+                  json.dumps(metadata, indent=4), encoding="utf-8")
+
+              def run():
+                  return subprocess.run(
+                      ["sh", str(script), str(folder)],
+                      text=True, capture_output=True, check=False)
+
+              clean = run()
+              assert clean.returncode == 0, clean.stderr + clean.stdout
+              assert clean.stdout.count("result=PASS") == 7
+              assert "BACKUP_FILE_VERIFICATION=PASS" in clean.stdout
+
+              (folder / "dtbo.img").write_bytes(b"corrupted")
+              corrupt = run()
+              assert corrupt.returncode != 0
+              assert "result=FAIL_HASH_MISMATCH" in corrupt.stdout
+
+              (folder / "init_boot.img").unlink()
+              missing = run()
+              assert missing.returncode != 0
+              assert "result=IMAGE_MISSING_OR_NOT_REGULAR_FILE" in missing.stdout
+
+              print("PASS: clean 7/7, FAIL: corrupted image, FAIL: missing image")
+              print("Synthetic fixture only. No phone or real images accessed.")
+          PY
