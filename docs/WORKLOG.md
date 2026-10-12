@@ -388,3 +388,22 @@ bukan menghapus jejak kejadian.
 - **Referensi:** [audit firmware stock](ROTHKO_STOCK_FIRMWARE_AUDIT.md),
   [audit init_boot aktif](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md).
 
+## 2026-10-12 — Riwayat bootloop modul dan kehilangan modul setelah flashing
+
+- **Dilaporkan pengguna:** pada insiden lampau HP bootloop karena modul,
+  sebelum Bootloop Protector dipasang. Pengguna mem-flash
+  `boot.img` dan `init_boot.img`; HP berhasil boot kembali, tetapi
+  semua modul yang pernah terpasang hilang/tidak tersedia.
+- **Belum diketahui:** apakah modul benar-benar terhapus dari
+  `/data/adb/modules` atau tidak lagi terlihat/aktif di root manager;
+  waktu dan tool flashing, slot target, serta sumber image yang dipakai.
+- **Relevansi kuat untuk diselidiki, bukan kesimpulan:** saat ini
+  `init_boot_a` aktif cocok stock Degas WNEIDXM, berbeda dari stock
+  Rothko WNNIDXM. Belum terbukti apakah image tersebut berasal dari
+  insiden bootloop yang diceritakan.
+- **Dampak:** rumus aman proyek bukan hanya 'bisa boot', tetapi
+  'BakaSU dan semua modul penting dapat dipulihkan bila perlu'.
+  Instalasi ulang ZIP merupakan pilihan pengguna; integritas
+  backup 7 image kernel/USB telah terverifikasi sebelumnya.
+- **Tindakan:** insiden I-005 dicatat, tetap read-only.
+  Tidak melakukan flashing, restore, reset slot atau modifikasi modul.
