@@ -80,8 +80,12 @@ jobs:
                   include_only=bool(added or removed) and all(x.strip().startswith("#include ") or not x.strip() for x in added+removed)
                   anchors=[x for x in context if x.strip() and not x.strip().startswith("#include ")]
                   matched=sum(1 for x in anchors if x in src)
+                  added_includes=[x.strip() for x in added if x.strip().startswith("#include ")]
+                  existing=sum(1 for x in added_includes if x in [y.strip() for y in src])
                   kind="INCLUDE_ONLY_CHANGE" if include_only else "SEMANTIC_OR_MIXED_CHANGE"
-                  lines.append(f"- {hunk[0]}: {kind}; non-include context lines present in BSP {matched}/{len(anchors)}")
+                  lines.append(f"- {hunk[0]}: {kind}; non-include context lines present in BSP {matched}/{len(anchors)}; new include directives already present {existing}/{len(added_includes)}")
+                  if include_only:
+                      lines.append("  - Context-only drift candidate; include dependencies and build still require verification")
               lines.append("")
           report="\n".join(lines)+"\n"
           Path("susfs-context-drift.md").write_text(report)
