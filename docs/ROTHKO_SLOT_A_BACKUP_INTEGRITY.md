@@ -172,3 +172,59 @@ Metadata: `name=2026-10-12--07-19`, `type=raw`,
 Keputusan tahap berikutnya: **pertahankan Slot A yang sekarang berfungsi**;
 simpan salinan backup independen sebelum membahas penggantian
 `init_boot_a` Degas ke Rothko.
+
+## Tahap 10 — Salinan backup independen di Windows / Steam Deck
+
+**Status: menunggu tindakan pengguna.** Tujuh image yang dikirim sudah
+diverifikasi terhadap `backup.json` (7/7 SHA-256 PASS). Namun belum ada
+bukti bahwa *salinan lain* di PC/SSD telah dibuat dan diverifikasi.
+
+1. Hubungkan Xiaomi 14T Pro ke Windows dengan kabel data, dan pilih
+   **Transfer file** pada notifikasi USB Android.
+2. Buka File Explorer: perangkat Xiaomi → penyimpanan internal →
+   `KernelFlasher/backups/2026-10-12--07-19`.
+3. **COPY**, jangan **MOVE**. Tempel seluruh folder, termasuk
+   `backup.json` dan tujuh `.img`, misalnya ke
+   `C:\CoganBackups\2026-10-12--07-19` atau SSD eksternal.
+4. Buka PowerShell di PC, sesuaikan variabel folder di bawah, dan
+   bandingkan SHA-256 salinan dengan tujuh hash yang sudah diverifikasi
+   secara independen dari file sumber.
+
+```powershell
+$folder = 'C:\CoganBackups\2026-10-12--07-19'
+$expected = [ordered]@{
+  boot        = 'f39b666ead0c5a740a652c62225e343222b4e5fc89a560ff8f850eebf4cf6f8a'
+  dtbo        = '47954740b3e890e0414cc5e5fc0f495c9750fe117d81f3607171d6b65c5eaff7'
+  init_boot   = '951f096146157773abe4cbbd9b0dacbe9c2fa6400d4c438298353e5fb8a8bf04'
+  system_dlkm = '361be1dfdf7fa5d84f4712e005d4d1925100b3e94cf04954619fd45ba18defda'
+  vbmeta      = 'bfe79b5ba411e927943b8b918d802dd02ed751da384d4d7752e7e6b19c32b526'
+  vendor_boot = '087e76586bb981bbd1f37334f68707bac1f3b81d9a88caa452a9433feb76a384'
+  vendor_dlkm = '596cce7cd8e8a4a44c47080ce914facc9580004b5c18a8627c90551a3da5d536'
+}
+$passed = 0
+foreach ($name in $expected.Keys) {
+  $file = Join-Path $folder ($name + '.img')
+  if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+    Write-Output "$name : FILE_HILANG"
+    continue
+  }
+  $actual = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($actual -eq $expected[$name]) {
+    Write-Output "$name : PASS"
+    $passed++
+  } else {
+    Write-Output "$name : MISMATCH"
+  }
+}
+Write-Output "verified=$passed/7"
+```
+
+Interpretasi: `verified=7/7` berarti tujuh file image salinan di
+lokasi PC/SSD sama SHA-256-nya dengan set yang telah diperiksa.
+Jangan menghapus backup asli dan jangan menganggap lulus hash sebagai
+jaminan pemulihan perangkat. Pastikan `backup.json` ikut tersalin
+dan dapat dibuka; skrip ringkas ini membandingkan ketujuh image terhadap
+hash acuan independen, bukan menguji mekanisme restore.
+
+**Belum terverifikasi:** pengguna belum mengirim output PowerShell
+dari salinan PC/SSD. Tidak ada tindakan terhadap slot atau root.
