@@ -107,10 +107,11 @@ PY
 echo "===== END KSUN SYMBOL AUDIT ====="
 
 echo "===== EXECVE / ARM64 PREBUILD CONTRACT GATE ====="
-python3 - "$tmp/ksun" "$tmp/susfs" "$tmp/rothko" <<'PY'
+python3 - "$tmp/ksun" "$tmp/susfs" "$tmp/rothko" "$tmp/contract_status" <<'PY'
 from pathlib import Path
 import re, sys
-ksun, susfs, rothko = map(Path, sys.argv[1:])
+ksun, susfs, rothko = map(Path, sys.argv[1:4])
+status_path = Path(sys.argv[4])
 def read(root, path):
     p = root / path
     if not p.is_file():
@@ -152,7 +153,7 @@ blocking = [
 ]
 if any(not checks[k] for k in blocking):
     print("BLOCKED: KSUN/SUSFS source contract unresolved. No build allowed.", flush=True)
-    sys.exit(8)
+    status_path.write_text("blocked\n")
 PY
 echo "===== END EXECVE / ARM64 PREBUILD CONTRACT GATE ====="
 
@@ -180,6 +181,13 @@ if git -C "$tmp/rothko" apply --check --verbose "$patch"; then
   echo "PASS: official 6.1 patch passes git apply --check against pristine Rothko BSP"
 else
   echo "FAIL: official 6.1 patch does not apply cleanly to pristine Rothko BSP"
-  exit 6
+  patch_status=6
+fi
+if [[ -f "$tmp/contract_status" ]]; then
+  echo "FAIL: KSUN/SUSFS contract gate blocked; see full audit above"
+  exit 8
+fi
+if [[ "${patch_status:-0}" -ne 0 ]]; then
+  exit "$patch_status"
 fi
 echo "NO BUILD, NO FLASH, NO PATCH APPLICATION"
