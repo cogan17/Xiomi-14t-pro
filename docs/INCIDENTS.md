@@ -84,11 +84,13 @@ bukti. Tiap insiden memiliki keadaan dan kriteria penutupan.
   modul, mounting/root berubah, modul dinonaktifkan mekanisme
   penyelamatan, atau data modul benar-benar dihapus oleh proses lain.
   **Belum dapat memilih salah satu hipotesis.**
-- **Pertanyaan provenance penting:** apakah `init_boot.img`
-  yang digunakan saat insiden berasal dari **Rothko WNNIDXM**,
-  **Degas WNEIDXM**, atau hasil patch root? Mengingat image aktif
-  saat ini cocok stock Degas, hubungan dengan insiden merupakan
-  **hipotesis yang perlu dikonfirmasi**, bukan kesimpulan.
+- **Jawaban tindak lanjut pengguna (12 Oktober 2026):** pengguna
+  menyatakan **tidak memperhatikan/tidak ingat sumber** `boot.img`
+  dan `init_boot.img` yang dipakai saat pemulihan bootloop. Karena itu
+  provenance kedua file **tidak diketahui**. Walaupun `init_boot_a`
+  aktif kini identik dengan stock Degas, **tidak ada bukti** bahwa
+  image Degas dipasang pada insiden tersebut atau menyebabkan
+  hilangnya modul. Jangan mengisi kekosongan ini dengan dugaan.
 - **Dampak pada proyek:** prioritas keselamatan sekarang mencakup
   **mempertahankan BakaSU dan modul**, bukan sekadar membuat HP
   bisa boot. Backup tujuh image RAW Slot A serta salinan USB telah
