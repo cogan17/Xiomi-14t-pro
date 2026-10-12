@@ -2,6 +2,22 @@
 
 **Snapshot:** 12 Oktober 2026 · **Bahasa:** Indonesia · **Jenis:** catatan kondisi proyek, bukan sertifikasi flash.
 
+### Keadaan pasca-flash 09.09 — bukti terbaru (12 Oktober 2026)
+
+Pengguna melaporkan mem-flash stock **Rothko WNNIDXM `init_boot.img`**,
+kemudian kernel **Cogan r7**, reboot hingga home screen, dan menyerahkan
+log AnyKernel3 pukul 09.07 serta backup RAW `09-09`.
+**Tujuh image diunggah, dibaca utuh, dan SHA-256 PASS 7/7.**
+`init_boot` sekarang cocok **stock Rothko**
+(`4b25ce3f...`), sedangkan `boot` Cogan r7 dan lima image lain
+sama persis dengan backup `07-19`. Bukti `init_boot` Degas di laporan
+terdahulu adalah snapshot **sebelum** tindakan pengguna, bukan keadaan
+pasca-flash. Detail: [audit pasca-flash](ROTHKO_POST_FLASH_INIT_BOOT_0909.md).
+
+**Masih perlu diverifikasi:** root BakaSU, SUSFS, NoMount,
+ke-16 modul setelah reboot, dan salinan USB untuk backup `09-09`.
+Salinan USB `07-19` tetap valid dan tidak boleh ditimpa.
+
 ## Repository dan cabang
 
 | Aspek | Keadaan yang diverifikasi |
