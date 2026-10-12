@@ -175,3 +175,19 @@ bukan menghapus jejak kejadian.
   metadata pada folder yang sama. Ini bukan sertifikasi restore aman.
 
 - **CI terverifikasi:** [GitHub Actions #38188533642](https://github.com/cogan17/Xiomi-14t-pro/actions/runs/38188533642) **success**: sintaks shell, semua hash benar, satu file rusak, dan satu file hilang diuji dengan data sintetik. Ini bukan hasil pemeriksaan HP.
+
+## 2026-10-12 — Video File Manager+ backup 07.19
+
+- **Sumber:** video layar pengguna sekitar 11 detik, bukan output verifikasi SHA.
+- **Bukti visual:** folder `KernelFlasher/backups/2026-10-12--07-19`
+  berisi `backup.json` (874 B) dan tepat tujuh image:
+  `boot.img` (67,11 MB), `dtbo.img` (8,39 MB),
+  `init_boot.img` (8,39 MB), `system_dlkm.img` (7,47 MB),
+  `vbmeta.img` (8,39 MB), `vendor_boot.img` (67,11 MB),
+  `vendor_dlkm.img` (21,97 MB).
+- **Batas kepastian:** ukuran dibulatkan oleh file manager; checksum,
+  keterbacaan penuh dan keamanan pemulihan **belum dibuktikan**.
+- **Langkah lanjut:** gunakan skrip `verify_kernel_flasher_backup.sh`
+  read-only pada folder 07.19 dan kirim hasilnya.
+- **Tidak dilakukan:** flashing, restore, pergantian slot, modifikasi BakaSU,
+  atau mengunggah image mentah ke repository.
