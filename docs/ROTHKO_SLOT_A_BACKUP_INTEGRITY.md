@@ -1,7 +1,7 @@
 # Tahap 9 — Verifikasi integritas backup RAW Kernel Flasher
 
 **Tanggal persiapan:** 12 Oktober 2026  
-**Status pembaruan 12 Oktober 2026: tujuh image backup `07-19` telah diperiksa langsung setelah diunggah pengguna, dan semuanya `SHA-256 PASS 7/7`.** Ini adalah audit byte dari *file yang diunggah*, bukan pemeriksaan tersendiri terhadap salinan lain pada HP atau perangkat eksternal. Skrip Termux yang sebelumnya dibuat tidak perlu dijalankan lagi untuk memvalidasi salinan yang sudah diperiksa di sini.
+**Status akhir audit backup, 12 Oktober 2026: PASS 7/7 untuk berkas yang diunggah DAN PASS 7/7 untuk salinan flashdisk USB OTG.** Kedua pemeriksaan SHA-256 dilaksanakan terpisah dan cocok dengan metadata Kernel Flasher `2026-10-12--07-19`. Tidak ada restore, flashing, ataupun perubahan slot.
 
 ## Dua backup yang tidak boleh tertukar
 
@@ -277,3 +277,57 @@ lokasi yang benar. Jika izin membaca USB gagal, laporkan error saja.
 
 Tidak ada flashing, restore, perubahan slot/root, atau upload raw image
 ke GitHub dalam tahap ini.
+
+## Verifikasi ulang langsung dari flashdisk USB OTG — LULUS 7/7
+
+**Tanggal laporan:** 12 Oktober 2026. Pengguna menjalankan secara langsung
+skrip `scripts/verify_kernel_flasher_backup.sh` sebagai root di Termux
+dengan argumen folder USB terpisah:
+
+```text
+/storage/C44C5A2F4C5A1C8C/KernelFlasher/backups/2026-10-12--07-19
+```
+
+**Catatan privasi:** path mount di atas hanya dipakai untuk merujuk folder
+penyimpanan yang dilaporkan, bukan merupakan partisi boot dan tidak
+diperlukan untuk mereproduksi backup di perangkat yang berbeda.
+
+Skrip membaca `backup.json` dan file `.img` pada folder USB,
+memverifikasi format metadata, ukuran file, serta menghitung SHA-256
+**langsung dari salinan flashdisk**, bukan dari file asal atau partisi
+aktif. Hasil yang diserahkan pengguna:
+
+| File di USB | Ukuran byte | Hash sama dengan JSON? |
+|---|---:|---|
+| `boot.img` | 67,108,864 | **PASS** |
+| `init_boot.img` | 8,388,608 | **PASS** |
+| `vendor_boot.img` | 67,108,864 | **PASS** |
+| `dtbo.img` | 8,388,608 | **PASS** |
+| `vbmeta.img` | 8,388,608 | **PASS** |
+| `system_dlkm.img` | 7,471,104 | **PASS** |
+| `vendor_dlkm.img` | 21,970,944 | **PASS** |
+
+```text
+verified=7
+failed=0
+BACKUP_FILE_VERIFICATION=PASS (file checksums match metadata)
+```
+
+**Makna yang terbukti:**
+
+- Ketujuh image backup `07-19` yang sebelumnya diverifikasi sebagai
+  file unggahan sekarang **juga terverifikasi pada salinan USB OTG**.
+- Semua tujuh SHA-256 dan ukuran byte cocok dengan metadata backup
+  yang sama; tidak ada mismatch yang terdeteksi.
+- Backup internal dan salinan flashdisk tidak boleh dihapus atau ditimpa;
+  simpan file `backup.json` bersama tujuh image.
+- **Tugas verifikasi duplikasi USB pada tahap ini SELESAI.**
+
+**Yang tidak terbukti / gerbang tetap tertutup:** keberhasilan
+restore sesungguhnya, kesehatan fisik jangka panjang flashdisk,
+ketuntasan seluruh partisi pemulihan, kompatibilitas ABI/KMI/AVB,
+dan penyebab status Slot B `Unbootable`. **Tidak melakukan
+flash/restore, mengganti slot, menonaktifkan SUSFS ataupun mengubah
+root BakaSU.** Sebelum memutuskan perubahan `init_boot_a`, tinjau
+konsekuensi pada root, kecocokan firmware, dan langkah recovery
+secara terpisah tanpa menulis partisi.
