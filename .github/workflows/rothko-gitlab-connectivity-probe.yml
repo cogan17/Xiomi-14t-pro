@@ -1,0 +1,36 @@
+name: Rothko GitLab connectivity probe (read-only)
+on:
+  push:
+    branches:
+      - feat/rothko-ksun-susfs-compat-audit
+    paths:
+      - .github/workflows/rothko-gitlab-connectivity-probe.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: DNS, HTTPS and immutable Git source probe
+        shell: bash
+        run: |
+          set -u
+          echo "=== DNS ==="
+          getent ahostsv4 gitlab.com || true
+          echo "=== HTTPS HEAD ==="
+          curl -sSIL --connect-timeout 10 --max-time 20 https://gitlab.com/simonpunk/susfs4ksu 2>&1 | head -n 24 || true
+          echo "=== Git read-only immutable pin ==="
+          pin=5192aa2d33b381b58c1051532f9e1dfa5de6e8d3
+          mkdir -p /tmp/susfs-probe
+          git -C /tmp/susfs-probe init -q
+          git -C /tmp/susfs-probe remote add origin https://gitlab.com/simonpunk/susfs4ksu.git
+          if timeout 90 git -C /tmp/susfs-probe -c http.version=HTTP/1.1 fetch --quiet --depth=1 origin "$pin"; then
+            actual=$(git -C /tmp/susfs-probe rev-parse FETCH_HEAD)
+            test "$actual" = "$pin" || { echo "FAIL: pin mismatch"; exit 1; }
+            echo "PASS: immutable SUSFS pin accessible from GitHub runner"
+          else
+            echo "FAIL: pinned SUSFS GitLab fetch unavailable; no kernel source modified"
+            exit 1
+          fi
