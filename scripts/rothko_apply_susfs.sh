@@ -93,6 +93,26 @@ for label, text in (("PATCH", section), ("XIAOMI", source)):
 print("Audit only; no macro fallback, no semantic changes.", flush=True)
 PY_AUDIT
 git -C "$tree" apply --whitespace=error "$patchfile"
+# Rothko semantic adaptation: Xiaomi's normal maps path reports vm_end.
+# Only the pinned SUSFS OPEN_REDIRECT branch uses the unavailable Android
+# page-size-migration helper. Preserve Xiaomi's identical maps boundary there.
+# This is deliberately post-apply: upstream patch integrity remains checked.
+python3 - "$tree/fs/proc/task_mmu.c" <<'PY_ROTHKO_VMA'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+s = p.read_text(encoding="utf-8")
+old = "end = VMA_PAD_START(vma);"
+assert s.count(old) == 1, "Unexpected VMA_PAD_START count; manual audit required"
+start = s.index("#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT", s.index("show_map_vma(struct seq_file"))
+stop = s.index("#endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT", start)
+assert start < s.index(old) < stop, "VMA_PAD_START outside audited OPEN_REDIRECT block"
+assert "end = vma->vm_end;" in s[s.index("show_map_vma(struct seq_file"):start], "Xiaomi maps baseline changed"
+s = s.replace(old, "end = vma->vm_end;", 1)
+assert "VMA_PAD_START" not in s, "Unexpected remaining VMA_PAD_START"
+p.write_text(s, encoding="utf-8")
+print("Rothko semantic port: OPEN_REDIRECT maps end matches Xiaomi normal vm_end; single audited substitution.")
+PY_ROTHKO_VMA
 cp "$susfs/kernel_patches/fs/susfs.c" "$tree/fs/susfs.c"
 # Copy all official kernel-side SUSFS headers from the SAME pinned commit.
 # Refuse missing, empty, or pre-existing destination files; never synthesize headers.
