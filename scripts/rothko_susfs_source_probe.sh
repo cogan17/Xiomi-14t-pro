@@ -35,8 +35,7 @@ printf '%s\n' "${patches[@]}"
 # No git apply is performed. This is a diagnostic patch-context test.
 patch="$tmp/susfs/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch"
 test -s "$patch" || { echo "FAIL: expected Android 14 / 6.1 patch absent"; exit 5; }
-git clone --quiet --filter=blob:none --no-checkout "$ROOT" "$tmp/rothko"
-git -C "$tmp/rothko" checkout --quiet "$KERNEL_REF"
+git clone --quiet --filter=blob:none --single-branch --branch "$KERNEL_REF" "https://github.com/cogan17/Xiomi-14t-pro.git" "$tmp/rothko"
 echo "Rothko source SHA: $(git -C "$tmp/rothko" rev-parse HEAD)"
 if git -C "$tmp/rothko" apply --check --verbose "$patch"; then
   echo "PASS: official 6.1 patch passes git apply --check against pristine Rothko BSP"
