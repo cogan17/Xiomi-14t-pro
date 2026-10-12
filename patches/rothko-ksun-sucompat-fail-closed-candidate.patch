@@ -50,7 +50,7 @@ diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
  #else
      if (cred->euid.val == 0) {
  #endif
-         pr_warn("Already root, don't escape!\\n");
+         pr_warn("Already root, don't escape!\n");
 +#ifdef CONFIG_KSU_SUSFS
 +        ret = -EALREADY;
 +#endif
@@ -58,7 +58,7 @@ diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
      }
  
      if (test_thread_flag(TIF_KSU_DISABLE_ESCAPE_WITH_ROOT)) {
-         pr_warn("TIF_KSU_DISABLE_ESCAPE_WITH_ROOT found, don't escape!\\n");
+         pr_warn("TIF_KSU_DISABLE_ESCAPE_WITH_ROOT found, don't escape!\n");
 +#ifdef CONFIG_KSU_SUSFS
 +        ret = -EPERM;
 +#endif
