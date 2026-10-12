@@ -44,3 +44,24 @@ The transition into **READY** must originate from a checked helper return and do
 ### Outstanding independent blockers
 
 The KSUN↔SUSFS post-`execve` authorized FD contract is still missing; no unconditional FD installation or stub is allowed. The five rejected Rothko SUSFS hunks, `TIF_PROC_NO_SU` mapping, SELinux/seccomp interactions, vendor ABI/KMI and device testing are still unresolved. BakaSU integration and GitLab fetch remain on hold by owner decision.
+
+
+## G1 partial source candidate — status-returning shared credential helper
+
+**A candidate implementation is now staged ONLY as a patch file, not applied to the Rothko BSP.** `patches/rothko-ksun-shared-cred-status-candidate.patch` is intentionally applied **after** the original four KSUN candidate patches to the CI-only pinned KSUN checkout.
+
+Scope (limited to upstream KSUN `kernel/selinux/selinux.c` and `selinux.h`):
+- Change `setup_ksu_cred` from `void` to `int` and include explicit errno definitions.
+- Return `-EINVAL` for absent `ksu_cred`; propagate failure from the already-patched `setup_selinux` helper.
+- Require `is_task_ksu_domain(ksu_cred)` on the exact shared cred object; return `-EACCES` if it does not match. Returning an error does not itself make the published mutable cred safe.
+- Return 0 only after observed setup and domain checks; do not create, override, commit or publish a new credential in this helper.
+
+**Important:** this is **G1 helper error-reporting only**, not G1 end-to-end readiness. All callers in `core/init.c` and `runtime/ksud_integration.c` still discard the returned status; no safe late-load unwind or one-shot replay policy was installed. `load_module_rc_once` still uses `override_creds(ksu_cred)` without a verifiable readiness gate. Therefore, **the helper patch alone is not safe to compile for deployment or to merge**.
+
+CI audit contract:
+1. First apply four existing candidate patches and run prior tests unchanged (37 negative mutations).
+2. Apply the fifth helper patch with `git apply --check`, check reverse applicability and `git diff --check` on the ephemeral KSUN checkout only.
+3. Run `scripts/rothko_ksun_shared_cred_candidate_audit.py` for scoped G1 evidence, and `tests/test_rothko_ksun_shared_cred_candidate.py` with seven fail-on-unsafe mutation probes.
+4. The explicit `--require-integrated` gate must fail while G2–G6 and authorization/ABI/boot hazards remain unresolved.
+
+**Release decision remains BLOCKED** even if every applicability and mutation test passes. Build and flash steps are not part of the new workflow.
