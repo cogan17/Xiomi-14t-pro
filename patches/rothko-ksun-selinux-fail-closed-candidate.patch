@@ -47,17 +47,13 @@ diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
 diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
 --- a/kernel/policy/app_profile.c
 +++ b/kernel/policy/app_profile.c
-@@ -205,8 +205,10 @@
--    setup_groups(profile, cred);
+@@ -208,3 +208,5 @@
 -    setup_selinux(profile->selinux_domain, cred);
 +    ret = setup_selinux(profile->selinux_domain, cred);
 +    if (ret)
 +        goto out_abort_creds;
  
      commit_creds(cred);
--
--    if (likely(test_thread_flag(TIF_SECCOMP)))
--        disable_seccomp();
 @@ -241,8 +243,11 @@
          return -EINVAL;
      }
