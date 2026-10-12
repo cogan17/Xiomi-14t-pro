@@ -38,6 +38,31 @@ bukti. Tiap insiden memiliki keadaan dan kriteria penutupan.
   **7/7 PASS**, namun kemampuan restore belum diuji dan
   konfigurasi root/modul bukan cakupan backup tujuh image.
 
+### Pembaruan pasca-flash 09.09 (12 Oktober 2026)
+
+- **Perubahan sudah dilakukan pengguna sendiri:** stock
+  `init_boot.img` **Rothko WNNIDXM** diflash sebelum
+  pemasangan ulang kernel Cogan r7; HP dilaporkan
+  berhasil reboot sampai home screen.
+- **Bukti kuat berupa file backup:** `2026-10-12--09-09`
+  memiliki tujuh image terunggah yang semuanya lolos hitung
+  ulang SHA-256 independen (**7/7 PASS**). `init_boot`
+  terbaru cocok **stock Rothko**:
+  `4b25ce3f4a321b34aa5f84e7c8b0328065d7038c1a00b91fdcca7e0c17fe463f`.
+- **Histori Degas tidak ditarik kembali:** bukti `init_boot_a`
+  stock Degas di atas benar **untuk kondisi sebelum flash,
+  backup 07.19**. Itu **bukan** identitas backup terbaru.
+- **Keenam image lainnya**, termasuk `boot` Cogan r7,
+  tidak berubah SHA-256 dari backup 07.19.
+- **Yang belum diuji pasca-reboot:** BakaSU, SUSFS, NoMount,
+  16 modul root, AVB/OTA, pengaruh pada suhu dan backup
+  eksternal dari kondisi baru.
+- **Pelajaran keselamatan:** kedua backup bertanggal berbeda
+  wajib disimpan terpisah; log `ak3-log--2026-10-12--09-07.log`
+  menampilkan `ash: bad number` namun berakhir `Done!`.
+- **Detail:** [audit backup 09.09](ROTHKO_POST_FLASH_INIT_BOOT_0909.md)
+  dan [perbandingan image](ROTHKO_POST_FLASH_0909_AUDIT.md).
+
 ## I-002 — Slot B bertanda `Unbootable: Yes`
 
 - **Diketahui:** screenshot Kernel Flasher menandai Slot B
