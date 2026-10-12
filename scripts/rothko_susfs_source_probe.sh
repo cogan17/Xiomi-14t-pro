@@ -172,14 +172,15 @@ import re, sys
 source = Path(sys.argv[1]).read_text()
 patch = Path(sys.argv[2]).read_text()
 status = Path(sys.argv[3])
-# The staged patch must not redirect to ksud until profile escape succeeds.
+# Review the staged diff without interpreting diff '+' as regex syntax.
+added = [line[1:] for line in patch.splitlines() if line.startswith("+") and not line.startswith("+++")]
+all_lines = patch.splitlines()
+escape_at = next((i for i, line in enumerate(all_lines) if "ret = escape_with_root_profile();" in line), -1)
+redirect_at = next((i for i, line in enumerate(all_lines) if line.startswith("+") and "memcpy((void *)filename->name, ksud_path" in line), -1)
 required = {
-    "profile escape precedes redirect in added code": bool(re.search(
-        r"^\\+\\s*ret\\s*=\\s*escape_with_root_profile\\(\\);.*?^\\+\\s*memcpy\\(\\(void \\*\\)filename->name, ksud_path",
-        patch, re.M | re.S)),
-    "failure branch prevents redirect": bool(re.search(
-        r"^\\+\\s*if \\(ret\\) \\{.*?^\\+\\s*return 0;.*?^\\+\\s*\\}",
-        patch, re.M | re.S)),
+    "profile escape precedes redirect": escape_at >= 0 and redirect_at > escape_at,
+    "failure branch guards redirect": all(fragment in added for fragment in [
+        "    if (ret) {", "        return 0;", "    }"]),
     "upstream still uses mutable filename buffer": "memcpy((void *)filename->name, ksud_path" in source,
 }
 for label, ok in required.items():
