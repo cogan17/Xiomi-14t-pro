@@ -50,6 +50,14 @@ tidak pernah menjadi izin otomatis untuk flashing.
 - [CI static safety lint](../.github/workflows/validate-init-boot-probe.yml):
   pemeriksaan skrip baru (belum membuktikan hasil pada HP).
 
+## Audit BakaSU dan modul (sebelum pemulihan init_boot)
+
+- [Perlindungan BakaSU, SUSFS, NoMount, dan modul](ROTHKO_BAKASU_MODULE_SAFETY.md):
+  inventaris privat modul root dan file `.ko`, risiko, serta gerbang
+  sebelum setiap rencana flash/restore.
+- [Skrip inventaris modul read-only](../scripts/collect_bakasu_module_inventory.sh):
+  membaca metadata dan flag module, tanpa membaca isi skrip/data pribadi.
+
 ## Pegangan keselamatan
 
 **Jangan flash source atau ROM dari codename lain.** Source Xiaomi
