@@ -512,6 +512,21 @@ bukan menghapus jejak kejadian.
   kernel khusus perangkat, cocokkan vendor ABI serta firmware
   sebelum meninjau izin instalasi dua format.
 
+## 2026-10-12 — Tahap kompilasi BSP ARM64 (diagnostik)
+
+- Menambahkan workflow `rothko-bsp-compile-smoke.yml` dan skrip
+  `rothko_bsp_compile_smoke.sh` untuk benar-benar menjalankan compiler
+  pada source Xiaomi 6.1.57 menggunakan `gki_defconfig`.
+- Validasi provenance 6.1.57/KMI 11 dan keberadaan branch
+  `MiCode/MTK_kernel_modules:bsp-rothko-u-oss`.
+- Batasan: generic `gki_defconfig` **belum** board config Rothko;
+  host clang **belum** toolchain produksi terpin; modul vendor, root,
+  SUSFS dan NoMount belum diintegrasikan.
+- Tidak mengunggah kernel Image, APK, ZIP AK3, boot.img, atau rilis;
+  tidak mengubah partisi HP/slot. Hasil CI akan dinilai dari GitHub.
+- Langkah berikut: gunakan hasil kompilasi untuk menindaklanjuti
+  toolchain/konfigurasi board + modul vendor, bukan menandai flash-ready.
+
 ## 2026-10-12 — Integrasi driver KSU/KSUN/BakaSU pada source BSP (eksperimental)
 
 - Skrip `rothko_install_root_driver.py` memasang tepat satu driver
