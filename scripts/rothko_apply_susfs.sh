@@ -51,12 +51,23 @@ patchfile="$susfs/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch"
 [[ ! -e "$tree/fs/susfs.c" && ! -e "$tree/include/linux/susfs.h" ]] || {
   echo "::error::Refusing to overwrite existing kernel SUSFS files"; exit 1;
 }
-# Deliberately stop on any changed context or conflict; no --reject or --3way.
+# Try original upstream patch first. For the audited Xiaomi 6.1.57 baseline
+# only, prepare a deterministic context-only adaptation of five known hunks.
+# Every upstream added and removed C line MUST remain identical.
+# No --reject, --3way, --unidiff-zero, fuzz, or partial application.
+if ! git -C "$tree" apply --check --whitespace=error "$patchfile"; then
+  temp_context_patch="$(mktemp)"
+  rm -f "$temp_context_patch"
+  trap 'rm -f "${temp_context_patch:-}"' EXIT
+  python3 "$tree/scripts/rothko_susfs_context_port.py" \
+    --upstream-patch "$patchfile" --tree "$tree" \
+    --output-patch "$temp_context_patch"
+  patchfile="$temp_context_patch"
+fi
 git -C "$tree" apply --check --whitespace=error "$patchfile" || {
   python3 "$tree/scripts/rothko_susfs_hunk_matrix.py" "$tree" "$patchfile" || true
-  python3 "$tree/scripts/rothko_susfs_conflicts.py" "$patchfile" "$tree" || true
-  echo "::error::Simonpunk's GKI patch does not cleanly apply to Xiaomi Rothko BSP.";
-  echo "::error::Adapt the patch after reviewing actual conflicts; no unsafe overrides.";
+  echo "::error::Strict SUSFS patch still conflicts after context-only adaptation.";
+  echo "::error::Manual semantic port required. No unsafe patch options enabled.";
   exit 1;
 }
 git -C "$tree" apply --whitespace=error "$patchfile"
