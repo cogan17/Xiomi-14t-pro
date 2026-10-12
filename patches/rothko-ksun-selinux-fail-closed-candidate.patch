@@ -34,34 +34,30 @@ diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
  
  void setup_ksu_cred(void)
  {
-@@ -159,7 +159,8 @@
+@@ -159,6 +159,7 @@
  void setup_ksu_cred(void)
  {
      if (ksu_cred) {
 -        setup_selinux(KERNEL_SU_CONTEXT, ksu_cred);
 +        if (setup_selinux(KERNEL_SU_CONTEXT, ksu_cred))
-+            pr_err("Failed to initialize KernelSU credentials SELinux context\n");
++            pr_err("Failed to initialize KernelSU credentials SELinux context\\n");
      }
  }
  
 diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
 --- a/kernel/policy/app_profile.c
 +++ b/kernel/policy/app_profile.c
-@@ -205,9 +205,11 @@
-     memcpy(&cred->cap_bset, &profile->capabilities.effective, sizeof(cred->cap_bset));
- 
-     setup_groups(profile, cred);
+@@ -205,8 +205,10 @@
+-    setup_groups(profile, cred);
 -    setup_selinux(profile->selinux_domain, cred);
--
--    commit_creds(cred);
 +    ret = setup_selinux(profile->selinux_domain, cred);
 +    if (ret)
 +        goto out_abort_creds;
-+
-+    commit_creds(cred);
  
-     if (likely(test_thread_flag(TIF_SECCOMP)))
-         disable_seccomp();
+     commit_creds(cred);
+-
+-    if (likely(test_thread_flag(TIF_SECCOMP)))
+-        disable_seccomp();
 @@ -241,8 +243,11 @@
          return -EINVAL;
      }
