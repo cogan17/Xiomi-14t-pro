@@ -264,3 +264,23 @@ bukan menghapus jejak kejadian.
 - **Langkah selanjutnya:** persiapan rencana pemulihan terkontrol
   dan pemeriksaan konsekuensi root `init_boot_a` Degas, **tanpa
   menulis partisi** sampai ada keputusan setelah review.
+
+## 2026-10-12 — Audit perlindungan BakaSU dan modul
+
+- **Permintaan:** semua modul yang terpasang penting untuk dijaga selain
+  root manager BakaSU, NoMount/MetaModule, dan driver kernel.
+- **Dasar bukti:** backup partisi Slot A dan salinan USB sudah 7/7
+  SHA-256 PASS; image tersebut tidak menjangkau semua data modul
+  systemless dan pengaturan di `/data`.
+- **Tindakan dokumentasi:** menambahkan
+  [audit keselamatan modul](ROTHKO_BAKASU_MODULE_SAFETY.md),
+  skrip read-only `scripts/collect_bakasu_module_inventory.sh`,
+  dan workflow pemeriksaan statis terpisah.
+- **Belum diuji:** inventaris modul aktual di perangkat; backup
+  module installer/config dan ketergantungan NoMount/SUSFS; daftar
+  izin root (disengaja tidak diekstrak untuk privasi).
+- **Larangan:** tidak ada flash, restore, disable/remove modul,
+  pergantian slot ataupun penulisan ke `/data/adb`.
+- **Berikutnya:** jalankan skrip read-only setelah membaca isinya,
+  tentukan modul kritis, lalu susun backup privat di USB dan review
+  risiko sebelum mempertimbangkan perubahan `init_boot_a`.
