@@ -137,6 +137,7 @@ done
 if [[ "$susfs_fetched" != 1 ]]; then
   echo "WARN: trying pinned SUSFS branch as transport fallback; exact commit remains mandatory" >&2
   if ! git -C "$tmp/susfs" -c http.version=HTTP/1.1 fetch --quiet --depth=1 origin "$SUSFS_REF"; then
+    echo "BLOCK: SUSFS acquisition unavailable; pinned KSUN candidate checks above remain independently valid" >&2
     echo "FAIL: pinned SUSFS source unavailable via SHA or branch" >&2
     exit 16
   fi
