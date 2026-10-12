@@ -1,0 +1,79 @@
+diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
+--- a/kernel/policy/app_profile.c
++++ b/kernel/policy/app_profile.c
+@@ -81,16 +81,9 @@
+ static bool has_call_to_spin_lock = false;
+ #endif
+ 
+-void disable_seccomp(void)
++static void disable_seccomp_with_scratch(struct task_struct *fake)
+ {
+-    struct task_struct *fake;
+ 
+-    fake = kmalloc(sizeof(*fake), GFP_KERNEL);
+-    if (!fake) {
+-        pr_warn("failed to alloc fake task_struct\n");
+-        return;
+-    }
+-
+     // Refer to kernel/seccomp.c: seccomp_set_mode_strict
+     // When disabling Seccomp, ensure that current->sighand->siglock is held during the operation.
+     spin_lock_irq(&current->sighand->siglock);
+@@ -124,6 +117,17 @@
+ #endif
+ 
+     seccomp_filter_release(fake);
++}
++
++void disable_seccomp(void)
++{
++    struct task_struct *fake = kmalloc(sizeof(*fake), GFP_KERNEL);
++
++    if (!fake) {
++        pr_warn("failed to alloc fake task_struct\n");
++        return;
++    }
++    disable_seccomp_with_scratch(fake);
+     kfree(fake);
+ }
+ 
+@@ -135,10 +139,19 @@
+     struct task_struct *t;
+     struct root_profile *profile = NULL;
+     struct user_struct *new_user;
++    struct task_struct *seccomp_scratch = NULL;
+ 
++    /* Reserve all seccomp scratch memory before credentials can be committed. */
++    if (test_thread_flag(TIF_SECCOMP)) {
++        seccomp_scratch = kmalloc(sizeof(*seccomp_scratch), GFP_KERNEL);
++        if (!seccomp_scratch)
++            return -ENOMEM;
++    }
++
+     cred = prepare_creds();
+     if (!cred) {
+         pr_warn("prepare_creds failed!\n");
++        kfree(seccomp_scratch);
+         return -ENOMEM;
+     }
+ 
+@@ -209,8 +222,9 @@
+ 
+     commit_creds(cred);
+ 
+-    if (likely(test_thread_flag(TIF_SECCOMP)))
+-        disable_seccomp();
++    if (seccomp_scratch && likely(test_thread_flag(TIF_SECCOMP)))
++        disable_seccomp_with_scratch(seccomp_scratch);
++    kfree(seccomp_scratch);
+ 
+     if (profile->flags & FLAG_KSU_NO_NEW_PRIVS) {
+         set_thread_flag(TIF_KSU_DISABLE_ESCAPE_WITH_ROOT);
+@@ -230,6 +244,7 @@
+     if (profile)
+         ksu_put_root_profile(profile);
+     abort_creds(cred);
++    kfree(seccomp_scratch);
+     return ret;
+ }
+ 
