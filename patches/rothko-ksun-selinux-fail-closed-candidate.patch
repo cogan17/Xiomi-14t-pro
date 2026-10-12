@@ -13,7 +13,7 @@ diff --git a/kernel/selinux/selinux.h b/kernel/selinux/selinux.h
 diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
 --- a/kernel/selinux/selinux.c
 +++ b/kernel/selinux/selinux.c
-@@ -148,13 +148,13 @@
+@@ -148,18 +148,19 @@
      return is_sid_match(cred, cached_init_sid, INIT_CONTEXT);
  }
  
@@ -34,10 +34,13 @@ diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
  
  void setup_ksu_cred(void)
  {
-@@ -162,1 +162,2 @@
+     if (ksu_cred) {
 -        setup_selinux(KERNEL_SU_CONTEXT, ksu_cred);
 +        if (setup_selinux(KERNEL_SU_CONTEXT, ksu_cred))
 +            pr_err("Failed to initialize KernelSU credentials SELinux context\n");
+     }
+ }
+ 
 diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
 --- a/kernel/policy/app_profile.c
 +++ b/kernel/policy/app_profile.c
