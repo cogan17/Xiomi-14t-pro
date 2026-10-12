@@ -94,6 +94,19 @@ for name, passed in checks.items():
     print(("PASS" if passed else "FAIL") + ": candidate " + name, flush=True)
 if not all(checks.values()):
     raise SystemExit(19)
+# Order and failure-path checks are deliberately stricter than token presence.
+lines = patch.splitlines()
+def pos(needle):
+    return next((i for i, line in enumerate(lines) if needle in line), -1)
+allocation = pos("+    struct filename *replacement = getname_kernel(ksud_path);")
+escape = pos("     ret = escape_with_root_profile();")
+transfer = pos("+    *filename_ptr = replacement;")
+release = pos("+    putname(filename);")
+cleanup = [i for i, line in enumerate(lines) if line.strip() == "+        putname(replacement);"]
+ordered = 0 <= allocation < escape < transfer < release and len(cleanup) >= 2 and all(escape < i < transfer for i in cleanup)
+print(("PASS" if ordered else "FAIL") + ": allocation precedes escape; cleanup precedes transfer; old name released after transfer", flush=True)
+if not ordered:
+    raise SystemExit(20)
 print("BLOCK: static checks cannot prove credential rollback or filename ownership", flush=True)
 PY
 
