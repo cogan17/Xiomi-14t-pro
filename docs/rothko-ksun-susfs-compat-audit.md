@@ -69,3 +69,12 @@ Continue **source-level audit only**. Do not pin a guessed SUSFS SHA, assert com
 - Verified live source access limitation: container `git ls-remote` failed due DNS for github.com; direct GitHub pinned `kernel/Kbuild` page could not be fetched. **Do not claim any source-level hook comparison has been completed.**
 - Explicitly distinguish **permission to run a non-flashable CI compile** from **permission to flash/merge**. Neither is approved yet: missing source-level interface comparison and vendor ABI/KMI evidence.
 - **Next action required:** obtain readable immutable KSUN kernel source and Simonpunk patch source, inspect hook symbols/headers and `git apply --check` against Rothko; then prepare non-flashable isolated CI only after a clean preflight.
+
+## Fourth investigation — verified pinned KSUN source (2026-10-12)
+GitHub connector **successfully fetched source contents** at `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161`:
+- `kernel/Kbuild`: when `CONFIG_KSU_SUSFS=y`, excludes regular syscall hook objects; SUSFS section reads `SUSFS_VERSION` from `include/linux/susfs.h` when `fs/susfs.c` exists. This is a real conditional integration path, **not** evidence all hook interfaces match.
+- `kernel/Kconfig`: `KSU_SUSFS` and feature switches `SUS_PATH`, `SUS_MOUNT`, `SUS_KSTAT`, `SPOOF_UNAME`, `OPEN_REDIRECT`, `SUS_MAP` are present.
+- `kernel/Makefile`: standalone module build support exists; not equivalent to the in-tree Xiaomi BSP path.
+- `kernel/tools/susfs_compat.mk`: 404 at this SHA/path, unlike BakaSU; **absence of this one file is not proof of compatibility**.
+- WildKernels `.github/workflows/main.yml` was fetched directly, but its size and complexity require exact pin extraction before applying any recipes.
+- Remaining blocking work: obtain exact Simonpunk SUSFS source at a pinned SHA, compare all KSUN SUSFS hook signatures and proc/maps changes against Rothko BSP, then validate Kconfig integration and `git apply --check`. No source code was changed and no CI build started.
