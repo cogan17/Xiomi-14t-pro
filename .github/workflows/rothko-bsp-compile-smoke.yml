@@ -29,7 +29,7 @@ concurrency:
 
 jobs:
   compile-arm64:
-    name: Build Xiaomi BSP ARM64 Image (NOT FLASHABLE)
+    name: Configure or compile ARM64 baseline (NOT FLASHABLE)
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
