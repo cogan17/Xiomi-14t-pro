@@ -163,11 +163,16 @@ echo "===== END EXECVE / ARM64 PREBUILD CONTRACT GATE ====="
 echo "===== WHOLE-TREE ARM64 FLAG COLLISION AUDIT ====="
 # Search tracked files only, avoiding generated/untracked content. A textual
 # match is evidence for manual review, not proof of runtime flag collision.
-if git -C "$tmp/rothko" grep -nE '^[[:space:]]*#[[:space:]]*define[[:space:]]+TIF_[A-Za-z0-9_]+[[:space:]]+34([[:space:]]|$)' -- 'arch/arm64/**' 'include/**'; then
-  echo "BLOCK: existing TIF bit-34 definitions require manual collision review"
+# Exclude the expected SUSFS definition itself; otherwise the audit flags its
+# own intentional TIF_PROC_NO_SU reservation as a collision.
+collision_matches="$(git -C "$tmp/rothko" grep -nE '^[[:space:]]*#[[:space:]]*define[[:space:]]+TIF_[A-Za-z0-9_]+[[:space:]]+34([[:space:]]|$)' -- 'arch/arm64/**' 'include/**' || true)"
+collision_matches="$(printf '%s\\n' "$collision_matches" | grep -vE '(^|:)#define[[:space:]]+TIF_PROC_NO_SU[[:space:]]+34([[:space:]]|$)' || true)"
+if [[ -n "$collision_matches" ]]; then
+  printf '%s\\n' "$collision_matches"
+  echo "BLOCK: another TIF bit-34 definition requires manual collision review"
   printf 'blocked\\n' > "$tmp/arm64_collision_status"
 else
-  echo "PASS: no other literal TIF bit-34 definition found in tracked ARM64/include source"
+  echo "PASS: no competing literal TIF bit-34 definition in tracked ARM64/include source"
 fi
 echo "===== END WHOLE-TREE ARM64 FLAG COLLISION AUDIT ====="
 
