@@ -526,3 +526,15 @@ bukan menghapus jejak kejadian.
   tidak mengubah partisi HP/slot. Hasil CI akan dinilai dari GitHub.
 - Langkah berikut: gunakan hasil kompilasi untuk menindaklanjuti
   toolchain/konfigurasi board + modul vendor, bukan menandai flash-ready.
+
+## 2026-10-12 — NoMount native integration (eksperimental)
+
+- Menambahkan `rothko_install_nomount.py`: integrasi sumber resmi
+  NoMount `maxsteeel/nomount` SHA `8005194827ca3edc7e75b9523a874307b2c3e883`
+  ke `fs/nomount` pada checkout CI terisolasi, tanpa menjalankan setup
+  script jaringan dan tanpa menduplikasi Kconfig/Makefile.
+- CI mencoba kompilasi `CONFIG_NOMOUNT=y` dengan `CONFIG_MODVERSIONS=y`
+  dan source BSP 6.1.57 generik; hasilnya dilihat dari run PR.
+- **Belum** diuji bersama driver KSU/KSUN/BakaSU, SUSFS, MetaModule,
+  konfigurasi board Rothko/MT6989, maupun modul vendor.
+- Tidak ada boot.img, AK3, release, artifact siap-flash, atau tindakan HP.
