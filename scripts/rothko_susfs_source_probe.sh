@@ -21,7 +21,7 @@ for f in kernel_patches/include/linux/susfs.h kernel_patches/include/linux/susfs
 done
 # These requirements are for the pinned KSUN dispatcher; fail closed.
 for symbol in susfs_is_current_proc_no_su TIF_PROC_NO_SU CMD_SUSFS_SHOW_VERSION CMD_SUSFS_ADD_SUS_PATH_LOOP; do
-  if ! grep -Eq "\\b${symbol}\\b" "$tmp/susfs/kernel_patches/include/linux/susfs_def.h" "$tmp/susfs/kernel_patches/include/linux/susfs.h"; then
+  if ! grep -Eq "(^|[^[:alnum:]_])${symbol}([^[:alnum:]_]|$)" "$tmp/susfs/kernel_patches/include/linux/susfs_def.h" "$tmp/susfs/kernel_patches/include/linux/susfs.h"; then
     echo "FAIL: upstream SUSFS headers missing $symbol"
     exit 3
   fi
