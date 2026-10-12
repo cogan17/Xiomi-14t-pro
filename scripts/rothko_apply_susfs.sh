@@ -53,6 +53,7 @@ patchfile="$susfs/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch"
 }
 # Deliberately stop on any changed context or conflict; no --reject or --3way.
 git -C "$tree" apply --check --whitespace=error "$patchfile" || {
+  python3 "$tree/scripts/rothko_susfs_conflicts.py" "$patchfile" "$tree" || true
   echo "::error::Simonpunk's GKI patch does not cleanly apply to Xiaomi Rothko BSP.";
   echo "::error::Adapt the patch after reviewing actual conflicts; no unsafe overrides.";
   exit 1;
