@@ -193,6 +193,33 @@ print("BLOCK: credential rollback, FD lifetime, and linking remain unverified", 
 status.write_text("blocked\\n")
 PY
 echo "===== END CANDIDATE PRIVILEGE FLOW AUDIT ====="
+echo "===== PINNED KSUN ROOT-PROFILE SEMANTICS ====="
+python3 - "$tmp/ksun/kernel/policy/app_profile.c" "$tmp/root_profile_status" <<'PY'
+from pathlib import Path
+import sys
+source = Path(sys.argv[1]).read_text(errors="replace")
+status = Path(sys.argv[2])
+start = source.find("int escape_with_root_profile(void)")
+end = source.find("int escape_to_root_for_init(void)", start)
+if start < 0 or end < 0:
+    print("BLOCK: root profile implementation not found", flush=True)
+    status.write_text("blocked\\n")
+else:
+    body = source[start:end]
+    checks = {
+        "credential commit present": "commit_creds(cred);" in body,
+        "abort on precommit error": "abort_creds(cred);" in body,
+        "early no-op may return success": "goto out_abort_creds;" in body and "return ret;" in body,
+        "namespace setup follows credential commit": body.find("setup_mount_ns(") > body.find("commit_creds(cred);"),
+    }
+    for label, passed in checks.items():
+        print(("PASS" if passed else "BLOCK") + ": " + label, flush=True)
+    if not all(checks.values()):
+        status.write_text("blocked\\n")
+    # These source facts are diagnostic; none proves the post-exec FD contract.
+PY
+echo "===== END PINNED KSUN ROOT-PROFILE SEMANTICS ====="
+
 
 
 
