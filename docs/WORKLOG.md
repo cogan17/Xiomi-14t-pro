@@ -191,3 +191,26 @@ bukan menghapus jejak kejadian.
   read-only pada folder 07.19 dan kirim hasilnya.
 - **Tidak dilakukan:** flashing, restore, pergantian slot, modifikasi BakaSU,
   atau mengunggah image mentah ke repository.
+
+## 2026-10-12 — Verifikasi byte 7/7 image backup 07.19
+
+- **Input:** `backup.json` dan tujuh image mentah yang diunggah
+  pengguna dari Kernel Flasher backup `2026-10-12--07-19`.
+- **Metode:** baca seluruh byte image dari berkas terunggah dan hitung
+  ulang SHA-256 secara independen; bandingkan dengan metadata JSON.
+- **Hasil:** **7/7 PASS, 0 mismatch, 0 file hilang**.
+  Total ketujuh image 188,825,600 byte (~180.08 MiB).
+- **Partisi:** `boot` 67,108,864 B; `init_boot` 8,388,608 B;
+  `vendor_boot` 67,108,864 B; `dtbo` 8,388,608 B;
+  `vbmeta` 8,388,608 B; `system_dlkm` 7,471,104 B;
+  `vendor_dlkm` 21,970,944 B.
+- **Triangulasi:** lima image boot sama SHA-nya dengan pemeriksaan
+  partisi aktif Termux; dua DLKM cocok dengan metadata backup.
+- **Yang belum diuji:** keberadaan/verifikasi copy terpisah di media lain,
+  kemampuan restore, kecocokan ABI komprehensif, dan alasan Slot B
+  Unbootable. SHA cocok tidak berarti jaminan flash aman.
+- **Dokumentasi:** [laporan integritas tujuh image](ROTHKO_SLOT_A_BACKUP_INTEGRITY.md).
+- **Tidak dilakukan:** flashing, restore, pergantian slot, mengubah
+  root/BakaSU, atau commit file image mentah ke GitHub.
+- **Selanjutnya:** salin seluruh folder backup utuh beserta JSON ke
+  PC/SSD/USB, verifikasi checksum kembali dan jaga Slot A tetap bekerja.
