@@ -1,3 +1,13 @@
+# Cogan Rothko — status eksperimen / Experimental status
+
+**Bahasa Indonesia:** Integrasi KSUN + SUSFS untuk Xiaomi 14T Pro (`rothko`) masih **Draft / belum siap flash**. Source common saat ini Linux **6.1.57**, sedangkan jalur kernel Cogan r7 yang sebelumnya dilaporkan menggunakan **6.1.177 / android14-11**. Source modul vendor resmi Xiaomi dipisahkan di `MiCode/MTK_kernel_modules`. Prioritas sekarang adalah **memastikan basis kernel, firmware, dan modul vendor selaras**, bukan menambah audit berulang. [Lihat keputusan build](docs/ROTHKO_KERNEL_BASELINE_AND_BUILD_DECISION.md).
+
+**English:** This KSUN + SUSFS experiment is **not flash-ready**. The checked-out common source is Linux 6.1.57 and must not be treated as a drop-in replacement for the previously reported 6.1.177 / android14-11 device kernel. Align the exact firmware, common source and official MediaTek vendor modules first. See the [build decision](docs/ROTHKO_KERNEL_BASELINE_AND_BUILD_DECISION.md).
+
+**中文:** 当前 KSUN + SUSFS 项目仍为实验阶段，**不可用于刷机**。请先核对设备固件、内核版本和官方联发科供应商模块，再进行编译。详情参见[构建决策文档](docs/ROTHKO_KERNEL_BASELINE_AND_BUILD_DECISION.md)。
+
+---
+
 # How do I submit patches to Android Common Kernels
 
 1. BEST: Make all of your changes to upstream Linux. If appropriate, backport to the stable releases.
