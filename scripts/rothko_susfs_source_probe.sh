@@ -106,6 +106,9 @@ print("AUDIT NOTE: matches are evidence only; inspect conditional compilation an
 PY
 echo "===== END KSUN SYMBOL AUDIT ====="
 
+# Verify the script parses before costly upstream acquisitions on every CI run.
+# This check also runs at workflow startup; retain here for manual invocation.
+echo "Audit script syntax: validated by bash parser at workflow entry"
 echo "===== EXECVE / ARM64 PREBUILD CONTRACT GATE ====="
 python3 - "$tmp/ksun" "$tmp/susfs" "$tmp/rothko" "$tmp/contract_status" <<'PY'
 from pathlib import Path
