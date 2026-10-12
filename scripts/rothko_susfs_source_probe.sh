@@ -31,6 +31,17 @@ mapfile -t patches < <(find "$tmp/susfs/kernel_patches" -type f -name '*6.1*.pat
 if (( ${#patches[@]} == 0 )); then echo "FAIL: no 6.1 patch candidates"; exit 4; fi
 echo "Kernel patch candidates (dry run only):"
 printf '%s\n' "${patches[@]}"
-# This probe deliberately does not guess which patch family belongs to the BSP.
-echo "PENDING: select exact 6.1 BSP patch series after reviewing filenames and headers."
+# Apply-check only against a fresh isolated checkout of the pinned Rothko BSP.
+# No git apply is performed. This is a diagnostic patch-context test.
+patch="$tmp/susfs/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch"
+test -s "$patch" || { echo "FAIL: expected Android 14 / 6.1 patch absent"; exit 5; }
+git clone --quiet --filter=blob:none --no-checkout "$ROOT" "$tmp/rothko"
+git -C "$tmp/rothko" checkout --quiet "$KERNEL_REF"
+echo "Rothko source SHA: $(git -C "$tmp/rothko" rev-parse HEAD)"
+if git -C "$tmp/rothko" apply --check --verbose "$patch"; then
+  echo "PASS: official 6.1 patch passes git apply --check against pristine Rothko BSP"
+else
+  echo "FAIL: official 6.1 patch does not apply cleanly to pristine Rothko BSP"
+  exit 6
+fi
 echo "NO BUILD, NO FLASH, NO PATCH APPLICATION"
