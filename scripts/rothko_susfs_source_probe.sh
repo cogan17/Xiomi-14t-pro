@@ -165,6 +165,34 @@ else
   printf 'blocked\\n' > "$tmp/candidate_status"
 fi
 echo "===== END PINNED KSUN SOURCE FIX CANDIDATE ====="
+echo "===== CANDIDATE PRIVILEGE FLOW AUDIT (NO EXECUTION) ====="
+python3 - "$tmp/ksun/kernel/feature/sucompat.c" "$candidate" "$tmp/candidate_semantics_status" <<'PY'
+from pathlib import Path
+import re, sys
+source = Path(sys.argv[1]).read_text()
+patch = Path(sys.argv[2]).read_text()
+status = Path(sys.argv[3])
+# The staged patch must not redirect to ksud until profile escape succeeds.
+required = {
+    "profile escape precedes redirect in added code": bool(re.search(
+        r"^\\+\\s*ret\\s*=\\s*escape_with_root_profile\\(\\);.*?^\\+\\s*memcpy\\(\\(void \\*\\)filename->name, ksud_path",
+        patch, re.M | re.S)),
+    "failure branch prevents redirect": bool(re.search(
+        r"^\\+\\s*if \\(ret\\) \\{.*?^\\+\\s*return 0;.*?^\\+\\s*\\}",
+        patch, re.M | re.S)),
+    "upstream still uses mutable filename buffer": "memcpy((void *)filename->name, ksud_path" in source,
+}
+for label, ok in required.items():
+    print(("PASS" if ok else "BLOCK") + ": " + label, flush=True)
+if not all(required.values()):
+    status.write_text("blocked\\n")
+# Even with all static checks passing, there is no proof that
+# escape_with_root_profile() rolls back credentials on partial failure.
+print("BLOCK: credential rollback, FD lifetime, and linking remain unverified", flush=True)
+status.write_text("blocked\\n")
+PY
+echo "===== END CANDIDATE PRIVILEGE FLOW AUDIT ====="
+
 
 
 
@@ -278,6 +306,10 @@ if git -C "$tmp/rothko" apply --check --verbose "$patch"; then
 else
   echo "FAIL: official 6.1 patch does not apply cleanly to pristine Rothko BSP"
   patch_status=6
+fi
+if [[ -f "$tmp/candidate_semantics_status" ]]; then
+  echo "FAIL: privilege flow requires source-level credential/FD proof"
+  exit 14
 fi
 if [[ -f "$tmp/candidate_status" ]]; then
   echo "FAIL: staged KSUN source fix candidate rejected"
