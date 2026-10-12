@@ -95,3 +95,24 @@ yang merupakan perintah untuk flashing.
 
 Jangan mengubah keputusan lama diam-diam. Saat keputusan dibatalkan,
 catat keputusan pengganti dan alasannya dengan ID baru.
+
+### D-015 — Form Rothko menggunakan pilihan fitur bertanda merah
+
+- **Tanggal:** 2026-10-12.
+- **Keputusan:** formulir `workflow_dispatch` untuk Rothko memuat empat
+  pilihan root: KernelSU, KernelSU-Next, BakaSU (default), dan All.
+  **All = tiga varian terpisah**, bukan tiga root driver dalam satu kernel.
+- **Sembilan opsi fitur:** SUSFS, NoMount, Baseband Guard, Networking,
+  Ptrace Patch, Unicode Fix, BPF Stack (BTF/eBPF/FUSE-BPF), Performance,
+  dan *Render release notes preview only*.
+- **Default:** tujuh opsi pertama aktif; Performance dan preview release
+  notes tidak aktif. Semua hanya **pilihan rencana**.
+- **Pengecualian:** DroidSpaces dan NTSync dihapus; jangan menyalin
+  toggle tambahan ZRAM, Re-Kernel atau CVE dari workflow GKI BakaSU.
+  NoMount dan BBG hanya muncul sekali, mengikuti daftar WildKernel.
+- **Implementasi:** workflow pemilihan + validator kontrak + pengujian;
+  **belum** mengintegrasikan root/patch, mengompilasi atau menghasilkan ZIP.
+- **Alasan:** pertahankan antarmuka yang dipilih pengguna tanpa
+  mencampurkan pekerjaan GKI Cogan dan BSP Rothko.
+- **Status:** diterapkan pada branch PR sebagai rancangan CI, belum
+  disetujui untuk flashing. Tinjau hasil GitHub Actions setelah PR dibuka.
