@@ -80,7 +80,10 @@ disetujui untuk flashing dari proyek ini.
    Backup 02.40 dan 07.19 harus ditangani terpisah.
    **Verifier berkas backup [Tahap 9](ROTHKO_SLOT_A_BACKUP_INTEGRITY.md)
    sudah dibuat**, dengan tes sintetik di GitHub Actions. Verifikasi
-   folder 07.19 pada HP **belum dilakukan**.
+   folder 07.19 pada HP **belum dilakukan**. Video File Manager+
+   kemudian membuktikan **keberadaan visual** `backup.json` dan ketujuh
+   file `.img` dalam folder 07.19, dengan ukuran yang masuk akal;
+   **SHA-256 file-file itu belum dihitung ulang di HP**.
    **Integritas tujuh image backup yang disimpan belum diverifikasi**;
    metadata JSON saja bukan cadangan partisi. Prioritaskan pemeriksaan
    file-file image dan simpan salinan terpisah sebelum pemulihan.
