@@ -6,11 +6,13 @@ on:
     paths:
       - patches/rothko-ksun-sucompat-fail-closed-candidate.patch
       - patches/rothko-ksun-groups-fail-closed-candidate.patch
+      - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - .github/workflows/rothko-ksun-candidate-audit.yml
   pull_request:
     paths:
       - patches/rothko-ksun-sucompat-fail-closed-candidate.patch
       - patches/rothko-ksun-groups-fail-closed-candidate.patch
+      - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - .github/workflows/rothko-ksun-candidate-audit.yml
   workflow_dispatch:
 permissions:
@@ -39,7 +41,9 @@ jobs:
           git -C /tmp/ksun apply "$GITHUB_WORKSPACE/patches/rothko-ksun-groups-fail-closed-candidate.patch"
           git -C /tmp/ksun apply --check --verbose "$GITHUB_WORKSPACE/patches/rothko-ksun-sucompat-fail-closed-candidate.patch"
           git -C /tmp/ksun apply "$GITHUB_WORKSPACE/patches/rothko-ksun-sucompat-fail-closed-candidate.patch"
-          echo "PASS: both candidates apply sequentially to pinned KSUN source"
+          git -C /tmp/ksun apply --check --verbose "$GITHUB_WORKSPACE/patches/rothko-ksun-seccomp-prealloc-candidate.patch"
+          git -C /tmp/ksun apply "$GITHUB_WORKSPACE/patches/rothko-ksun-seccomp-prealloc-candidate.patch"
+          echo "PASS: three candidates apply sequentially to pinned KSUN source"
           python3 - <<'PY'
           from pathlib import Path
           import re
@@ -51,6 +55,8 @@ jobs:
               "allocated filename before profile escape": su.find("replacement = getname_kernel(ksud_path)") < su.find("ret = escape_with_root_profile()"),
               "post-escape root/domain check": "susfs_is_current_ksu_domain()" in su and "current_euid()" in su,
               "profile commit exists": "commit_creds(cred)" in policy,
+              "seccomp scratch reserved before commit": policy.index("seccomp_scratch = kmalloc(") < policy.index("commit_creds(cred);", policy.index("int escape_with_root_profile(void)")),
+              "post-commit seccomp uses reserved scratch": "disable_seccomp_with_scratch(seccomp_scratch);" in policy,
               "groups setup failure checked before commit": policy.index("ret = setup_groups(profile, cred);") < policy.index("commit_creds(cred);", policy.index("int escape_with_root_profile(void)")) and "if (ret)\n        goto out_abort_creds;" in policy,
               "namespace setup follows commit in escape function": policy.index("commit_creds(cred);", policy.index("int escape_with_root_profile(void)")) < policy.index("setup_mount_ns(profile->namespaces);", policy.index("int escape_with_root_profile(void)")),
           }
@@ -63,8 +69,7 @@ jobs:
           groups = policy.split("static int setup_groups(", 1)[1].split("void seccomp_filter_release(", 1)[0]
           if "groups_alloc(" in groups and "return;" in groups:
               print("BLOCK: setup_groups can silently return on allocation/validation failure")
-          if escape.index("commit_creds(cred);") < escape.index("disable_seccomp();"):
-              print("BLOCK: disable_seccomp occurs after irreversible credential commit")
+          print("BLOCK: seccomp scratch candidate still needs Rothko BSP compile and runtime review")
           print("BLOCK: no verified pre-commit domain authorization guarantee")
           print("PASS: textual ordering within escape_with_root_profile (not runtime proof)")
           print("BLOCK: no credential rollback after commit_creds")
