@@ -4,10 +4,7 @@
 identik dengan firmware stock **Rothko**, identik dengan firmware stock
 **Degas**, atau berbeda dari keduanya.
 
-**Status diperbarui 2026-10-12:** skrip sudah dijalankan pada HP dan
-membuktikan **init_boot_a aktif identik dengan stock Degas WNEIDXM**, bukan
-stock Rothko WNNIDXM. Hasil ini **tidak** memberi izin mengganti
-partisi/root/slot ataupun membuktikan adanya kerusakan.
+**PEMBARUAN TERBARU 12 Oktober 2026, pasca-flash:** pengguna melaporkan mem-flash `init_boot.img` stock **Rothko WNNIDXM** lalu menginstal ulang kernel **Cogan r7**, reboot sukses sampai home screen, dan mengirim backup `09-09`. **SHA-256 tujuh image backup dihitung ulang: PASS 7/7. Image `init_boot` kini identik dengan stock Rothko** (`4b25ce3f...`), bukan lagi stock Degas. Bukti keadaan Degas di bawah merupakan **snapshot historis pra-flash (07-19)**. Lihat [laporan pasca-flash](ROTHKO_POST_FLASH_INIT_BOOT_0909.md). Runtime BakaSU/modul pasca-flash belum diverifikasi.
 
 ## Referensi berasal dari ZIP yang sudah diaudit
 
@@ -181,3 +178,12 @@ Jika investigasi suhu dilanjutkan, gunakan data observasional
 read-only pada idle dan beban normal serta pisahkan
 suhu **baterai** dari sensor SoC/perangkat.
 
+## Addendum setelah flashing — snapshot terbaru 09.09
+
+- Pengguna telah melakukan metode **stock Rothko `init_boot` → Cogan r7** atas keputusannya sendiri, dan melaporkan reboot berhasil masuk home screen.
+- Backup `2026-10-12--09-09` menunjukkan `init_boot.img` SHA-256 `4b25ce3f4a321b34aa5f84e7c8b0328065d7038c1a00b91fdcca7e0c17fe463f` (**stock Rothko**) setelah pembacaan ulang file yang diunggah.
+- Backup `07-19` menunjukkan `init_boot.img` `951f096146157773abe4cbbd9b0dacbe9c2fa6400d4c438298353e5fb8a8bf04` (**stock Degas**).
+- Keenam image lain termasuk `boot` Cogan r7 tidak berubah terhadap snapshot lama; **7/7 image baru cocok dengan metadata**.
+- Log AnyKernel3 09.07 mengarah ke `boot_a` dan berakhir `Done!`, dengan peringatan non-fatal `ash: bad number` (penyebab belum diaudit).
+- **Keterangan:** klasifikasi Degas yang dicatat sebelumnya tetap benar untuk waktu sebelum flashing, **bukan untuk snapshot terbaru**. Belum ada pemeriksaan ulang blok partisi aktif langsung via Termux setelah flashing; backup terbaru menjadi dasar kesimpulan saat ini.
+- Backup lama tidak boleh dihapus/ditimpa; perlindungan backup baru ke USB serta pemeriksaan Manager, SUSFS, NoMount dan 16 modul masih pending.
