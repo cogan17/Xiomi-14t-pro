@@ -85,6 +85,10 @@ jobs:
                   removed=[x[1:] for x in body if x.startswith("-")]
                   context=[x[1:] for x in body if x.startswith(" ")]
                   include_only=bool(added or removed) and all(x.strip().startswith("#include ") or not x.strip() for x in added+removed)
+                  # A header hunk may add blank lines or conditional guards.
+                  # Report additions individually rather than claiming the entire hunk is include-only.
+                  include_additions=[x.strip() for x in added if x.strip().startswith("#include ")]
+                  other_additions=[x.strip() for x in added if x.strip() and not x.strip().startswith("#include ")]
                   # Classify additive include hunks separately from source behavior.
                   # Do not treat an include-only hunk as an approved port.
                   additive_include_only=bool(added) and not removed and all(
@@ -96,6 +100,8 @@ jobs:
                   existing=sum(1 for x in added_includes if x in [y.strip() for y in src])
                   kind="ADDITIVE_INCLUDE_ONLY" if additive_include_only else ("INCLUDE_ONLY_CHANGE" if include_only else "SEMANTIC_OR_MIXED_CHANGE")
                   lines.append(f"- {hunk[0]}: {kind}; non-include context lines present in BSP {matched}/{len(anchors)}; new include directives already present {existing}/{len(added_includes)}")
+                  if include_additions:
+                      lines.append(f"  - Includes added: {len(include_additions)}; other nonblank additions: {len(other_additions)}; removed lines: {len(removed)}")
                   if include_only or additive_include_only:
                       lines.append("  - Context-only drift candidate; include dependencies and build still require verification")
               lines.append("")
