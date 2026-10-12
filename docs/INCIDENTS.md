@@ -91,6 +91,15 @@ bukti. Tiap insiden memiliki keadaan dan kriteria penutupan.
   aktif kini identik dengan stock Degas, **tidak ada bukti** bahwa
   image Degas dipasang pada insiden tersebut atau menyebabkan
   hilangnya modul. Jangan mengisi kekosongan ini dengan dugaan.
+- **Klarifikasi tambahan pengguna tentang HP sekarang:** setelah
+  proses flashing ulang perangkat, pengguna membedakan instalasi
+  root **LKM** (root manager mempatch `init_boot.img` dan
+  image terpatch dipasang) dengan kernel root **built-in/GKI**
+  seperti WildKernel dan Cogan. Insiden modul bootloop di atas
+  adalah **riwayat lebih lama yang terpisah**. Tidak ada
+  bukti yang menghubungkan image stock Degas `init_boot_a`
+  saat ini dengan proses pemulihan bootloop lama maupun satu
+  tanggal instalasi LKM tertentu.
 - **Dampak pada proyek:** prioritas keselamatan sekarang mencakup
   **mempertahankan BakaSU dan modul**, bukan sekadar membuat HP
   bisa boot. Backup tujuh image RAW Slot A serta salinan USB telah
