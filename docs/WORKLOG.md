@@ -349,3 +349,21 @@ bukan menghapus jejak kejadian.
 - **Tidak dilakukan:** tindakan flash, restore, hapus modul,
   ganti slot atau ubah BakaSU.
 
+## 2026-10-12 — Bukti ZIP di dalam subfolder modul
+
+- **Klarifikasi pengguna:** folder-folder di
+  `Penyimpanan Utama/ARoot/modulKSU/Simpan` memang menyimpan
+  file installer ZIP, dikelompokkan per modul dan versi.
+- **Screenshot contoh:** folder `TCP_Optimizer` memuat
+  `TCP_Optimiser-2.4-16.zip` (25,45 kB) dan
+  `TCP_Optimiser-2.5-17.zip` (396 kB).
+- **Makna:** setidaknya satu subfolder terbukti menyimpan ZIP;
+  pengguna menyatakan pola ini berlaku untuk koleksi arsipnya.
+  Belum ada validasi isi/versi tiap ZIP atau kecocokan dengan
+  seluruh 16 modul terpasang.
+- **Pemisahan:** arsip ZIP tersimpan tidak berarti modul terinstal
+  atau aktif. Tidak ada rencana mengaktifkan TCP Optimizer.
+- **Keselamatan:** flashdisk backup 7 image Cogan tetap
+  PASS 7/7; belum mengklaim koleksi installer juga sudah
+  diverifikasi di USB. Tidak dilakukan flashing atau perubahan root.
+
