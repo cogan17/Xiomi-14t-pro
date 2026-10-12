@@ -70,6 +70,28 @@ git -C "$tree" apply --check --whitespace=error "$patchfile" || {
   echo "::error::Manual semantic port required. No unsafe patch options enabled.";
   exit 1;
 }
+# Read-only audit of the exact pinned upstream task_mmu.c hunks before applying.
+# Expose added/removed lines and any page-size-migration references in CI.
+python3 - "$patchfile" "$tree/fs/proc/task_mmu.c" <<'PY_AUDIT'
+import pathlib, re, sys
+patch = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+source = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
+match = re.search(r"(?m)^diff --git a/fs/proc/task_mmu\\.c b/fs/proc/task_mmu\\.c\\n", patch)
+if not match:
+    raise SystemExit("::error::Pinned SUSFS patch lacks task_mmu.c diff")
+next_file = re.search(r"(?m)^diff --git a/", patch[match.end():])
+section = patch[match.start(): match.end() + next_file.start() if next_file else len(patch)]
+print("=== PINNED SUSFS task_mmu.c PATCH HUNKS (READ ONLY) ===", flush=True)
+for line in section.splitlines():
+    if line.startswith(("@@", "+", "-")) and not line.startswith(("+++", "---")):
+        print(line, flush=True)
+print("=== VMA / PAGE-SIZE DEPENDENCY REFERENCES ===", flush=True)
+for label, text in (("PATCH", section), ("XIAOMI", source)):
+    for n, line in enumerate(text.splitlines(), 1):
+        if re.search(r"VMA_PAD_START|vma_pad_pages|VM_PAD_MASK|pgsize_migration", line):
+            print(f"{label}:{n}: {line}", flush=True)
+print("Audit only; no macro fallback, no semantic changes.", flush=True)
+PY_AUDIT
 git -C "$tree" apply --whitespace=error "$patchfile"
 cp "$susfs/kernel_patches/fs/susfs.c" "$tree/fs/susfs.c"
 # Copy all official kernel-side SUSFS headers from the SAME pinned commit.
