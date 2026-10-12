@@ -1,0 +1,99 @@
+name: Cogan Rothko - ARM64 Source Compile (Diagnostic Only)
+
+# Real compilation of Xiaomi BSP using generic GKI config, NOT Rothko verified board config.
+# No flashable boot.img, AK3, releases or downloadable kernel binary.
+on:
+  pull_request:
+    branches:
+      - dev/rothko
+    paths:
+      - '.github/workflows/rothko-bsp-compile-smoke.yml'
+      - 'scripts/rothko_bsp_compile_smoke.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rothko-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile-arm64:
+    name: Build Xiaomi BSP ARM64 Image (NOT FLASHABLE)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ARCH: arm64
+      LLVM: '1'
+      LLVM_IAS: '1'
+      KBUILD_BUILD_USER: Cogan-CI
+      KBUILD_BUILD_HOST: github
+    steps:
+      - name: Checkout full kernel source on Linux
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Guard development-only invocation
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" == pull_request ]]; then
+            [[ "$BASE" == dev/rothko ]] || exit 1
+          else
+            [[ "$BRANCH" == dev/rothko ]] || { echo '::error::Dispatch only on dev/rothko'; exit 1; }
+          fi
+
+      - name: Install host LLVM compiler and basic kernel dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq clang lld llvm bc bison flex libssl-dev libelf-dev dwarves cpio rsync python3
+          clang --version | head -n 1
+          ld.lld --version
+          llvm-ar --version | head -n 1
+
+      - name: Check source provenance and MTK vendor branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/rothko_bsp_compile_smoke.sh provenance
+          remote_sha="$(git ls-remote --exit-code https://github.com/MiCode/MTK_kernel_modules.git refs/heads/bsp-rothko-u-oss | cut -f1)"
+          test -n "$remote_sha"
+          {
+            echo '### Rothko BSP compilation (diagnostic only)'
+            echo
+            echo "- Source checkout SHA: $(git rev-parse HEAD)"
+            echo "- MiCode MTK kernel modules branch: bsp-rothko-u-oss @ $remote_sha"
+            echo '- Vendor modules were NOT built or integrated.'
+            echo '- Host compiler is NOT the pinned Android production toolchain.'
+            echo '- Generic gki_defconfig is NOT verified for Rothko mt6989.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run REAL ARM64 kernel compilation
+        shell: bash
+        run: bash scripts/rothko_bsp_compile_smoke.sh compile
+
+      - name: Record compile checksum (no binary published)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, os, pathlib
+          p = pathlib.Path('out/arch/arm64/boot/Image')
+          assert p.is_file() and p.stat().st_size > 1048576
+          h = hashlib.sha256()
+          with p.open('rb') as src:
+              for block in iter(lambda: src.read(1048576), b''): h.update(block)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as out:
+              out.write('\n**Compiled ARM64 kernel Image (NOT FLASHABLE)**\n\n')
+              out.write(f'- Image size: {p.stat().st_size} bytes\n')
+              out.write(f'- Image SHA-256: {h.hexdigest()}\n')
+              out.write('- No AK3 ZIP, boot.img, artifact upload, release, or flash approval.\n')
+              out.write('- Root drivers, SUSFS, NoMount, vendor ABI/KMI NOT validated.\n')
+          PY
