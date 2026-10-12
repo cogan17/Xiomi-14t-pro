@@ -12,6 +12,12 @@ trap 'rm -rf "$tmp"' EXIT
 echo "Kernel ref: $KERNEL_REF; SUSFS branch: $SUSFS_REF; KSUN pin: $KSUN_SHA"
 git clone --quiet --filter=blob:none --single-branch --branch "$SUSFS_REF" "$SUSFS_URL" "$tmp/susfs"
 sha="$(git -C "$tmp/susfs" rev-parse HEAD)"
+# Fail closed if upstream branch moved beyond the source pin audited here.
+EXPECTED_SUSFS_SHA="5192aa2d33b381b58c1051532f9e1dfa5de6e8d3"
+if [[ "$sha" != "$EXPECTED_SUSFS_SHA" ]]; then
+  echo "FAIL: SUSFS upstream moved ($sha); re-audit and re-pin explicitly before compiling"
+  exit 7
+fi
 echo "Resolved SUSFS SHA: $sha"
 echo "Upstream SUSFS patch inventory:"
 find "$tmp/susfs/kernel_patches" -type f -name "*.patch" | sort | head -100
@@ -62,37 +68,42 @@ echo "Resolved KSUN SHA: $(git -C "$tmp/ksun" rev-parse HEAD)"
 python3 - "$tmp/ksun" "$tmp/susfs" "$tmp/rothko" <<'PY'
 import pathlib, re, sys
 ksun, susfs, rothko = map(pathlib.Path, sys.argv[1:])
-symbols = [
+symbols = (
     "ksu_handle_execveat", "ksu_handle_execveat_sucompat",
     "ksu_handle_post_execveat_sucompat", "ksu_su_compat_enabled",
     "susfs_is_current_proc_no_su", "TIF_PROC_NO_SU",
-    "selinux", "avc_has_perm", "security_bprm_check",
-]
-roots = [(ksun, "KSUN"), (susfs / "kernel_patches", "SUSFS"), (rothko, "ROTHKO")]
-for root, label in roots:
-    print("ROOT", label)
-    for symbol in symbols:
-        matches = []
-        for p in root.rglob("*"):
-            if not p.is_file() or p.suffix not in {".c", ".h", ".patch"}:
-                continue
-            if ".git" in p.parts:
-                continue
-            try:
-                for n, line in enumerate(p.read_text(errors="replace").splitlines(), 1):
-                    if re.search(r"(?<![A-Za-z0-9_])" + re.escape(symbol) + r"(?![A-Za-z0-9_])", line):
-                        matches.append(f"{p.relative_to(root)}:{n}:{line.strip()[:150]}")
-                        if len(matches) >= 12:
-                            break
-            except OSError:
-                pass
-            if len(matches) >= 12:
-                break
-        print("SYMBOL", symbol, "MATCHES", len(matches))
-        for match in matches:
-            print(" ", match)
-PY
-echo "===== END KSUN SYMBOL AUDIT ====="
+    "avc_has_perm", "security_bprm_check",
+)
+sources = {
+    "KSUN": [ksun / p for p in (
+        "kernel/feature/sucompat.c", "kernel/feature/sucompat.h",
+        "kernel/hook/syscall_event_bridge.c", "kernel/feature/selinux_hide.c",
+        "kernel/supercall/dispatch.c")],
+    "SUSFS": [susfs / "kernel_patches/50_add_susfs_in_gki-android14-6.1.patch",
+              susfs / "kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch",
+              susfs / "kernel_patches/include/linux/susfs_def.h"],
+    "ROTHKO": [rothko / p for p in (
+        "arch/arm64/include/asm/thread_info.h", "fs/exec.c",
+        "security/selinux/avc.c", "security/selinux/hooks.c",
+        "security/selinux/selinuxfs.c")],
+}
+for label, paths in sources.items():
+    print("ROOT", label, flush=True)
+    for p in paths:
+        if not p.is_file():
+            print("MISSING", p, flush=True)
+            continue
+        lines = p.read_text(errors="replace").splitlines()
+        print("FILE", p.relative_to({"KSUN": ksun, "SUSFS": susfs, "ROTHKO": rothko}[label]), flush=True)
+        shown = 0
+        for n, line in enumerate(lines, 1):
+            if any(re.search(r"(?<![A-Za-z0-9_])" + re.escape(sym) + r"(?![A-Za-z0-9_])", line) for sym in symbols):
+                if shown < 30:
+                    print(f"  {n}: {line.strip()[:170]}", flush=True)
+                shown += 1
+        print("MATCHES", shown, flush=True)
+print("AUDIT NOTE: matches are evidence only; inspect conditional compilation and signatures before patching.", flush=True)
+PYecho "===== END KSUN SYMBOL AUDIT ====="
 
 if git -C "$tmp/rothko" apply --check --verbose "$patch"; then
   echo "PASS: official 6.1 patch passes git apply --check against pristine Rothko BSP"
