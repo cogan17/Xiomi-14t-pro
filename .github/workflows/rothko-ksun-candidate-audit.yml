@@ -33,12 +33,13 @@ jobs:
           git -C /tmp/ksun -c http.version=HTTP/1.1 fetch --quiet --depth=1 origin "$pin"
           git -C /tmp/ksun checkout --quiet --detach FETCH_HEAD
           test "$(git -C /tmp/ksun rev-parse HEAD)" = "$pin"
-          git -C /tmp/ksun apply --check --verbose "$GITHUB_WORKSPACE/patches/rothko-ksun-sucompat-fail-closed-candidate.patch"
+          # Check and apply sequentially: both candidates touch app_profile.c.
+          # Independent checks against pristine source miss cross-patch overlap.
           git -C /tmp/ksun apply --check --verbose "$GITHUB_WORKSPACE/patches/rothko-ksun-groups-fail-closed-candidate.patch"
-          echo "PASS: both candidates apply independently to immutable KSUN source"
-          # Apply in disposable workspace to examine the actual patched source.
-          git -C /tmp/ksun apply "$GITHUB_WORKSPACE/patches/rothko-ksun-sucompat-fail-closed-candidate.patch"
           git -C /tmp/ksun apply "$GITHUB_WORKSPACE/patches/rothko-ksun-groups-fail-closed-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$GITHUB_WORKSPACE/patches/rothko-ksun-sucompat-fail-closed-candidate.patch"
+          git -C /tmp/ksun apply "$GITHUB_WORKSPACE/patches/rothko-ksun-sucompat-fail-closed-candidate.patch"
+          echo "PASS: both candidates apply sequentially to pinned KSUN source"
           python3 - <<'PY'
           from pathlib import Path
           import re
