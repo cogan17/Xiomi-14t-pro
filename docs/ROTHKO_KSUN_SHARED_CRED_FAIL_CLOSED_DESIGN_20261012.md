@@ -65,3 +65,18 @@ CI audit contract:
 4. The explicit `--require-integrated` gate must fail while G2–G6 and authorization/ABI/boot hazards remain unresolved.
 
 **Release decision remains BLOCKED** even if every applicability and mutation test passes. Build and flash steps are not part of the new workflow.
+
+
+## G3 partial startup caller candidate — status checks, unsafe retry still blocked
+
+**A separate, non-deployable C patch exists:** `patches/rothko-ksun-shared-cred-stage-guard-candidate.patch`. The audit workflow applies it only **after** the four original patches and the G1 status-returning helper patch to the temporary pinned KSUN source. It changes `kernel/runtime/ksud_integration.c`, not Rothko's actual BSP.
+
+- `CONFIG_KSU_SUSFS`: second-stage `init` and first zygote now each inspect `setup_ksu_cred()`; on nonzero return the pre-exec hook returns 0 **without clearing** its one-shot key.
+- `!CONFIG_KSU_SUSFS`: second-stage `init` checks the same status and returns from its `void` callback on failure before clearing its key.
+- The non-SUSFS zygote's stop-hook behavior remains unchanged. There is no late-load G2 change and no shared-cred consumer G4 change.
+- `scripts/rothko_ksun_stage_guard_candidate_audit.py` checks these source-level relationships and explicitly prints **RELEASE BLOCKED**.
+- `tests/test_rothko_ksun_stage_guard_candidate.py` injects **eight targeted negative mutations** into temporary copies to confirm the validator notices bypassed conditions and incorrect stage-key transitions. `--require-safe-retry` must fail with **RETRY GATE: DENIED**.
+
+**This is not a safe implementation of G3.** Under SUSFS, `ksu_selinux_hide_handle_second_stage()`, `apply_kernelsu_rules()` and `cache_sid()` run **before** the second-stage status check; the zygote path runs `on_post_fs_data()` **before** its status check. On failure the static keys remain enabled, so later matching exec events might rerun those operations. Their idempotence, locking, retry frequency, cancellation and failure behavior are unproven. In addition, successful helper return on one mutable shared cred object does not establish a synchronized readiness guarantee for `override_creds`. The callback returns deliberately permit normal exec to continue, but **there is no proof that startup remains functionally sound or safe**.
+
+Before any integratable G3 implementation, choose and validate an explicit bounded retry or permanent fail-closed policy (including impact on init.rc and modules), ensure no irreversible setup side effects repeat, and prove CONFIG-specific control flow against the Rothko 6.1.57 BSP. G2 late-load cleanup, G4/G5 shared-credential publication/lifetime, G6 device integration, and authenticated post-`execve` FD remain **BLOCKED**. No compile/merge/release/flash is authorized by a green source-only audit.
