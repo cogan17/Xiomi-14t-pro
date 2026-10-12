@@ -13,6 +13,8 @@ echo "Kernel ref: $KERNEL_REF; SUSFS branch: $SUSFS_REF; KSUN pin: $KSUN_SHA"
 git clone --quiet --filter=blob:none --single-branch --branch "$SUSFS_REF" "$SUSFS_URL" "$tmp/susfs"
 sha="$(git -C "$tmp/susfs" rev-parse HEAD)"
 echo "Resolved SUSFS SHA: $sha"
+echo "Upstream SUSFS patch inventory:"
+find "$tmp/susfs/kernel_patches" -type f -name "*.patch" | sort | head -100
 for f in kernel_patches/include/linux/susfs.h kernel_patches/include/linux/susfs_def.h kernel_patches/fs/susfs.c; do
   test -s "$tmp/susfs/$f" || { echo "FAIL: missing $f"; exit 2; }
   sha256sum "$tmp/susfs/$f"
