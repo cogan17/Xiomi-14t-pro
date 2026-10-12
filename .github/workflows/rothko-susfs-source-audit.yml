@@ -3,12 +3,15 @@ on:
   pull_request:
     paths:
       - .github/workflows/rothko-susfs-source-audit.yml
+      - scripts/rothko_susfs_source_probe.sh
+      - docs/rothko-susfs-porting-conflicts.md
   push:
     branches:
       - feat/rothko-ksun-susfs-compat-audit
     paths:
       - scripts/rothko_susfs_source_probe.sh
       - .github/workflows/rothko-susfs-source-audit.yml
+      - docs/rothko-susfs-porting-conflicts.md
   workflow_dispatch:
 permissions:
   contents: read
