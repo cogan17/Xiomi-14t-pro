@@ -15,7 +15,7 @@ echo "Kernel ref: $KERNEL_REF; SUSFS branch: $SUSFS_REF; KSUN pin: $KSUN_SHA"
 python3 - "$ROOT/patches/rothko-ksun-sucompat-fail-closed-candidate.patch" <<'PY'
 import pathlib, re, sys
 lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
-hunk = re.compile(r'^@@ -(\d+)(?:,(\\d+))? \+(\\d+)(?:,(\\d+))? @@')
+hunk = re.compile(r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@')
 found = 0
 i = 0
 while i < len(lines):
