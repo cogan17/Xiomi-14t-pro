@@ -105,6 +105,43 @@ for label, paths in sources.items():
 print("AUDIT NOTE: matches are evidence only; inspect conditional compilation and signatures before patching.", flush=True)
 PYecho "===== END KSUN SYMBOL AUDIT ====="
 
+echo "===== EXECVE / ARM64 PREBUILD CONTRACT GATE ====="
+python3 - "$tmp/ksun" "$tmp/susfs" "$tmp/rothko" <<'PY'
+from pathlib import Path
+import re, sys
+ksun, susfs, rothko = map(Path, sys.argv[1:])
+def read(root, path):
+    p = root / path
+    if not p.is_file():
+        raise SystemExit(f"FAIL: required source missing: {p}")
+    return p.read_text(errors="replace")
+su = read(ksun, "kernel/feature/sucompat.c")
+hdr = read(ksun, "kernel/feature/sucompat.h")
+bridge = read(ksun, "kernel/hook/syscall_event_bridge.c")
+defs = read(susfs, "kernel_patches/include/linux/susfs_def.h")
+kernel_patch = read(susfs, "kernel_patches/50_add_susfs_in_gki-android14-6.1.patch")
+arm = read(rothko, "arch/arm64/include/asm/thread_info.h")
+checks = {
+ "KSUN syscall bridge invokes pt_regs sucompat": bool(re.search(r"ksu_handle_execveat_sucompat\s*\(\s*filename_user\s*,\s*orig_nr", bridge)),
+ "KSUN sucompat uses SUSFS process exclusion": "susfs_is_current_proc_no_su()" in su,
+ "SUSFS kernel patch requires post-execve hook": "ksu_handle_post_execveat_sucompat" in kernel_patch,
+ "KSUN provides post-execve hook": "ksu_handle_post_execveat_sucompat" in (su + hdr + bridge),
+ "SUSFS thread flag defined": bool(re.search(r"^#define\s+TIF_PROC_NO_SU\s+34\b", defs, re.M)),
+ "Rothko reserves/defines TIF_PROC_NO_SU": bool(re.search(r"^#define\s+TIF_PROC_NO_SU\s+34\b", arm, re.M)),
+}
+for label, ok in checks.items():
+    print(("PASS" if ok else "BLOCK") + ": " + label, flush=True)
+blocking = [
+    "KSUN provides post-execve hook",
+    "Rothko reserves/defines TIF_PROC_NO_SU",
+]
+if any(not checks[k] for k in blocking):
+    print("BLOCKED: KSUN/SUSFS source contract unresolved. No build allowed.", flush=True)
+    sys.exit(8)
+PY
+echo "===== END EXECVE / ARM64 PREBUILD CONTRACT GATE ====="
+
+
 if git -C "$tmp/rothko" apply --check --verbose "$patch"; then
   echo "PASS: official 6.1 patch passes git apply --check against pristine Rothko BSP"
 else
