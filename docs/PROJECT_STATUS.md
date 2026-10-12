@@ -75,6 +75,9 @@ disetujui untuk flashing dari proyek ini.
    berukuran penuh tercatat. Metadata **backup RAW Slot A** bernama
    `2026-10-12--02-40` sudah diterima: **5/5 hash cocok** dengan Termux,
    dan ada hash baru `system_dlkm` serta `vendor_dlkm`.
+   **Screenshot tambahan 07.19 menunjukkan log `Backup 2026-10-12--07-19 saved`**
+   untuk tujuh partisi, namun belum ada daftar file atau checksum backup baru.
+   Backup 02.40 dan 07.19 harus ditangani terpisah.
    **Integritas tujuh image backup yang disimpan belum diverifikasi**;
    metadata JSON saja bukan cadangan partisi. Prioritaskan pemeriksaan
    file-file image dan simpan salinan terpisah sebelum pemulihan.
