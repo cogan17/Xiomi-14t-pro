@@ -129,3 +129,24 @@ The complete table is checked for unexpected additions/deletions and permission-
 **Important security boundary:** In the pinned upstream, `only_root()` means `current_uid().val == 0`; it does **not** itself establish the KernelSU SELinux domain. Changing this guard, adding a privileged ioctl, or assuming all root processes belong to a KSUN-authenticated session requires separate review. The manager/allowlist checks restrict `GRANT_ROOT`, but do not establish a persistent authenticated post-`execve` session. Avoid conflating the existing reboot/task-work FD installer with the missing SUSFS post-execve contract.
 
 **Gate: BLOCKED.** A successful matrix or mutation test confirms only an unchanged source-permission snapshot and test sensitivity, not the absence of other vulnerabilities, the safety of post-credential-commit operations, or ROM ABI/KMI/boot compatibility. No code from this track is included in the live Rothko BSP; no build, merge, release or flashing authorization is given.
+
+
+### Shared ksu_cred provenance and lifetime — pinned-source audit (2026-10-12)
+
+**Source evidence.** In pinned `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161`, `kernel/core/init.c` creates the global `ksu_cred = prepare_creds()` and releases it at module exit via `put_cred(ksu_cred)`. The candidate `kernel/selinux/selinux.c:setup_ksu_cred()` still returns `void` and **only logs a failed** `setup_selinux(KERNEL_SU_CONTEXT, ksu_cred)`; there is no status for callers to check.
+
+Two classes of consumers must be reconciled before any production patch:
+- **Late load:** `kernelsu_init()` calls `setup_ksu_cred()` and then `escape_to_root_for_init()`, without checking a setup status or using the latter's return. Follow-on allowlist/hooks/observer initialization therefore cannot treat an attempted SELinux transition as proof of success.
+- **Exec-triggered startup:** `runtime/ksud_integration.c` calls `setup_ksu_cred()` at init second stage on both CONFIG alternatives, and additionally at first zygote under `CONFIG_KSU_SUSFS`. The stage's `static_branch_disable` follows the void-return setup even if the SELinux transition failed. Review retry/one-shot semantics separately for both CONFIG branches; the non-SUSFS zygote path differs.
+- **Later override:** `load_module_rc_once()` calls `override_creds(ksu_cred)` to access module RC data, then `revert_creds(old_cred)` on its cleanup paths. `override_creds` is a privileged credential swap, not a check that the stored credential has the expected KSU SELinux domain. The module RC loader also uses a one-shot `loaded` marker; its error/cancellation behavior requires explicit review.
+
+**New reproducible evidence checks:** `scripts/rothko_ksun_shared_cred_audit.py` checks scoped source relationships in `core/init.c`, `runtime/ksud_integration.c`, `selinux/selinux.c` and `selinux/selinux.h` after the four existing candidate patches are applied in temporary CI source. `tests/test_rothko_ksun_shared_cred_audit.py` injects **11 negative mutations** involving allocation, stage setup/clearing, ignored SELinux failure, credential override, restoration, and destruction. The validator supports `--require-reviewed-remediation`, which must **exit nonzero** while the known shared-credential issues are present; negative tests require that denial. A passing source-evidence audit is not a successful remediation gate.
+
+**Acceptance criteria for any future candidate** (still unimplemented):
+1. Define a checked SELinux transition/status for the shared cred and propagate failures to **every** late-load and exec-stage caller, including both CONFIG paths.
+2. Prove safe ownership and concurrency of `ksu_cred`; never publish, consume or override a credential with unverified domain. Audit init/unload ordering, refcounting and workqueue users.
+3. Stop or safely retry one-shot stage transitions on failure, without disabling flags prematurely; do not add unconditional retries in exec hooks.
+4. Define the failure behavior for late-load `escape_to_root_for_init`, follow-on hooks/allowlist, and loading `modules.rc`. Do not continue as though the root transition succeeded.
+5. Audit `override_creds`/`revert_creds` across error exits; distinguish a valid shared credential from a token granting arbitrary new privileges. Verify against the actual Rothko BSP before any compiled test.
+
+**Disposition: BLOCKED.** No kernel source change, merge, GitLab fetch, AK3/image, release or flashing follows from the successful structural tests. The authenticated post-exec session FD and existing SUSFS/BSP conflicts are *separate* unresolved blockers.
