@@ -80,3 +80,40 @@ CI audit contract:
 **This is not a safe implementation of G3.** Under SUSFS, `ksu_selinux_hide_handle_second_stage()`, `apply_kernelsu_rules()` and `cache_sid()` run **before** the second-stage status check; the zygote path runs `on_post_fs_data()` **before** its status check. On failure the static keys remain enabled, so later matching exec events might rerun those operations. Their idempotence, locking, retry frequency, cancellation and failure behavior are unproven. In addition, successful helper return on one mutable shared cred object does not establish a synchronized readiness guarantee for `override_creds`. The callback returns deliberately permit normal exec to continue, but **there is no proof that startup remains functionally sound or safe**.
 
 Before any integratable G3 implementation, choose and validate an explicit bounded retry or permanent fail-closed policy (including impact on init.rc and modules), ensure no irreversible setup side effects repeat, and prove CONFIG-specific control flow against the Rothko 6.1.57 BSP. G2 late-load cleanup, G4/G5 shared-credential publication/lifetime, G6 device integration, and authenticated post-`execve` FD remain **BLOCKED**. No compile/merge/release/flash is authorized by a green source-only audit.
+
+
+## G2/G4 source inventory and cleanup prerequisites
+
+**New bounded, source-only audit:** `scripts/rothko_ksun_g2_g4_risk_audit.py` and `tests/test_rothko_ksun_g2_g4_risk_audit.py` verify **15 observed relationships and 21 negative mutations** on a pinned checkout with the six previous candidate patches. They deliberately treat today's unsafe ordering as source **evidence** and deny `--require-remediation`. No build artifacts, kernel C integration or automatic release gates are added.
+
+### G2 — registration before late-load credentials
+
+Confirmed in `core/init.c:kernelsu_init`:
+
+| Stage | Operations in pinned upstream |
+|---|---|
+| Shared object | `prepare_creds` for `ksu_cred` |
+| Early setup before late-load branch | symbol resolver, `ksu_feature_init`, `ksu_sulog_init`, `ksu_adb_root_init` |
+| Conditional hooks and infrastructure | `ksu_syscall_hook_init` / `ksu_lsm_hook_init` in applicable configs, `ksu_selinux_hide_init`, `ksu_supercalls_init`, `ksu_app_profile_init` |
+| SUSFS hooks in applicable configs | `ksu_sucompat_init`, `ksu_setuid_hook_init`, `ksu_avc_spoof_init` |
+| Late-load credential attempt | `apply_kernelsu_rules`, `cache_sid`, `setup_ksu_cred`, then `escape_to_root_for_init` |
+| Later late-load state | allowlist, manager/observer/file-wrapper, `ksu_boot_completed = true`, enforcing SELinux |
+
+`kernelsu_exit` does not provide a verified **failure unwind** for an arbitrary partially initialized state: the observed exit path stops supercalls, uses `synchronize_rcu`, tears down observers, allowlist, conditional SUSFS/LSM hooks, features and finally calls `put_cred(ksu_cred)`. Calling that complete shutdown path after a failed partially initialized setup could run cleanup on structures that were never initialized; early registration is also conditional on configuration. **Do not insert a lone `return -E...` after late-load SELinux failure.**
+
+Required before G2 can be converted to patch C: inventory each init call's actual return type and side effects, establish successfully initialized component flags or rearrange setup **before registration without breaking policy availability**, and define reverse-order cleanup with quiescence/RCU behavior for all relevant CONFIG paths. Prove `escape_to_root_for_init` result and post-credential state; no blind `commit_creds` retry.
+
+### G4 — credential readiness versus one-shot init.rc consumption
+
+Confirmed in `runtime/ksud_integration.c`:
+
+- `load_module_rc_once` sets `loaded = true` **before** testing credential readiness and calling `override_creds(ksu_cred)`. `revert_creds(old_cred)` is present on the observed success/error cleanup paths; readiness, ownership and reference safety are not established.
+- `ksu_install_rc_hook` sets `rc_hooked = true`, and under the non-SUSFS path calls `stop_init_rc_hook()` (or under SUSFS disables `ksu_is_init_rc_hook_enabled`) **before** `load_module_rc_once()`. A failed loader cannot assume a second chance.
+- Non-SUSFS `ksu_sys_fstat` can invoke the same loader, so there is an additional entry point to the one-shot state.
+- `module_rc_len` is set only after successful `kernel_read`, but the proxy/size adjustment may still proceed with the static `KERNEL_SU_RC` content when module RC is unavailable. An absent module payload and a completed hook are not equivalent to successful module initialization.
+
+**G4 ownership decision remains OPEN:** a correct fix must validate a cred that is already SELinux-domain-ready, has a safe reference lifetime, and will not be modified concurrently. It must decide the observable failure state **before** setting `loaded` or `rc_hooked`, including whether module support becomes disabled with an explicit error or may be retried via a proven safe, bounded path. It must also address the `init.rc` read interception timing and non-SUSFS `fstat`. Simply adding `if (!is_task_ksu_domain(ksu_cred)) return;` after the one-shot flags is **not** sufficient.
+
+Audit pass means all **currently observed** source relationships are unchanged, **not that any G2/G4 prerequisite is satisfied**. A code change that alters these relationships must force reviewer reevaluation rather than silently relabel a changed risk as safe.
+
+**Gate: G2 BLOCKED · G4 BLOCKED · G5 BLOCKED · G6 BLOCKED**. G1/G3 source checks and the unresolved authenticated post-`execve` FD flow remain separate; no merge, build, release or flashing.
