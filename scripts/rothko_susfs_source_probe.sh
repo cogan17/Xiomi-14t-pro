@@ -79,6 +79,11 @@ if [[ "$sha" != "$EXPECTED_SUSFS_SHA" ]]; then
   exit 7
 fi
 echo "Resolved SUSFS SHA: $sha"
+# Pin provenance evidence for all files consumed by the compatibility audit.
+# A matching commit ID alone does not establish that a later port compiles.
+echo "SUSFS pinned tree: $(git -C "$tmp/susfs" rev-parse HEAD^{tree})"
+git -C "$tmp/susfs" status --porcelain
+
 echo "Upstream SUSFS patch inventory:"
 find "$tmp/susfs/kernel_patches" -type f -name "*.patch" | sort | head -100
 for f in kernel_patches/include/linux/susfs.h kernel_patches/include/linux/susfs_def.h kernel_patches/fs/susfs.c; do
