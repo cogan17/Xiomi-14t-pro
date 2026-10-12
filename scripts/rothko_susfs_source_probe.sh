@@ -99,8 +99,16 @@ if not found:
 PY
 echo "===== END OFFICIAL SUSFS KSUN POST-EXECVE COMPANION PATCH ====="
 echo "===== KSUN PINNED EXECVE / SELINUX SYMBOL AUDIT ====="
-git clone --quiet --filter=blob:none https://github.com/pershoot/KernelSU-Next.git "$tmp/ksun"
-git -C "$tmp/ksun" checkout --quiet "$KSUN_SHA"
+# Pinned checkout: fetch only the required commit instead of repository history.
+# A network failure must fail the audit, never turn a compatibility block green.
+mkdir -p "$tmp/ksun"
+git -C "$tmp/ksun" init --quiet
+git -C "$tmp/ksun" remote add origin https://github.com/pershoot/KernelSU-Next.git
+git -C "$tmp/ksun" -c http.version=HTTP/1.1 fetch --quiet --depth=1 --filter=blob:none origin "$KSUN_SHA"
+git -C "$tmp/ksun" checkout --quiet --detach FETCH_HEAD
+test "$(git -C "$tmp/ksun" rev-parse HEAD)" = "$KSUN_SHA" || {
+  echo "FAIL: pinned KSUN commit mismatch"; exit 15;
+}
 echo "Resolved KSUN SHA: $(git -C "$tmp/ksun" rev-parse HEAD)"
 python3 - "$tmp/ksun" "$tmp/susfs" "$tmp/rothko" <<'PY'
 import pathlib, re, sys
