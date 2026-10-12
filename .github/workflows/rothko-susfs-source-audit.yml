@@ -24,6 +24,9 @@ jobs:
           persist-credentials: false
           sparse-checkout: |
             scripts/rothko_susfs_source_probe.sh
+      - name: Validate audit shell syntax
+        shell: bash
+        run: bash -n scripts/rothko_susfs_source_probe.sh
       - name: Acquire upstream and check compatibility gates
         shell: bash
         run: bash scripts/rothko_susfs_source_probe.sh
