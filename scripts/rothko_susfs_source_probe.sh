@@ -10,6 +10,49 @@ SUSFS_URL="https://gitlab.com/simonpunk/susfs4ksu.git"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 echo "Kernel ref: $KERNEL_REF; SUSFS branch: $SUSFS_REF; KSUN pin: $KSUN_SHA"
+# Validate locally maintained patch structure before any upstream network call.
+# This catches malformed hunk counts even if GitLab is unavailable.
+python3 - "$ROOT/patches/rothko-ksun-sucompat-fail-closed-candidate.patch" <<'PY'
+import pathlib, re, sys
+lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
+hunk = re.compile(r'^@@ -(\\d+)(?:,(\\d+))? \\+(\\d+)(?:,(\\d+))? @@')
+found = 0
+i = 0
+while i < len(lines):
+    line = lines[i]
+    if not line.startswith('@@ '):
+        i += 1
+        continue
+    match = hunk.match(line)
+    if not match:
+        raise SystemExit(f'FAIL: invalid patch hunk header at line {i + 1}')
+    old_expected = int(match.group(2) or 1)
+    new_expected = int(match.group(4) or 1)
+    old_count = new_count = 0
+    i += 1
+    while i < len(lines) and not lines[i].startswith(('@@ ', 'diff --git ')):
+        current = lines[i]
+        if current.startswith(' '):
+            old_count += 1
+            new_count += 1
+        elif current.startswith('-'):
+            old_count += 1
+        elif current.startswith('+'):
+            new_count += 1
+        elif current.startswith('\\\\ No newline at end of file'):
+            pass
+        else:
+            raise SystemExit(f'FAIL: unexpected patch line {i + 1}')
+        i += 1
+    if (old_count, new_count) != (old_expected, new_expected):
+        raise SystemExit(f'FAIL: patch hunk count mismatch at line {i + 1}: '
+                         f'expected {old_expected}/{new_expected}, got {old_count}/{new_count}')
+    found += 1
+if not found:
+    raise SystemExit('FAIL: no patch hunks found')
+print(f'PASS: local candidate patch structure ({found} hunks); applicability still unverified', flush=True)
+PY
+
 # Retry only transient GitLab transport failures. Never substitute a different
 # SUSFS revision or skip the exact-SHA gate below.
 for attempt in 1 2 3; do
