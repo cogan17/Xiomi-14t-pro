@@ -133,13 +133,13 @@ checks = {
 # ARM64 thread_info.flags is unsigned long (64 bits on arm64); bit 34 is in
 # range but must also be checked against all existing TIF assignments.
 assigned = [(name, int(value)) for name, value in re.findall(
-    r"^#define\\s+(TIF_[A-Z0-9_]+)\\s+(\\d+)\\b", arm, re.M)]
+    r"^#define\s+(TIF_[A-Z0-9_]+)\s+(\d+)\b", arm, re.M)]
 collisions = [name for name, value in assigned if value == 34 and name != "TIF_PROC_NO_SU"]
 print("ARM64 TIF bit 34: 64-bit storage, existing assignments:",
       ", ".join(collisions) if collisions else "none in thread_info.h", flush=True)
 checks["ARM64 bit 34 unassigned in thread_info.h"] = not collisions
 checks["ARM64 thread flags use unsigned long"] = bool(re.search(
-    r"unsigned\\s+long\\s+flags\\s*;", arm))
+    r"unsigned\s+long\s+flags\s*;", arm))
 # This is only a local header check: a whole-tree collision audit is still
 # required before claiming the flag safe to add.
 for label, ok in checks.items():
