@@ -33,6 +33,62 @@ jobs:
         shell: bash
         run: bash scripts/rothko_susfs_source_probe.sh
 
+  context-drift:
+    name: Classify SUSFS include-context drift (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Fetch pinned upstream and inspect rejected include hunks
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export GIT_TERMINAL_PROMPT=0
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          git init -q "$tmp/susfs"
+          git -C "$tmp/susfs" remote add origin https://gitlab.com/simonpunk/susfs4ksu.git
+          pin=5192aa2d33b381b58c1051532f9e1dfa5de6e8d3
+          timeout 105 git -C "$tmp/susfs" -c http.version=HTTP/1.1 fetch --quiet --depth=1 origin "$pin"
+          git -C "$tmp/susfs" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$tmp/susfs" rev-parse HEAD)" = "$pin"
+          test "$(git -C "$tmp/susfs" rev-parse 'HEAD^{tree}')" = b39cd4117178ce73d2973f7bcdae5c74defc8f68
+          git clone --quiet --depth=1 --single-branch --branch feat/rothko-ksun-susfs-compat-audit https://github.com/cogan17/Xiomi-14t-pro.git "$tmp/rothko"
+          python3 - "$tmp/susfs/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch" "$tmp/rothko" <<'PY'
+          from pathlib import Path
+          import re,sys
+          patch=Path(sys.argv[1]).read_text(errors="replace").splitlines()
+          root=Path(sys.argv[2])
+          targets={"fs/proc/base.c","fs/proc/task_mmu.c","mm/memory.c","fs/exec.c","fs/namei.c"}
+          chunks={}
+          file=None
+          for line in patch:
+              if line.startswith("diff --git a/"):
+                  file=line.split()[2][2:]
+                  if file in targets: chunks.setdefault(file,[])
+              elif file in targets and line.startswith("@@ "):
+                  chunks[file].append([line])
+              elif file in targets and chunks.get(file):
+                  chunks[file][-1].append(line)
+          lines=["# SUSFS pinned patch: context drift classification","","Evidence only. No patch applied, no source modified.",""]
+          for file in sorted(targets):
+              src=(root/file).read_text(errors="replace").splitlines() if (root/file).is_file() else []
+              lines.append("## "+file)
+              for hunk in chunks.get(file,[]):
+                  added=[x[1:] for x in hunk[1:] if x.startswith("+") and not x.startswith("+++")]
+                  removed=[x[1:] for x in hunk[1:] if x.startswith("-") and not x.startswith("---")]
+                  context=[x[1:] for x in hunk[1:] if x.startswith(" ")]
+                  include_only=bool(added or removed) and all(x.strip().startswith("#include ") or not x.strip() for x in added+removed)
+                  anchors=[x for x in context if x.strip() and not x.strip().startswith("#include ")]
+                  matched=sum(1 for x in anchors if x in src)
+                  kind="INCLUDE_ONLY_CHANGE" if include_only else "SEMANTIC_OR_MIXED_CHANGE"
+                  lines.append(f"- {hunk[0]}: {kind}; non-include context lines present in BSP {matched}/{len(anchors)}")
+              lines.append("")
+          report="\n".join(lines)+"\n"
+          Path("susfs-context-drift.md").write_text(report)
+          print(report)
+          with Path(__import__("os").environ["GITHUB_STEP_SUMMARY"]).open("a") as f:f.write(report)
+          PY
+          echo "BLOCK: classification is diagnostic, not permission to drop or fuzz hunks"
   gitlab-transport:
     # Upstream GitLab is intermittent (#11): no automatic retries on PR/push.
     # Explicit manual source-only dispatch can retry once when appropriate.
