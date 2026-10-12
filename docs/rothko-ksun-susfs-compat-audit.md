@@ -49,3 +49,15 @@ Status: **AUDIT ONLY — NO FLASH / NO MERGE / NO KERNEL IMAGE**.
 5. Do not run a 27-minute build until compatibility preflight is genuinely supported by evidence; the current preflight requires human audit flags and is **not** proof by itself.
 
 **Decision:** KSUN experiment remains audit-only. No source integration, compile, merge or flashing authorized by these findings.
+
+## Second investigation — cross-check (2026-10-12)
+- Official KSUN project states 6.1 GKI support but distinguishes GKI and Non-GKI paths; manager SUSFS controls do not imply kernel hook ABI compatibility: https://kernelsu-next.github.io/webpage/
+- A KSUN maintainer's April 2026 comment reports legacy SUSFS / built-in SUSFS is **not specifically supported** on that path and suggests vanilla driver isolation during diagnosis; a different manager mode may behave differently: https://github.com/KernelSU-Next/KernelSU-Next/issues/1230
+- KSUN `legacy_susfs` was reported outdated against main development in April 2026: https://github.com/KernelSU-Next/KernelSU-Next/issues/1215
+- A separate historical KSUN/SUSFS regression produced `ksu_devpts_hook` undeclared identifier compiler errors; this is not evidence of the same error on Rothko: https://github.com/KernelSU-Next/KernelSU-Next/issues/426
+- WildKernels reference release identifies KSUN fork SHA `3438d6aa431f96a23f9e625bec3d53ce1fb14161`, but its variant table may show SUSFS SHA as n/a; **do not claim** SUSFS SHA `24743360...` was verified for the same release/variant: https://github.com/WildKernels/GKI_KernelSU_SUSFS/releases
+- The direct raw-source fetch and git remote inspection were unavailable in this environment, so the precise KSUN fork hook implementation, SUSFS patch content at the candidate SHA, and source-level API comparison **remain unverified**.
+- The current preflight script only checks user-supplied approval environment variables; it is an administrative fail-closed gate, **not** a source-aware automated compatibility validator. Approval variables must never be set solely to force a green result.
+
+### Additional decision
+Continue **source-level audit only**. Do not pin a guessed SUSFS SHA, assert compatibility, compile, or merge. Next concrete dependency: obtain immutable upstream file contents and compare hooks plus kernel BSP context, then build real programmatic checks.
