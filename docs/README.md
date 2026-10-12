@@ -31,6 +31,7 @@ tidak pernah menjadi izin otomatis untuk flashing.
 | [ROTHKO_SLOT_B_BACKUP_AUDIT.md](ROTHKO_SLOT_B_BACKUP_AUDIT.md) | Checksum backup Slot B dan pembanding stock |
 | [ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md) | Bukti checksum: `init_boot_a` aktif identik dengan stock Degas |
 | [ROTHKO_ACTIVE_SLOT_A_AUDIT.md](ROTHKO_ACTIVE_SLOT_A_AUDIT.md) | Audit lanjutan boot, init_boot, vendor_boot, dtbo, vbmeta Slot A (read-only) |
+| [ROTHKO_SLOT_A_BACKUP_INTEGRITY.md](ROTHKO_SLOT_A_BACKUP_INTEGRITY.md) | Verifikasi 7 file image dari backup Kernel Flasher 07.19 terhadap JSON lokal |
 
 ## Workflow pengembangan
 
