@@ -168,3 +168,8 @@ Directly compared pinned KSUN dispatcher against the immutable **reference-only*
 - Uses a sparse checkout of the audit script, no write permission (`contents: read`), no repository credentials persisted, 15-minute job timeout; runs `bash scripts/rothko_susfs_source_probe.sh`.
 - The audit attempts to fetch the **official GitLab branch**, record the actual commit and file SHA-256s, and check essential `TIF_PROC_NO_SU` / command symbols. Missing source/symbols fail the job. It enumerates patch filenames but **does not yet perform a patch applicability test**; no compile, install, flash, release, or PR merge.
 - Workflow was committed as `7f12ea1731b93df1adb34e2f4f2229744fc3936b`. **No passing run has been verified in this conversation.** Interpret red as diagnostic evidence, not a signal to bypass upstream constraints.
+
+## Seventeenth investigation — audit runner visibility and exact-match repair (2026-10-12)
+- GitHub Actions runs associated with `efe1462cd9bd54327c002338c5b2835bc683141a` expose a **successful Documentation Guard** run (`38236674729`), but **no SUSFS source-audit run** in the commit-associated PR-run response. That API filters to pull-request-triggered runs; it does **not** establish that the push-triggered source audit never ran. Do not infer successful provenance acquisition.
+- Fixed a bug in `scripts/rothko_susfs_source_probe.sh`: a doubly escaped `\\b` in `grep -E` could reject valid symbols. Replaced with explicit identifier-boundary regex `(^|[^[:alnum:]_])SYMBOL([^[:alnum:]_]|$)`, commit `1d53af234061440515e3cc612dc965d610e06b87`.
+- Next gate remains the **actual** upstream SHA, source API/layout checks and BSP patch applicability dry-run. No source integration or compilation has been authorized by evidence yet.
