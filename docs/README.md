@@ -29,7 +29,8 @@ tidak pernah menjadi izin otomatis untuk flashing.
 | [ROTHKO_STOCK_FIRMWARE_AUDIT.md](ROTHKO_STOCK_FIRMWARE_AUDIT.md) | Perbandingan firmware WNNIDXM Rothko dan WNEIDXM Degas |
 | [ROTHKO_VENDOR_ABI_AUDIT.md](ROTHKO_VENDOR_ABI_AUDIT.md) | KMI, metadata modul, Kernel Flasher Slot A, BakaSU/SUSFS |
 | [ROTHKO_SLOT_B_BACKUP_AUDIT.md](ROTHKO_SLOT_B_BACKUP_AUDIT.md) | Checksum backup Slot B dan pembanding stock |
-| [ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md) | Bukti checksum: `init_boot_a` aktif identik dengan stock Degas |
+| [ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md) | Kronologi `init_boot_a` dari stock Degas sebelum flash ke stock Rothko sesudah flash |
+| [ROTHKO_POST_FLASH_INIT_BOOT_0909.md](ROTHKO_POST_FLASH_INIT_BOOT_0909.md) | **Terbaru:** backup 09.09 7/7 PASS, `init_boot` Rothko, `boot` Cogan r7 tetap sama |
 | [ROTHKO_ACTIVE_SLOT_A_AUDIT.md](ROTHKO_ACTIVE_SLOT_A_AUDIT.md) | Audit lanjutan boot, init_boot, vendor_boot, dtbo, vbmeta Slot A (read-only) |
 | [ROTHKO_SLOT_A_BACKUP_INTEGRITY.md](ROTHKO_SLOT_A_BACKUP_INTEGRITY.md) | Verifikasi 7 file image dari backup Kernel Flasher 07.19 terhadap JSON lokal |
 
