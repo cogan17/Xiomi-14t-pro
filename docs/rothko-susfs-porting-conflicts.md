@@ -23,3 +23,11 @@ Earlier audit observations also identified `fs/exec.c` and `fs/namei.c` as confl
 4. Require `git apply --check`, compile checks, negative/security contract tests, and runtime review before integration is considered.
 
 **Release gate:** BLOCKED. No kernel source modification, merge, release or flashing authorized by this document.
+
+## Verified include dependency evidence (read-only audit, 2026-10-13)
+
+CI run [38321629204](https://github.com/cogan17/Xiomi-14t-pro/actions/runs/38321629204) independently reports five inspected patch hunks each adding `#include <linux/susfs_def.h>`; the directive is absent from the pristine Rothko BSP files inspected. Each of these hunks also contains other nonblank additions (four with two, one with nine). They are **mixed hunks**, not safely skippable or automatically applicable include-only changes.
+
+The official pinned 6.1 patch still fails `git apply --check`, including `fs/namei.c`, `fs/proc/base.c`, `fs/proc/task_mmu.c`, and `mm/memory.c`. In particular the `mm/memory.c` failure at upstream context near line 79 is not proof of a missing SUSFS header alone; it is a mismatch of surrounding BSP include context. A hunk's context lines appearing somewhere in the file does not establish a safe application location.
+
+**Porting order:** first verify the SUSFS header and dependency provenance against the pinned upstream tree, then reconcile each conflicting hunk against exact Rothko BSP functions, then validate the KSUN companion patch and credential/FD, execve, and ARM64 flag contracts. Keep the candidate source-only and PR Draft. Do not bypass the release blockers, auto-fuzz patch offsets, build a flashable image, or merge on the strength of this classification report.
