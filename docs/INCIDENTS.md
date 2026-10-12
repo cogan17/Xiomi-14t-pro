@@ -62,6 +62,46 @@ bukti. Tiap insiden memiliki keadaan dan kriteria penutupan.
   menonaktifkan pengaman versi.
 - **Referensi:** [Repo GKI](https://github.com/cogan17/GKI_BakaSU_SUSFS).
 
+## I-005 — Riwayat bootloop modul sebelum Bootloop Protector terpasang
+
+- **Sumber:** kesaksian langsung pengguna pada 12 Oktober 2026
+  mengenai kejadian di masa lalu. Tanggal insiden, firmware/slot
+  pada saat kejadian, metode flashing, dan hash image saat itu **belum diketahui**.
+- **Dilaporkan:** HP mengalami bootloop yang menurut pengguna
+  disebabkan modul. Pada waktu itu Bootloop Protector belum dipasang.
+  Pengguna mem-flash ulang `boot.img` dan `init_boot.img`.
+  Setelah tindakan tersebut HP kembali bisa boot secara normal,
+  **namun seluruh modul yang sebelumnya terpasang hilang/tidak tersedia**.
+- **Status bukti:** keberhasilan boot dan kehilangan modul didasarkan
+  pada laporan pengguna; tidak ada log insiden, dump `/data/adb`
+  sesudah flash, atau catatan versi image asal untuk membuktikan
+  mekanisme kehilangan modul.
+- **Pembedaan teknis:** flash hanya partisi `boot` dan `init_boot`
+  biasanya tidak menimpa direktori `/data/adb/modules`. Karena itu
+  tampilan modul kosong bisa menunjukkan root manager tidak mendeteksi
+  modul, mounting/root berubah, modul dinonaktifkan mekanisme
+  penyelamatan, atau data modul benar-benar dihapus oleh proses lain.
+  **Belum dapat memilih salah satu hipotesis.**
+- **Pertanyaan provenance penting:** apakah `init_boot.img`
+  yang digunakan saat insiden berasal dari **Rothko WNNIDXM**,
+  **Degas WNEIDXM**, atau hasil patch root? Mengingat image aktif
+  saat ini cocok stock Degas, hubungan dengan insiden merupakan
+  **hipotesis yang perlu dikonfirmasi**, bukan kesimpulan.
+- **Dampak pada proyek:** prioritas keselamatan sekarang mencakup
+  **mempertahankan BakaSU dan modul**, bukan sekadar membuat HP
+  bisa boot. Backup tujuh image RAW Slot A serta salinan USB telah
+  diperiksa SHA-256 7/7 PASS; namun file installer ZIP modul dan
+  pengaturan pribadi merupakan cadangan terpisah.
+- **Larangan:** tidak mengulang flashing `boot/init_boot` demi
+  menguji dugaan; tidak mengganti slot, disable modul, atau mengubah
+  BakaSU saat perangkat sekarang berfungsi.
+- **Status insiden:** pengalaman pemulihan di masa lalu tercatat;
+  penyebab pasti hilangnya modul dan keterkaitan `init_boot_a`
+  Degas **masih terbuka**.
+- **Referensi:** [audit init_boot aktif](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md),
+  [perlindungan modul](ROTHKO_BAKASU_MODULE_SAFETY.md),
+  [backup Slot A/USB](ROTHKO_SLOT_A_BACKUP_INTEGRITY.md).
+
 ## Prosedur penanganan insiden baru
 
 Catat: tanggal, perangkat, slot, firmware, perubahan terakhir, gejala,
