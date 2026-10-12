@@ -562,3 +562,10 @@ bukan menghapus jejak kejadian.
 - Tidak ada output siap-flash, release, perintah fastboot, atau perubahan HP.
 - Status kompilasi final harus diambil dari GitHub Actions PR; tidak
   membuktikan ABI/KMI/modul/DT vendor khusus Rothko.
+
+## 2026-10-12 — Audit source SUSFS untuk KSUN Rothko (Draft PR #9)
+
+- Menambahkan `scripts/rothko_susfs_source_probe.sh` untuk pemeriksaan **read-only** terhadap sumber resmi Simonpunk SUSFS branch `gki-android14-6.1`: mencatat commit dan SHA-256 tiga file, memeriksa simbol kritis dan mendata kandidat patch kernel 6.1.
+- Menambahkan `.github/workflows/rothko-susfs-source-audit.yml` untuk menjalankan probe pada GitHub Actions branch eksperimen, tanpa write token, build kernel, flash, release, atau perubahan partisi.
+- Snapshot SUSFS pihak ketiga v2.3.0 tidak cocok secara lengkap dengan KSUN pershoot pinned karena fungsi `susfs_is_current_proc_no_su()` dan flag `TIF_PROC_NO_SU` belum tersedia dalam snapshot tersebut. Snapshot **tidak diintegrasikan**.
+- Uji penerapan patch `git apply --check`, validasi ABI lengkap, dan kompilasi diagnostik **belum dinyatakan lolos**. PR tetap Draft dan tidak boleh menghasilkan artifact siap-flash.
