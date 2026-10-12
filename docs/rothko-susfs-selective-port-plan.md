@@ -25,3 +25,14 @@ Stop rather than bypass: missing source provenance, ambiguous VFS/exec semantics
 
 ## Operational policy
 Keep PR #9 Draft. Do not merge, create a flashable artifact, release, or flash. Preserve successful KSUN work and the original upstream patch unchanged. GitLab connectivity alone removes only the transport hold; compatibility and security gates remain active.
+
+
+## BSP identity and provenance checkpoint (before any source edit)
+
+The public MiCode kernel index identifies `bsp-rothko-u-oss` with Redmi K70 Ultra, while `bsp-degas-u-oss` is listed for Xiaomi 14T. Device marketing names and sibling devices are **not** proof of binary-compatible kernel source. Before editing a SUSFS hunk, record the exact checked-out BSP commit, `Makefile` kernel version, configuration/defconfig, device tree targets, and evidence that this is the source used for the intended Xiaomi 14T Pro build.
+
+**Gate BSP-01:** reject assumptions based only on `rothko` codename, Android 14, or Linux 6.1; validate the repository's pinned base and build metadata against the target. Do not substitute `degas` source or an unrelated GKI tree.
+
+**Gate PATCH-01:** for each upstream rejected hunk, capture both its original upstream function and its Rothko function counterpart before authoring a change. A passing textual apply check is not sufficient for VFS, VMA, exec, or privilege behavior.
+
+**Evidence state:** source identity and complete upstream header manifest still need exact-tree verification; neither is claimed as passed here.
