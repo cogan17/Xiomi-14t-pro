@@ -76,6 +76,15 @@ jobs:
           if "groups_alloc(" in groups and "return;" in groups:
               print("BLOCK: setup_groups can silently return on allocation/validation failure")
           print("BLOCK: seccomp scratch candidate still needs Rothko BSP compile and runtime review")
+          # Explicit release gate: source-level audits must never claim authorization.
+          precommit = escape.split("commit_creds(cred);", 1)[0]
+          if "setup_selinux(profile->selinux_domain, cred);" not in precommit:
+              raise SystemExit("FAIL: SELinux profile setup must precede credential commit")
+          if "ksu_get_root_profile(cred->uid.val)" not in precommit:
+              raise SystemExit("FAIL: root profile lookup must precede credential commit")
+          print("PASS: SELinux profile setup and profile lookup precede commit (ordering only)")
+          print("BLOCK: profile lookup alone is not an authorization decision")
+          print("BLOCK: setup_selinux return semantics and domain transition not proven")
           print("BLOCK: no verified pre-commit domain authorization guarantee")
           print("PASS: textual ordering within escape_with_root_profile (not runtime proof)")
           print("BLOCK: no credential rollback after commit_creds")
