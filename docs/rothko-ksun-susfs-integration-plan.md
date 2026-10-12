@@ -18,7 +18,7 @@ Status: BLOCKED. This document records source facts and acceptance criteria; it 
 - `kernel/feature/sucompat.c:ksu_handle_execveat_sucompat()` checks chroot and UID allowlist before calling `escape_with_root_profile()`.
 - Pinned upstream rewrites `filename->name` with `ksud_path` before checking privilege-escape success. The candidate patch moves the rewrite after the check.
 - `kernel/policy/app_profile.c:escape_with_root_profile()` can reach `out_abort_creds` with `ret == 0` without committing credentials (already privileged / disable-escape cases). A return value of zero alone is NOT proof of a new privileged session.
-- The candidate patch propagates the result of `set_cred_ucounts()`; it has not been compiled or linked.
+- The candidate patch propagates the result of `set_cred_ucounts()` and **passes `git apply --check` against the pinned KSUN** in audit run 38253911159; it has not been compiled or linked.
 - The writable capacity and ownership of `filename->name` must be proven before any `memcpy` path can be approved.
 
 ## Required post-exec / session FD contract
@@ -31,10 +31,18 @@ Status: BLOCKED. This document records source facts and acceptance criteria; it 
 7. Only after the source contracts are implemented: run patch applicability, compile and link checks, then controlled runtime validation. A successful compile is not flashing approval.
 
 ## Current blockers
-- GitLab intermittently refuses the pinned SUSFS fetch.
+- The pinned SUSFS fetch succeeded in audit run 38253911159 (commit verified); intermittent GitLab failures remain a reproducibility risk.
 - Official SUSFS KSUN companion patch does not apply cleanly to the pinned KSUN.
 - Pinned KSUN has no verified `ksu_handle_post_execveat_sucompat()` and session-FD installer implementation.
 - Official SUSFS 6.1 patch rejects `fs/exec.c`, `fs/namei.c`, `fs/proc/base.c`, `fs/proc/task_mmu.c`, and `mm/memory.c`.
 - No compilation, linking, or runtime safety proof.
 
 Do not mark the compatibility gate green or merge PR #9 while any blocker remains.
+
+## Audit evidence: 2026-10-12 run 38253911159
+- Documentation Guard: PASS; source audit: FAIL (exit 14), correctly blocked.
+- Pinned KSUN candidate: PASS `git apply --check`; this is patch applicability, not runtime authorization.
+- Pinned SUSFS SHA: `5192aa2d33b381b58c1051532f9e1dfa5de6e8d3` resolved successfully.
+- Companion patch: BLOCK; post-exec hook and session installer absent in pinned KSUN.
+- Rothko patch conflicts: `fs/exec.c`, `fs/namei.c`, `fs/proc/base.c`, `fs/proc/task_mmu.c`, `mm/memory.c`.
+- Next implementation gate: reconcile `fs/exec.c` call contract with a provable authorized session lifecycle, then port rejected hunks without bypassing fail-closed checks.
