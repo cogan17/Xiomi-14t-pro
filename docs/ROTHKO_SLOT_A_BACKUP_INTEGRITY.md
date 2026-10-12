@@ -331,3 +331,19 @@ flash/restore, mengganti slot, menonaktifkan SUSFS ataupun mengubah
 root BakaSU.** Sebelum memutuskan perubahan `init_boot_a`, tinjau
 konsekuensi pada root, kecocokan firmware, dan langkah recovery
 secara terpisah tanpa menulis partisi.
+
+## Addendum backup baru pasca-flash 09.09
+
+Setelah pengguna memasang stock Rothko `init_boot.img` dan Cogan r7,
+backup `2026-10-12--09-09` (raw, tujuh image) **telah diterima dan
+secara independen divalidasi SHA-256: PASS 7/7**. Ketujuh image dibandingkan
+dengan `07-19`, hanya `init_boot` berubah: **Degas → Rothko**.
+`boot` Cogan r7 dan enam image lainnya tetap SHA-256 identik.
+
+**Perlu dibedakan:** salinan flashdisk dari backup `07-19` sudah
+terverifikasi **7/7 PASS**. Untuk backup baru `09-09` baru
+**file unggahan** yang terverifikasi, **salinan USB yang baru belum
+dibuktikan**. Simpan kedua snapshot dalam folder berbeda, jangan
+timpa backup pra-flash dengan backup pasca-flash.
+
+Lihat [audit pasca-flash init_boot 09.09](ROTHKO_POST_FLASH_INIT_BOOT_0909.md).
