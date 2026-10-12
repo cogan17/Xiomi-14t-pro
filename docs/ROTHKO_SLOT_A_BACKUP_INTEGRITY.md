@@ -228,3 +228,52 @@ hash acuan independen, bukan menguji mekanisme restore.
 
 **Belum terverifikasi:** pengguna belum mengirim output PowerShell
 dari salinan PC/SSD. Tidak ada tindakan terhadap slot atau root.
+
+## Bukti transfer flashdisk melalui MT Manager (video 12 Oktober 2026)
+
+**Sumber:** rekaman layar baru pengguna berdurasi sekitar 65 detik.
+Konteksnya adalah backup Kernel Flasher untuk Slot A yang telah lolos
+pemeriksaan isi SHA-256 **7/7** pada salinan yang sebelumnya diunggah.
+
+**Yang teramati di rekaman:**
+
+- Pengguna mengakses penyimpanan eksternal USB OTG dari MT Manager
+  (volume memiliki mount path di bawah `/storage/`, identitas volume
+  tidak dipublikasikan di dokumen ini).
+- Menyalin **folder `KernelFlasher`** dari penyimpanan internal ke
+  penyimpanan eksternal. Dialog salin memperlihatkan progres sekitar
+  **180,08 MiB** hingga akhirnya tertutup dan file explorer kembali.
+- Pada sisi USB terlihat folder `KernelFlasher/backups/2026-10-12--07-19`.
+- Di dalamnya terlihat `backup.json` dan tujuh berkas:
+  `boot.img`, `dtbo.img`, `init_boot.img`,
+  `system_dlkm.img`, `vbmeta.img`, `vendor_boot.img`,
+  `vendor_dlkm.img`. Ukuran file yang ditampilkan konsisten
+  dengan hasil audit asal (dibulatkan oleh File Manager).
+- Pengguna membuka `backup.json` dari folder USB; nama backup,
+  identitas kernel Cogan 6.1.177 dan daftar SHA-256 tampil dalam editor.
+
+**Kesimpulan yang dapat ditarik:** salinan di USB **sudah dilakukan dan
+isi folder terlihat**, bukan hanya rencana. Tetapi **belum ada
+penghitungan ulang SHA-256 dari byte yang tersimpan di USB**.
+Ini berarti integritas file **asal yang diunggah** terverifikasi 7/7,
+sementara integritas **salinan USB** masih menunggu verifikasi independen.
+
+### Verifikasi salinan USB tanpa penulisan partisi
+
+Gunakan skrip `scripts/verify_kernel_flasher_backup.sh` yang sudah
+ada dan telah diuji dalam GitHub Actions. Berikan path folder USB
+sebagai argumen, bukan menggunakan lokasi default internal HP.
+
+```sh
+# Ganti <USB_ID> dengan nama volume yang terlihat pada perangkat.
+su -c 'ls -lah /storage/<USB_ID>/KernelFlasher/backups/2026-10-12--07-19'
+su -c 'sh /data/data/com.termux/files/home/verify_kernel_flasher_backup.sh /storage/<USB_ID>/KernelFlasher/backups/2026-10-12--07-19'
+```
+
+Target yang **belum dikonfirmasi**: `verified=7`, `failed=0`,
+`BACKUP_FILE_VERIFICATION=PASS`. Jika mount path berbeda, jangan
+mencoba jalur disk atau operasi format/mount manual tanpa memeriksa
+lokasi yang benar. Jika izin membaca USB gagal, laporkan error saja.
+
+Tidak ada flashing, restore, perubahan slot/root, atau upload raw image
+ke GitHub dalam tahap ini.
