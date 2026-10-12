@@ -153,3 +153,31 @@ untuk semua operasi/OTA.
 Tidak menghapus bekas LKM, tidak mengubah `init_boot_a`,
 `boot_a`, slot, root manager atau modul berdasarkan dugaan.
 
+## Catatan keluhan pengguna terbaru: suhu fluktuatif
+
+**Laporan pengguna (12 Oktober 2026):** sejauh pemakaian HP saat ini
+tidak ada masalah fungsi yang disadari akibat keberadaan
+`init_boot_a` identik stock Degas, sementara **suhu perangkat
+naik-turun**. Pengguna sebelumnya juga melaporkan suhu baterai
+sekitar **39–40°C** pada awal evaluasi Cogan r7.
+
+**Kesimpulan yang sah:** berhasil boot dan memakai BakaSU/modul
+merupakan bukti keberfungsian praktis saat ini, **bukan sertifikasi
+kompatibilitas lintas-device**. Fluktuasi suhu tidak dapat
+diatribusikan ke `init_boot_a` Degas dari hash dan gejala umum saja.
+
+**Faktor yang perlu dipisahkan:** beban CPU/GPU, konektivitas,
+pengisian daya, kondisi ambient, scheduler/kebijakan thermal
+GKI Cogan dan modul terkait kebijakan perangkat (termasuk
+Project Raco) sebelum menyimpulkan masalah boot-chain.
+Tidak ada perubahan parameter thermal, TCP atau root yang
+diusulkan berdasarkan pengamatan ini.
+
+**Keputusan konservatif:** jangan flash/replace stock Rothko
+`init_boot_a` hanya untuk mengatasi suhu yang berfluktuasi
+tanpa adanya bukti sebab-akibat; pertahankan kernel,
+BakaSU, NoMount, SUSFS dan semua modul yang kini berfungsi.
+Jika investigasi suhu dilanjutkan, gunakan data observasional
+read-only pada idle dan beban normal serta pisahkan
+suhu **baterai** dari sensor SoC/perangkat.
+
