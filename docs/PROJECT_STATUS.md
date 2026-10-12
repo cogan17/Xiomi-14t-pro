@@ -101,8 +101,13 @@ disetujui untuk flashing dari proyek ini.
    tetapi tidak mencakup semua modul di `/data/adb` maupun preferensi
    Manager/NoMount. Skrip read-only dan panduan ada di
    [ROTHKO_BAKASU_MODULE_SAFETY.md](ROTHKO_BAKASU_MODULE_SAFETY.md).
-   Belum dijalankan di HP; nama/status modul yang aktif masih belum
-   diinventarisasi dan belum dibackup secara terpisah.
+   **Audit Termux sudah dilakukan:** 16 modul ditemukan, 16 enabled-on-disk,
+   0 disabled, 0 remove, 12 memiliki service.sh, 9 post-fs-data.sh,
+   4 sepolicy.rule, 4 direktori zygisk, 3 system.prop. Direktori
+   terkait KSU, NoMount, MetaModule, modules_update dan skrip boot ada.
+   **Fungsi runtime modul belum terbukti dan konfigurasi modul belum
+   dibackup terpisah.** Detail nama modul tetap privat; GitHub hanya
+   berisi ringkasan statistik dan kategori risiko.
 4. Cocokkan simbol/CRC modul MediaTek yang dimuat dengan kernel GKI Cogan,
    tanpa menonaktifkan `CONFIG_MODVERSIONS`.
 5. Temukan konfigurasi serta dependensi board/dtb/vendor source yang tepat
