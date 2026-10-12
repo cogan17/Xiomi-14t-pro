@@ -58,6 +58,27 @@ yang merupakan perintah untuk flashing.
   atau eksperimen dengan `init_boot_a`.
 - **Referensi:** [perlindungan modul](ROTHKO_BAKASU_MODULE_SAFETY.md).
 
+### D-014 — Simpan kedua backup setelah pengguna mengganti init_boot
+
+- **Tanggal:** 2026-10-12.
+- **Fakta terbaru:** pengguna telah mem-flash `init_boot` stock
+  Rothko lalu kernel Cogan r7 dan berhasil masuk home screen.
+  Backup `09.09` tervalidasi SHA-256 7/7 dan menunjukkan
+  `init_boot` berubah dari stock Degas ke **stock Rothko**;
+  image lain termasuk `boot` r7 tetap sama.
+- **Keputusan kerja:** jangan flash ulang untuk membuktikan
+  hasil yang sudah terbukti oleh byte. Simpan backup
+  `07.19` (sebelum) dan `09.09` (sesudah) secara
+  **terpisah** serta buat/verifikasi salinan USB untuk
+  backup terbaru tanpa menimpa versi lama.
+- **Belum diketahui:** fungsi BakaSU/SUSFS/NoMount,
+  16 modul dan suhu setelah reboot; boot ke home screen
+  bukan validasi seluruh sistem.
+- **Rujukan:** [audit pasca-flash](ROTHKO_POST_FLASH_INIT_BOOT_0909.md).
+- **Status:** flash sudah dilakukan sendiri oleh pengguna;
+  tindakan berikutnya hanya pembacaan/verifikasi, bukan
+  instruksi flash tambahan.
+
 ## Format keputusan baru
 
 ```md
