@@ -173,3 +173,5 @@ bukan menghapus jejak kejadian.
 - **Keputusan:** hanya nilai `BACKUP_FILE_VERIFICATION=PASS` setelah
   dieksekusi pada folder riil yang memvalidasi checksum file terhadap
   metadata pada folder yang sama. Ini bukan sertifikasi restore aman.
+
+- **CI terverifikasi:** [GitHub Actions #38188533642](https://github.com/cogan17/Xiomi-14t-pro/actions/runs/38188533642) **success**: sintaks shell, semua hash benar, satu file rusak, dan satu file hilang diuji dengan data sintetik. Ini bukan hasil pemeriksaan HP.
