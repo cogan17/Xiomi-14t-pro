@@ -86,3 +86,9 @@ Source read directly from `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53
 - `kernel/Kbuild:22` excludes regular syscall hook objects under `CONFIG_KSU_SUSFS=y`, so the expected inline hooks must actually be present in the patched BSP. Check syscall signatures, config gates, symbol resolution, and LSM integration.
 - **New concern:** `ksu_handle_sys_reboot` and its toolkit fallback must be checked for exact calling conventions and semantics in the Xiaomi BSP; do not assume generic GKI hook offsets.
 - These are real source observations, not a completed API or vendor audit. No compile authorization yet.
+
+## Sixth investigation — upstream pin provenance (2026-10-12)
+- Read WildKernels `.github/workflows/main.yml` directly. Around line 332, it resolves `pershoot/KernelSU-Next.git refs/heads/dev-susfs` to a commit SHA; around lines 1476–1486 it selects/clones the `dev-susfs` branch. A floating branch must **not** be adopted without pinning its SHA and matching SUSFS source.
+- Attempted `pershoot/susfs4ksu@24743360ea08d98f6ad72b856851abed8de5854f` paths `kernel_patches/fs/susfs.c`, `kernel_patches/include/linux/susfs.h`, and `kernel_patches/50_add_susfs_in_gki-android14-6.1.patch`; all returned GitHub 404. This may mean incorrect repo/path/ref/access and **does not prove** the upstream source lacks the files.
+- Attempted `pershoot/susfs4ksu@gki-android14-6.1-dev` README; 404. Thus the alleged SUSFS candidate SHA has **not been verified** at that repository.
+- **Audit blocker:** obtain authoritative Simonpunk GitLab patch/header/source or a verifiable fork and record exact provenance. Until then, KSUN call sites cannot be compared to SUSFS declarations and implementation. No source integration or build.
