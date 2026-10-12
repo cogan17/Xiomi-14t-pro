@@ -138,3 +138,20 @@ bukan menghapus jejak kejadian.
 - **Keputusan:** jangan menyimpulkan backup dapat dipulihkan hanya
   berdasarkan JSON, dan tetap tahan flashing/restoring.
 - **Laporan:** [ROTHKO_ACTIVE_SLOT_A_AUDIT.md](ROTHKO_ACTIVE_SLOT_A_AUDIT.md).
+
+## 2026-10-12 — Screenshot backup baru pukul 07.19
+
+- **Bukti pengguna:** Kernel Flasher menampilkan `Saving backup
+  2026-10-12--07-19` dan baris terakhir `Backup 2026-10-12--07-19 saved`.
+- **Komponen yang ditampilkan:** `boot`, `dtbo`, `init_boot`,
+  `system_dlkm`, `vbmeta`, `vendor_boot`, `vendor_dlkm`.
+- **Status yang benar:** aplikasi melaporkan backup telah tersimpan.
+  Ini backup **berbeda** dari `2026-10-12--02-40` dengan metadata
+  sebelumnya yang 5/5 cocok dengan hash Termux.
+- **Belum diperiksa:** isi folder, keberadaan `backup.json` baru,
+  ketujuh file image, ukurannya, checksum file aktual, dan salinan
+  penyimpanan sekunder. Log screenshot tidak secara eksplisit
+  menampilkan slot target.
+- **Tindak lanjut:** verifikasi file dalam folder 07.19 secara read-only,
+  lalu cocokkan tiap SHA-256 dengan metadata dari folder yang sama.
+- **Tidak dilakukan:** flashing, restore, perubahan root atau slot.
