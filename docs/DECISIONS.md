@@ -29,6 +29,18 @@ yang merupakan perintah untuk flashing.
 - **Referensi:** [audit aktif](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md),
   [insiden](INCIDENTS.md).
 
+### D-012 — Jaga BakaSU dan semua modul sebelum mengubah boot chain
+
+- **Tanggal:** 2026-10-12.
+- **Alasan:** backup 7 image partisi tidak mencakup modul systemless,
+  konfigurasi NoMount/MetaModule, izin root, dan data modul lain pada `/data`.
+- **Keputusan:** prioritas berikutnya inventaris metadata modul secara
+  read-only dan rencanakan backup konfigurasi/modul yang sesuai,
+  **bukan** langsung flashing atau restore `init_boot_a`.
+- **Status:** rencana audit disetujui; kondisi tiap modul masih
+  menunggu bukti aktual dari HP.
+- **Referensi:** [audit modul BakaSU](ROTHKO_BAKASU_MODULE_SAFETY.md).
+
 ## Format keputusan baru
 
 ```md
