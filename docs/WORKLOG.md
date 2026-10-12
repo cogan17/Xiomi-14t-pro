@@ -407,3 +407,24 @@ bukan menghapus jejak kejadian.
   backup 7 image kernel/USB telah terverifikasi sebelumnya.
 - **Tindakan:** insiden I-005 dicatat, tetap read-only.
   Tidak melakukan flashing, restore, reset slot atau modifikasi modul.
+
+## 2026-10-12 — Klarifikasi LKM init_boot vs GKI built-in
+
+- **Keterangan pengguna:** kejadian bootloop lama terpisah dari
+  kondisi HP saat ini yang sudah melalui flashing ulang.
+  Pada instalasi root metode LKM, root manager biasanya mempatch
+  `init_boot.img`, hasil patch di-flash dan Manager lalu
+  menandai mode LKM.
+- **Mode berbeda:** pemasangan kernel patch seperti WildKernel
+  atau Cogan menyediakan root built-in/GKI melalui kernel custom.
+  Tidak sama dengan hanya mempatch `init_boot.img`.
+- **Referensi:** panduan instalasi KernelSU
+  https://kernelsu.org/id_ID/guide/installation.html
+  dan upstream BakaSU https://github.com/Baka-SU/BakaSU.
+- **Kesenjangan bukti:** belum ada urutan lengkap setiap image
+  terpatch/stock yang dipasang setelah reflashing; tidak boleh
+  menyimpulkan cara image Degas identik stock bisa berada pada
+  `init_boot_a` sekarang hanya dari penjelasan metode.
+- **Status aman:** tetap root Cogan BakaSU aktif, backup Slot A/USB
+  7/7 PASS, tidak mengubah partisi atau modul.
+
