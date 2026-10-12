@@ -11,6 +11,7 @@ on:
       - 'scripts/rothko_apply_susfs.sh'
       - 'scripts/rothko_susfs_conflicts.py'
       - 'scripts/rothko_susfs_hunk_matrix.py'
+      - 'scripts/rothko_susfs_context_port.py'
   workflow_dispatch:
 
 permissions:
