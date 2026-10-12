@@ -428,3 +428,23 @@ bukan menghapus jejak kejadian.
 - **Status aman:** tetap root Cogan BakaSU aktif, backup Slot A/USB
   7/7 PASS, tidak mengubah partisi atau modul.
 
+## 2026-10-12 — Laporan operasional init_boot Degas dan suhu fluktuatif
+
+- **Kesaksian pengguna:** tidak merasa ada gangguan sistem lain
+  selama memakai HP dengan `init_boot_a` yang teridentifikasi
+  identik stock Degas; pengecualian adalah suhu perangkat yang
+  naik-turun. Pernah dilaporkan suhu baterai 39–40°C pada
+  evaluasi kernel Cogan r7.
+- **Pembedaan fakta:** `init_boot_a` hash identik stock Degas;
+  riwayat lama patch LKM tidak membuktikan image saat ini
+  masih berisi patch. Fungsi HP/16 modul saat ini tidak
+  membuktikan semua path boot/OTA akan aman.
+- **Keputusan:** status suhu merupakan pertanyaan diagnostik
+  **terpisah**; faktor beban perangkat, kebijakan thermal
+  dan konfigurasi modul harus diperiksa sebelum korelasi sebab.
+  Tidak ada alasan yang cukup untuk mengganti image hanya
+  demi mencoba menyembuhkan suhu.
+- **Pengaman:** Slot A tetap digunakan, tidak flashing,
+  restore, reboot eksperimen atau perubahan kernel/modul.
+- **Rujukan:** [audit init_boot aktif](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md).
+
