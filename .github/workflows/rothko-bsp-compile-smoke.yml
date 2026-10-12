@@ -1,15 +1,24 @@
-name: Cogan Rothko - ARM64 Source Compile (Diagnostic Only)
+name: Cogan Rothko - Manual Baseline Configure / Compile (No Artifacts)
 
-# Real compilation of Xiaomi BSP using generic GKI config, NOT Rothko verified board config.
-# No flashable boot.img, AK3, releases or downloadable kernel binary.
+# Manual diagnostic only: config generation by default, opt-in ARM64 Image compile.
+# Generic GKI config is NOT Rothko board configuration. No artifact or flashing.
 on:
-  pull_request:
-    branches:
-      - dev/rothko
-    paths:
-      - '.github/workflows/rothko-bsp-compile-smoke.yml'
-      - 'scripts/rothko_bsp_compile_smoke.sh'
+  # Manual only. Never compile because a PR changed this workflow.
   workflow_dispatch:
+    inputs:
+      stage:
+        description: 'Diagnostic stage (no downloadable kernel artifact)'
+        type: choice
+        options:
+          - config
+          - image
+        default: config
+        required: true
+      confirm_image:
+        description: 'For image stage only, type DIAGNOSTIC (not flash-ready)'
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -35,19 +44,23 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Guard development-only invocation
+      - name: Guard manual baseline diagnostics
         shell: bash
         env:
           EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.ref }}
           BRANCH: ${{ github.ref_name }}
+          STAGE: ${{ inputs.stage }}
+          CONFIRM_IMAGE: ${{ inputs.confirm_image }}
         run: |
           set -euo pipefail
-          if [[ "$EVENT" == pull_request ]]; then
-            [[ "$BASE" == dev/rothko ]] || exit 1
-          else
-            [[ "$BRANCH" == dev/rothko ]] || { echo '::error::Dispatch only on dev/rothko'; exit 1; }
+          [[ "$EVENT" == workflow_dispatch ]] || { echo '::error::Manual invocation only'; exit 1; }
+          [[ "$BRANCH" == dev/rothko ]] || { echo '::error::Run only on dev/rothko'; exit 1; }
+          [[ "$STAGE" == config || "$STAGE" == image ]] || { echo '::error::Unsupported diagnostic stage'; exit 1; }
+          if [[ "$STAGE" == image && "$CONFIRM_IMAGE" != DIAGNOSTIC ]]; then
+            echo '::error::For image stage type DIAGNOSTIC; never flash generated Image'
+            exit 1
           fi
+          echo "Diagnostic stage: $STAGE (no upload/artifact/release)"
 
       - name: Install host LLVM compiler and basic kernel dependencies
         run: |
@@ -64,7 +77,11 @@ jobs:
           set -euo pipefail
           bash scripts/rothko_bsp_compile_smoke.sh provenance
           remote_sha="$(git ls-remote --exit-code https://github.com/MiCode/MTK_kernel_modules.git refs/heads/bsp-rothko-u-oss | cut -f1)"
-          test -n "$remote_sha"
+          expected_vendor_sha=a875701d71d29cfac0a9456c1e9c223d44f53d68
+          [[ "$remote_sha" == "$expected_vendor_sha" ]] || {
+            echo "::error::Official MTK module branch changed ($remote_sha), review source pairing before compiling"
+            exit 1
+          }
           {
             echo '### Rothko BSP compilation (diagnostic only)'
             echo
@@ -75,11 +92,17 @@ jobs:
             echo '- Generic gki_defconfig is NOT verified for Rothko mt6989.'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Run REAL ARM64 kernel compilation
+      - name: Generate common GKI ARM64 config (default stage)
+        shell: bash
+        run: bash scripts/rothko_bsp_compile_smoke.sh config
+
+      - name: Run opt-in diagnostic ARM64 Image compilation
+        if: ${{ inputs.stage == 'image' }}
         shell: bash
         run: bash scripts/rothko_bsp_compile_smoke.sh compile
 
-      - name: Record compile checksum (no binary published)
+      - name: Record checksum only for explicit Image stage (no binary published)
+        if: ${{ inputs.stage == 'image' }}
         shell: bash
         run: |
           set -euo pipefail
