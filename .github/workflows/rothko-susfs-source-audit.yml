@@ -2,7 +2,6 @@ name: Rothko SUSFS source audit (read-only)
 on:
   pull_request:
     paths:
-      - scripts/rothko_susfs_source_probe.sh
       - .github/workflows/rothko-susfs-source-audit.yml
   push:
     branches:
@@ -15,6 +14,9 @@ permissions:
   contents: read
 jobs:
   provenance:
+    # GitLab acquisition is temporarily on hold: issue #11.
+    # Preserve this workflow for manual reactivation after upstream recovers.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
