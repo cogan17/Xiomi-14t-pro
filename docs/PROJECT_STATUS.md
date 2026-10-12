@@ -136,3 +136,19 @@ disetujui untuk flashing dari proyek ini.
 aktif, atau publikasi ZIP Rothko siap-flash berdasarkan audit ini.
 
 Rincian dan SHA256 berada di dokumen audit terkait pada [indeks](README.md).
+
+## Pembaruan workflow seleksi fitur — 12 Oktober 2026
+
+Branch kerja `feat/rothko-root-feature-form-20261012` mengusulkan
+formulir `workflow_dispatch` Rothko berdasarkan screenshot pengguna:
+satu root flavor (KSU/KSUN/BakaSU/All) dan sembilan pilihan fitur
+(SUSFS, NoMount, BBG, Networking, Ptrace, Unicode, BPF, Performance,
+preview release notes). Default root **BakaSU**; tujuh fitur pertama
+dicentang, dua terakhir tidak. DroidSpaces/NTSync serta toggle ekstra
+ZRAM/Re-Kernel/CVE milik GKI BakaSU tidak masuk formulir.
+
+`All` berarti tiga rencana root **terpisah**. Skrip validator dan
+pengujian kontrak melakukan pemeriksaan pemilihan saja.
+**Belum ada patch/kompilasi/artifact ZIP Rothko**, belum ada bukti
+kompatibilitas ABI/KMI perangkat, dan tidak ada izin flashing. Uji CI
+PR harus diperiksa sebelum perubahan digabungkan ke `dev/rothko`.
