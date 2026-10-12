@@ -162,3 +162,9 @@ Directly compared pinned KSUN dispatcher against the immutable **reference-only*
 - Local `git ls-remote https://gitlab.com/simonpunk/susfs4ksu.git refs/heads/gki-android14-6.1` failed: `Could not resolve host: gitlab.com`. **No GitLab SHA was resolved and no patch was tested** in this environment.
 - Added `scripts/rothko_susfs_source_probe.sh` to this Draft PR. It clones the official SUSFS branch when run in an environment with GitLab access, prints exact SHA and three file checksums, checks four essential SUSFS/KSUN symbol/flag names and enumerates Linux 6.1 patch candidates; it intentionally **does not apply patches, build, or flash**. Script is **prepared but not executed**; do not represent it as a passing test.
 - Actual `git apply --check` remains blocked pending verified patch selection and matching source provenance. User authorization for tests does not justify guessing patch family or bypassing missing `TIF_PROC_NO_SU`.
+
+## Sixteenth investigation — isolated GitHub Actions provenance audit (2026-10-12)
+- Added `.github/workflows/rothko-susfs-source-audit.yml` to the **Draft PR branch only**. It runs on changes to its own YAML or the source-probe script and can also be manually dispatched.
+- Uses a sparse checkout of the audit script, no write permission (`contents: read`), no repository credentials persisted, 15-minute job timeout; runs `bash scripts/rothko_susfs_source_probe.sh`.
+- The audit attempts to fetch the **official GitLab branch**, record the actual commit and file SHA-256s, and check essential `TIF_PROC_NO_SU` / command symbols. Missing source/symbols fail the job. It enumerates patch filenames but **does not yet perform a patch applicability test**; no compile, install, flash, release, or PR merge.
+- Workflow was committed as `7f12ea1731b93df1adb34e2f4f2229744fc3936b`. **No passing run has been verified in this conversation.** Interpret red as diagnostic evidence, not a signal to bypass upstream constraints.
