@@ -10,7 +10,20 @@ SUSFS_URL="https://gitlab.com/simonpunk/susfs4ksu.git"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 echo "Kernel ref: $KERNEL_REF; SUSFS branch: $SUSFS_REF; KSUN pin: $KSUN_SHA"
-git clone --quiet --filter=blob:none --single-branch --branch "$SUSFS_REF" "$SUSFS_URL" "$tmp/susfs"
+# Retry only transient GitLab transport failures. Never substitute a different
+# SUSFS revision or skip the exact-SHA gate below.
+for attempt in 1 2 3; do
+  if git -c http.version=HTTP/1.1 clone --quiet --depth=1 --filter=blob:none --single-branch --branch "$SUSFS_REF" "$SUSFS_URL" "$tmp/susfs"; then
+    break
+  fi
+  echo "WARN: SUSFS GitLab fetch failed (attempt $attempt/3)" >&2
+  rm -rf "$tmp/susfs"
+  if [[ "$attempt" == 3 ]]; then
+    echo "FAIL: SUSFS source unavailable after retries; audit cannot proceed" >&2
+    exit 16
+  fi
+  sleep $((attempt * 5))
+done
 sha="$(git -C "$tmp/susfs" rev-parse HEAD)"
 # Fail closed if upstream branch moved beyond the source pin audited here.
 EXPECTED_SUSFS_SHA="5192aa2d33b381b58c1051532f9e1dfa5de6e8d3"
