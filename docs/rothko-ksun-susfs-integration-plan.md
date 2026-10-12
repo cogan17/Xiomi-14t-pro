@@ -46,3 +46,9 @@ Do not mark the compatibility gate green or merge PR #9 while any blocker remain
 - Companion patch: BLOCK; post-exec hook and session installer absent in pinned KSUN.
 - Rothko patch conflicts: `fs/exec.c`, `fs/namei.c`, `fs/proc/base.c`, `fs/proc/task_mmu.c`, `mm/memory.c`.
 - Next implementation gate: reconcile `fs/exec.c` call contract with a provable authorized session lifecycle, then port rejected hunks without bypassing fail-closed checks.
+
+### KSUN seccomp pre-commit review (2026-10-12)
+
+Pinned KSUN `kernel/policy/app_profile.c` currently calls `commit_creds(cred)` before `disable_seccomp()`. The latter allocates a full `task_struct` with `kmalloc(..., GFP_KERNEL)` and silently returns if allocation fails. Consequently, a successful `escape_with_root_profile()` may leave seccomp enabled after root credentials have already been committed. This is a **release-blocking partial-privilege state**, not fixed by the passing static candidate audit.
+
+Required candidate design before enabling any integration: reserve the scratch task allocation **before** `commit_creds`; return `-ENOMEM` and abort prepared credentials if it fails; refactor seccomp cleanup to consume the preallocated scratch task without allocation after commit; ensure the scratch object is freed on all paths (including when seccomp was not enabled). Review locking and `seccomp_filter_release` behavior against the actual Rothko 6.1.57 BSP before approving this change. Also verify pre-commit SELinux/domain authorization and authenticated post-exec FD lifecycle. Do not treat a successful textual/patch-application audit as build, boot, or security approval.
