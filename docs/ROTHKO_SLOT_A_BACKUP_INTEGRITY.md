@@ -1,7 +1,7 @@
 # Tahap 9 — Verifikasi integritas backup RAW Kernel Flasher
 
 **Tanggal persiapan:** 12 Oktober 2026  
-**Status:** skrip diuji dengan tujuh file sintetik secara lokal; **belum dijalankan pada backup HP pengguna**. Semua operasi membaca **file yang sudah disimpan**, bukan partisi.
+**Status pembaruan 12 Oktober 2026: tujuh image backup `07-19` telah diperiksa langsung setelah diunggah pengguna, dan semuanya `SHA-256 PASS 7/7`.** Ini adalah audit byte dari *file yang diunggah*, bukan pemeriksaan tersendiri terhadap salinan lain pada HP atau perangkat eksternal. Skrip Termux yang sebelumnya dibuat tidak perlu dijalankan lagi untuk memvalidasi salinan yang sudah diperiksa di sini.
 
 ## Dua backup yang tidak boleh tertukar
 
@@ -110,3 +110,65 @@ Sejauh ini belum ada hasil `verified=7 / failed=0` dari HP.
 
 **Larangan tetap:** jangan mem-flash, restore, mengganti slot,
 atau menghapus file backup lama hanya karena file-file ini terlihat.
+
+## HASIL FINAL BERDASARKAN FILE YANG DIUNGGAH — 12 Oktober 2026
+
+Pengguna mengunggah **delapan file nyata** dari backup Kernel Flasher
+`2026-10-12--07-19`: `backup.json` + ketujuh `.img`.
+Semua file diakses **secara read-only** pada lingkungan pemeriksaan.
+SHA-256 dihitung secara independen dari seluruh isi tiap berkas dengan
+`hashlib.sha256` yang membaca file dalam potongan 4 MiB, lalu dibandingkan
+dengan `hashes` pada `backup.json`.
+
+Metadata: `name=2026-10-12--07-19`, `type=raw`,
+`hashAlgorithm=SHA-256`, kernel
+`6.1.177-android14-11-Cogan #1 SMP PREEMPT 2026-10-10 03:36:04 UTC`,
+`bootSha1=82d969f0cab5e7f17f5d499b847e7cba64a08932`.
+
+| Berkas image | Ukuran byte terukur | SHA-256 dihitung dari berkas terunggah | Metadata cocok? |
+|---|---:|---|:---:|
+| `boot.img` | 67,108,864 | `f39b666ead0c5a740a652c62225e343222b4e5fc89a560ff8f850eebf4cf6f8a` | **PASS** |
+| `dtbo.img` | 8,388,608 | `47954740b3e890e0414cc5e5fc0f495c9750fe117d81f3607171d6b65c5eaff7` | **PASS** |
+| `init_boot.img` | 8,388,608 | `951f096146157773abe4cbbd9b0dacbe9c2fa6400d4c438298353e5fb8a8bf04` | **PASS** |
+| `system_dlkm.img` | 7,471,104 | `361be1dfdf7fa5d84f4712e005d4d1925100b3e94cf04954619fd45ba18defda` | **PASS** |
+| `vbmeta.img` | 8,388,608 | `bfe79b5ba411e927943b8b918d802dd02ed751da384d4d7752e7e6b19c32b526` | **PASS** |
+| `vendor_boot.img` | 67,108,864 | `087e76586bb981bbd1f37334f68707bac1f3b81d9a88caa452a9433feb76a384` | **PASS** |
+| `vendor_dlkm.img` | 21,970,944 | `596cce7cd8e8a4a44c47080ce914facc9580004b5c18a8627c90551a3da5d536` | **PASS** |
+
+**TOTAL = 188,825,600 bytes (~180.08 MiB); hasil 7/7 PASS,
+0 mismatch, 0 file hilang**. `backup.json` berukuran 874 byte.
+
+### Pemeriksaan berlapis terhadap bukti sebelumnya
+
+- Hash kelima image (`boot`, `init_boot`, `vendor_boot`,
+  `dtbo`, `vbmeta`) **juga cocok** dengan pembacaan langsung partisi
+  aktif Slot A via Termux pada tahap sebelumnya.
+- **Dua image DLKM** cocok dengan hash dalam metadata Kernel Flasher
+  `07-19`; kedua hash tersebut juga pernah tercatat dalam metadata
+  `02-40`, tetapi **belum** dicocokkan dengan hash langsung partisi
+  via Termux.
+- `init_boot.img` merupakan **stock Degas** menurut perbandingan hash
+  dengan arsip `OS3.0.301.0.WNEIDXM.zip` yang sudah diaudit;
+  `vendor_boot.img` identik dengan stock Rothko WNNIDXM.
+- `boot.img` cocok hash Cogan yang dilaporkan dari partisi Slot A,
+  tetapi **belum** dibandingkan byte-per-byte dengan artefak r7 dari
+  GitHub; jangan menyatakan provenance artefak sepenuhnya terbukti.
+
+### Batas keamanan yang masih berlaku
+
+- **Integritas salinan yang dikirim: TERBUKTI** terhadap metadata
+  SHA-256 Kernel Flasher. Ini bukan sertifikasi bahwa restore image
+  apa pun pasti aman.
+- Kami **belum** menguji boot dari image yang dipulihkan, kecocokan
+  ABI/KMI keseluruhan, atau ketahanan terhadap bootloop.
+- Ketersediaan dan integritas **salinan kedua di PC/SSD/USB** belum
+  terverifikasi. Simpan backup mentah dan JSON tanpa modifikasi, kemudian
+  verifikasi lagi di media kedua.
+- Backup Slot B dan alasan indikator `Unbootable` merupakan topik
+  terpisah. Jangan melakukan pergantian slot/flash untuk mencobanya.
+- **Tidak ada file image mentah yang diunggah ke repository GitHub**;
+  hanya ukuran, hash, dan kesimpulan teknis dipublikasikan.
+
+Keputusan tahap berikutnya: **pertahankan Slot A yang sekarang berfungsi**;
+simpan salinan backup independen sebelum membahas penggantian
+`init_boot_a` Degas ke Rothko.
