@@ -1,141 +1,117 @@
-name: Cogan Rothko - Root Selection (Development)
+name: Cogan Rothko - Root and Feature Selection (Development)
 
-# Stage 1: root-flavor selection / matrix preview ONLY.
-# Does not install root implementations, apply kernel patches, compile, or flash.
+# Only plan configuration. NO source patches, compilation, root installation or flashable ZIP.
 on:
   workflow_dispatch:
     inputs:
       root_flavor:
-        description: 'Root manager: one or All (separate variants)'
-        required: true
+        description: 'Root flavor; All means three separate variants'
         type: choice
-        default: 'KernelSU'
+        required: true
+        default: 'BakaSU'
         options:
           - 'KernelSU'
           - 'KernelSU-Next'
           - 'BakaSU'
           - 'All (KSU + KSUN + BakaSU)'
       susfs:
-        description: '[Planning only] SUSFS compatibility'
+        description: 'SUSFS (planning only)'
         type: boolean
+        required: true
         default: true
       nomount:
-        description: '[Planning only] NoMount compatibility'
+        description: 'NoMount (planning only)'
         type: boolean
+        required: true
         default: true
       baseband_guard:
-        description: '[Planning only] Baseband Guard compatibility'
+        description: 'Baseband Guard (planning only)'
         type: boolean
-        default: false
+        required: true
+        default: true
       networking:
-        description: '[Planning only] Networking compatibility'
+        description: 'Networking (planning only)'
         type: boolean
-        default: false
-      tmpfs:
-        description: '[Planning only] TMPFS ACL/xattr compatibility'
+        required: true
+        default: true
+      ptrace_patch:
+        description: 'Ptrace Patch (planning only)'
         type: boolean
-        default: false
-      bpf:
-        description: '[Planning only] BPF compatibility'
+        required: true
+        default: true
+      unicode_fix:
+        description: 'Unicode Fix (planning only)'
         type: boolean
-        default: false
+        required: true
+        default: true
+      bpf_stack:
+        description: 'BPF Stack (BTF + eBPF + FUSE-BPF) (planning only)'
+        type: boolean
+        required: true
+        default: true
       performance:
-        description: '[Planning only] Performance (NO NTSync)'
+        description: 'Performance (planning only)'
         type: boolean
+        required: true
+        default: false
+      release_notes_preview:
+        description: 'Render release notes preview only (planning only)'
+        type: boolean
+        required: true
         default: false
 
 permissions:
   contents: read
 
-concurrency:
-  group: rothko-plan-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   plan:
-    name: Validate root selection (no build)
+    name: Validate requested variants (no build)
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     outputs:
-      root_matrix: ${{ steps.flavors.outputs.root_matrix }}
-    env:
-      ROOT_FLAVOR: ${{ inputs.root_flavor }}
+      root_matrix: ${{ steps.plan.outputs.root_matrix }}
+      features_json: ${{ steps.plan.outputs.features_json }}
     steps:
-      - name: Restrict experimental workflow to dev/rothko
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "$GITHUB_REF" != "refs/heads/dev/rothko" ]]; then
-            echo "::error::This development-only workflow must be run from dev/rothko."
-            exit 1
-          fi
-
-      - name: Validate root flavor and create separate variants
-        id: flavors
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json
-          import os
-
-          variants = {
-              "KernelSU": ["KernelSU"],
-              "KernelSU-Next": ["KernelSU-Next"],
-              "BakaSU": ["BakaSU"],
-              "All (KSU + KSUN + BakaSU)": ["KernelSU", "KernelSU-Next", "BakaSU"],
-          }
-          selected = os.environ["ROOT_FLAVOR"]
-          if selected not in variants:
-              raise SystemExit(f"Unsupported root_flavor: {selected!r}")
-          roots = variants[selected]
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
-              f.write("root_matrix=" + json.dumps(roots, separators=(",", ":")) + "\n")
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
-              f.write("# Cogan Rothko: root selection (development only)\n\n")
-              f.write(f"Selected: **{selected}**\n\n")
-              f.write("Separate planned kernel/root variants:\n")
-              for root in roots:
-                  f.write(f"- {root}\n")
-              f.write("\nNo root framework installed. No source patches applied. ")
-              f.write("No compilation, artifacts, releases, or flashable images.\n")
-          PY
+      - uses: actions/checkout@v4
+      - name: Validate Rothko selections and generate summary
+        id: plan
+        env:
+          ROOT_FLAVOR: ${{ inputs.root_flavor }}
+          SUSFS: ${{ inputs.susfs }}
+          NOMOUNT: ${{ inputs.nomount }}
+          BASEBAND_GUARD: ${{ inputs.baseband_guard }}
+          NETWORKING: ${{ inputs.networking }}
+          PTRACE_PATCH: ${{ inputs.ptrace_patch }}
+          UNICODE_FIX: ${{ inputs.unicode_fix }}
+          BPF_STACK: ${{ inputs.bpf_stack }}
+          PERFORMANCE: ${{ inputs.performance }}
+          RELEASE_NOTES_PREVIEW: ${{ inputs.release_notes_preview }}
+        run: python3 scripts/rothko_feature_plan.py
 
   preview-variant:
     name: Preview ${{ matrix.root }} (no build)
     needs: plan
+    if: ${{ !inputs.release_notes_preview }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
         root: ${{ fromJSON(needs.plan.outputs.root_matrix) }}
     env:
       ROOT_VARIANT: ${{ matrix.root }}
-      SUSFS: ${{ inputs.susfs }}
-      NOMOUNT: ${{ inputs.nomount }}
-      BBG: ${{ inputs.baseband_guard }}
-      NETWORKING: ${{ inputs.networking }}
-      TMPFS: ${{ inputs.tmpfs }}
-      BPF: ${{ inputs.bpf }}
-      PERFORMANCE: ${{ inputs.performance }}
+      FEATURES_JSON: ${{ needs.plan.outputs.features_json }}
     steps:
-      - name: Show proposed variant and feature flags
+      - name: Show feature selection without building
         shell: bash
         run: |
-          set -euo pipefail
-          {
-            echo "### Planned variant: $ROOT_VARIANT"
-            echo
-            echo "| Planned feature | Requested |"
-            echo "|---|---|"
-            echo "| SUSFS | $SUSFS |"
-            echo "| NoMount | $NOMOUNT |"
-            echo "| Baseband Guard | $BBG |"
-            echo "| Networking | $NETWORKING |"
-            echo "| TMPFS | $TMPFS |"
-            echo "| BPF | $BPF |"
-            echo "| Performance (no NTSync) | $PERFORMANCE |"
-            echo
-            echo "**Status: planning only — NOT BUILT or FLASHABLE.**"
-            echo
-            echo "DroidSpaces and NTSync deliberately excluded."
-          } >> "$GITHUB_STEP_SUMMARY"
+          python3 - <<'PY'
+          import json, os
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as out:
+              out.write('### Planned independent root: ' + os.environ['ROOT_VARIANT'] + '\n\n')
+              out.write('| Feature | Requested |\n|---|---|\n')
+              for key, enabled in json.loads(os.environ['FEATURES_JSON']).items():
+                  if key != 'release_notes_preview':
+                      out.write(f'| {key} | {str(enabled).lower()} |\n')
+              out.write('\n**NO BUILD, PATCH, ARTIFACT OR FLASH.**\n')
+          PY
