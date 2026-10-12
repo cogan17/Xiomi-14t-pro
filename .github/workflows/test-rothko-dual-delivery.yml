@@ -43,3 +43,28 @@ jobs:
           grep -Fq 'approved_for_flash' tools/platform-tools/Flash-Rothko.ps1
           grep -Fq 'flash boot_a' tools/platform-tools/Flash-Rothko.ps1
           grep -Fq 'ANDROID!' tools/platform-tools/Flash-Rothko.ps1
+
+windows-platform-tools-syntax:
+    name: Validate Windows PowerShell installer syntax (no flash)
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/platform-tools/
+          sparse-checkout-cone-mode: false
+      - name: Parse Flash-Rothko.ps1 without executing it
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PWD 'tools/platform-tools/Flash-Rothko.ps1'),
+            [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+          Write-Host 'PowerShell parser PASS; no fastboot command executed.'
