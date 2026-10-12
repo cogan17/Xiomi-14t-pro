@@ -153,6 +153,19 @@ else
   printf 'blocked\\n' > "$tmp/companion_status"
 fi
 echo "===== END KSUN COMPANION PATCH APPLICABILITY ====="
+echo "===== PINNED KSUN SOURCE FIX CANDIDATE (CHECK ONLY) ====="
+candidate="$tmp/rothko/patches/rothko-ksun-sucompat-fail-closed-candidate.patch"
+if [[ ! -s "$candidate" ]]; then
+  echo "FAIL: KSUN source fix candidate missing"
+  printf 'blocked\\n' > "$tmp/candidate_status"
+elif git -C "$tmp/ksun" apply --check --verbose "$candidate"; then
+  echo "PASS: source fix candidate applies to pinned KSUN (NOT compiled, NOT security-approved)"
+else
+  echo "FAIL: source fix candidate does not apply to pinned KSUN"
+  printf 'blocked\\n' > "$tmp/candidate_status"
+fi
+echo "===== END PINNED KSUN SOURCE FIX CANDIDATE ====="
+
 
 
 # Verify the script parses before costly upstream acquisitions on every CI run.
@@ -265,6 +278,10 @@ if git -C "$tmp/rothko" apply --check --verbose "$patch"; then
 else
   echo "FAIL: official 6.1 patch does not apply cleanly to pristine Rothko BSP"
   patch_status=6
+fi
+if [[ -f "$tmp/candidate_status" ]]; then
+  echo "FAIL: staged KSUN source fix candidate rejected"
+  exit 13
 fi
 if [[ -f "$tmp/companion_status" ]]; then
   echo "FAIL: official KSUN companion patch not compatible with pinned KSUN"
