@@ -222,3 +222,20 @@ bukan menghapus jejak kejadian.
 - **Dokumentasi:** [Tahap 10 di laporan integritas](ROTHKO_SLOT_A_BACKUP_INTEGRITY.md).
 - **Belum dilakukan:** menyalin folder ke PC/SSD serta menjalankan pengecekan PowerShell pada salinan, maupun pengujian restore.
 - **Keamanan:** tidak ada flashing, penulisan partisi, perubahan slot atau pengubahan BakaSU.
+
+## 2026-10-12 — Bukti video transfer ke USB OTG
+
+- **Sumber:** video layar MT Manager sekitar 65 detik dari pengguna.
+- **Terlihat:** folder `KernelFlasher` disalin dari penyimpanan internal
+  ke USB OTG, progres sekitar 180,08 MiB dan kemudian selesai.
+- **Terlihat pada USB:** `KernelFlasher/backups/2026-10-12--07-19`
+  berisi `backup.json` dan tujuh image, ukuran masuk akal;
+  isi `backup.json` berhasil dibuka dari volume USB.
+- **Pasti dari audit sebelumnya:** semua image yang diunggah ke chat
+  terverifikasi 7/7 SHA-256 terhadap metadata asal.
+- **Belum terverifikasi:** **SHA-256 salinan USB** belum dihitung ulang;
+  video folder/JSON tidak membuktikan bytes copy identik 100%.
+- **Langkah berikutnya:** jalankan verifier read-only pada path USB
+  yang benar, hasil `verified=7 failed=0` menjadi gerbang penutupan.
+- **Tidak dilakukan:** flashing, restore, mengganti slot, mengubah
+  BakaSU, atau menerbitkan image mentah ke GitHub.
