@@ -5,10 +5,12 @@ on:
       - feat/rothko-ksun-susfs-compat-audit
     paths:
       - patches/rothko-ksun-sucompat-fail-closed-candidate.patch
+      - patches/rothko-ksun-groups-fail-closed-candidate.patch
       - .github/workflows/rothko-ksun-candidate-audit.yml
   pull_request:
     paths:
       - patches/rothko-ksun-sucompat-fail-closed-candidate.patch
+      - patches/rothko-ksun-groups-fail-closed-candidate.patch
       - .github/workflows/rothko-ksun-candidate-audit.yml
   workflow_dispatch:
 permissions:
@@ -32,9 +34,11 @@ jobs:
           git -C /tmp/ksun checkout --quiet --detach FETCH_HEAD
           test "$(git -C /tmp/ksun rev-parse HEAD)" = "$pin"
           git -C /tmp/ksun apply --check --verbose "$GITHUB_WORKSPACE/patches/rothko-ksun-sucompat-fail-closed-candidate.patch"
-          echo "PASS: candidate applies to immutable KSUN source"
+          git -C /tmp/ksun apply --check --verbose "$GITHUB_WORKSPACE/patches/rothko-ksun-groups-fail-closed-candidate.patch"
+          echo "PASS: both candidates apply independently to immutable KSUN source"
           # Apply in disposable workspace to examine the actual patched source.
           git -C /tmp/ksun apply "$GITHUB_WORKSPACE/patches/rothko-ksun-sucompat-fail-closed-candidate.patch"
+          git -C /tmp/ksun apply "$GITHUB_WORKSPACE/patches/rothko-ksun-groups-fail-closed-candidate.patch"
           python3 - <<'PY'
           from pathlib import Path
           import re
@@ -46,6 +50,7 @@ jobs:
               "allocated filename before profile escape": su.find("replacement = getname_kernel(ksud_path)") < su.find("ret = escape_with_root_profile()"),
               "post-escape root/domain check": "susfs_is_current_ksu_domain()" in su and "current_euid()" in su,
               "profile commit exists": "commit_creds(cred)" in policy,
+              "groups setup failure checked before commit": policy.index("ret = setup_groups(profile, cred);") < policy.index("commit_creds(cred);", policy.index("int escape_with_root_profile(void)")) and "if (ret)\n        goto out_abort_creds;" in policy,
               "namespace setup follows commit in escape function": policy.index("commit_creds(cred);", policy.index("int escape_with_root_profile(void)")) < policy.index("setup_mount_ns(profile->namespaces);", policy.index("int escape_with_root_profile(void)")),
           }
           for label, ok in checks.items():
