@@ -85,3 +85,43 @@ slot aktif, dan checksum image yang sedang terpasang masih diperlukan
 sebelum menyatakan kernel eksperimen aman.
 
 **Backup stock** sebaiknya disimpan terpisah dan tidak ditimpa hasil patch.
+
+## Bukti folder referensi stock pada perangkat — screenshot 12 Oktober 2026
+
+Pengguna memperlihatkan screenshot File Manager pada **Penyimpanan Utama**,
+folder `OS3.0.301.0.WNNIDXM`. Folder tersebut menampilkan:
+
+| Nama yang terlihat | Ukuran tampilan |
+|---|---:|
+| `boot.img` | 67,11 MB |
+| `init_boot.img` | 8,39 MB |
+| `OS3.0.301.0.WNNIDXM.txt` | 837 B |
+| `OS3.0.301.0.WNNIDXM.zip` | 66,73 MB |
+| `preloader_raw.img` | 0,91 MB |
+| `vbmeta_system.img` | 4,10 kB |
+| `vbmeta_vendor.img` | 4,10 kB |
+| `vbmeta.img` | 12,29 kB |
+| `vendor_boot.img` | 67,11 MB |
+
+Screenshot **hanya membuktikan keberadaan tampilan berkas dan
+ukuran yang dibulatkan**, bukan kesesuaian byte berkas yang saat ini
+ada di folder dengan ZIP yang pernah diaudit. Pemeriksaan awal ZIP
+`OS3.0.301.0.WNNIDXM.zip` dari unggahan terdahulu tetap tercatat
+pada bagian atas laporan (codename `rothko`, hash/CRC),
+tetapi berkas folder internal perlu diperiksa bila akan digunakan.
+
+**Keputusan fokus teknis ke depan:** gunakan referensi firmware
+Rothko WNNIDXM untuk memeriksa hubungan antara:
+(1) `init_boot_a` aktif yang sudah dibuktikan cocok stock Degas;
+(2) kernel `boot_a` Cogan r7 yang aktif;
+(3) `vendor_boot` stock Rothko;
+(4) rantai AVB/vbmeta; dan (5) BakaSU, SUSFS, NoMount, serta
+dependensi modul. Prioritaskan pengecekan non-destruktif serta
+rencana pemulihan bila diperlukan.
+
+**Bukan rencana flash otomatis** semua image di folder.
+`preloader_raw.img` bukan bagian dari pemulihan `init_boot_a`
+yang direncanakan: **jangan flash preloader**. Demikian pula,
+jangan flash `vbmeta`/boot secara spekulatif hanya karena berkas
+tersedia. Backup Slot A dan USB 7/7 SHA-256 PASS tetap dijaga.
+
