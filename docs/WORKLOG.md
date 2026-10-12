@@ -470,3 +470,27 @@ bukan menghapus jejak kejadian.
 - **Tidak dilakukan oleh asisten:** flashing, reboot, penulisan
   partisi, perubahan slot/root/modul, atau publikasi image mentah.
 - **Referensi:** [laporan lengkap](ROTHKO_POST_FLASH_INIT_BOOT_0909.md).
+
+## 2026-10-12 — Penyesuaian fitur Rothko mengikuti screenshot bertanda merah
+
+- **Tujuan:** menyiapkan formulir Rothko seperti contoh WildKernel tanpa
+  menyalin toggle tambahan dari proyek GKI BakaSU.
+- **Sebelumnya:** root pilihan KSU/KSUN/BakaSU/All sudah tersedia, tetapi
+  beberapa fitur bukan dari screenshot dan default BBG/networking/BPF
+  tidak konsisten dengan pilihan pengguna.
+- **Tindakan:** branch `feat/rothko-root-feature-form-20261012`, ubah
+  `.github/workflows/Patch Kernel Features.yml` menjadi tepat 10 input
+  (satu root, sembilan opsi fitur). Tambahkan validator
+  `scripts/rothko_feature_plan.py` dan pengujian kontrak.
+- **Yang dipertahankan:** BakaSU default; KSU/KSUN/BakaSU/All; All
+  menghasilkan tiga matriks root terpisah, bukan root gabungan.
+- **Yang dihapus dari form Rothko:** DroidSpaces, NTSync, toggle
+  GKI-only ZRAM, Re-Kernel, dan CVE; tidak ada duplikasi NoMount/BBG.
+- **Validasi:** unit test dan workflow PR disiapkan; hasil Actions
+  akan dicatat setelah run, bukan diklaim sukses sebelum ada hasil.
+- **Source/firmware/perangkat:** tidak diubah; tidak ada flashing,
+  pergantian slot, kompilasi, ZIP, Manager APK, atau patch penerapan nyata.
+- **Status:** pekerjaan pada branch PR menuju `dev/rothko`, menunggu
+  pemeriksaan CI dan review; baseline `bsp-rothko-u-oss` tetap utuh.
+- **Langkah berikut:** uji PR, tinjau matriks/summary, lalu lakukan audit
+  ABI/KMI/board/pinning patch sebelum membuat jalur build sesungguhnya.

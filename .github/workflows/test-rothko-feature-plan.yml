@@ -1,0 +1,33 @@
+name: Cogan Rothko - Feature Selection Contract Tests
+
+on:
+  pull_request:
+    branches:
+      - dev/rothko
+    paths:
+      - '.github/workflows/Patch Kernel Features.yml'
+      - '.github/workflows/test-rothko-feature-plan.yml'
+      - 'scripts/rothko_feature_plan.py'
+      - 'tests/test_rothko_feature_plan.py'
+  push:
+    branches:
+      - dev/rothko
+    paths:
+      - '.github/workflows/Patch Kernel Features.yml'
+      - '.github/workflows/test-rothko-feature-plan.yml'
+      - 'scripts/rothko_feature_plan.py'
+      - 'tests/test_rothko_feature_plan.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Verify root matrix, input defaults and exclusions
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Python contract tests (stdlib only)
+        run: python3 -m unittest discover -s tests -p 'test_rothko_feature_plan.py' -v
