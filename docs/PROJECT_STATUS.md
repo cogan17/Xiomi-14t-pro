@@ -84,9 +84,13 @@ disetujui untuk flashing dari proyek ini.
    kemudian membuktikan **keberadaan visual** `backup.json` dan ketujuh
    file `.img` dalam folder 07.19, dengan ukuran yang masuk akal;
    **SHA-256 file-file itu belum dihitung ulang di HP**.
-   **Integritas tujuh image backup yang disimpan belum diverifikasi**;
-   metadata JSON saja bukan cadangan partisi. Prioritaskan pemeriksaan
-   file-file image dan simpan salinan terpisah sebelum pemulihan.
+   **PEMBARUAN: ketujuh file `.img` backup `07.19` telah diunggah,
+   dibaca utuh, dan diverifikasi SHA-256: PASS 7/7** terhadap
+   `backup.json` dari folder yang sama. Total 188,825,600 byte.
+   Baca [laporan integritas lengkap](ROTHKO_SLOT_A_BACKUP_INTEGRITY.md).
+   **Salinan terpisah di PC/SSD/USB belum diverifikasi**; simpan dan
+   periksa sebelum tindakan pemulihan. Status Slot B dan kelayakan
+   restore tidak otomatis terbukti.
 3. Cocokkan simbol/CRC modul MediaTek yang dimuat dengan kernel GKI Cogan,
    tanpa menonaktifkan `CONFIG_MODVERSIONS`.
 4. Temukan konfigurasi serta dependensi board/dtb/vendor source yang tepat
