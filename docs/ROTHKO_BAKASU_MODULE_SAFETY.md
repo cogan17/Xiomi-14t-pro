@@ -218,3 +218,43 @@ pada tahap ini. Fokus pada ketersediaan installer,
 catatan versi, dependensi penting dan jalur pemulihan
 root/kernel yang benar. Status = direncanakan, belum diverifikasi.
 
+## Bukti folder installer terorganisasi dari screenshot (12 Oktober 2026)
+
+Pengguna memperlihatkan tiga screenshot File Manager pada
+**Penyimpanan Utama → ARoot → modulKSU → Simpan**.
+Dalam folder tersebut terdapat direktori yang dikelompokkan menurut
+modul. Contoh kategori yang terlihat: pelindung bootloop, HyperUnlocked,
+MetaModule, NavTweaks, Project Raco, SUSFS, Play Integrity Fix,
+Tricky Store, Zygisk Next, dan modul Zygisk lainnya. Sebagian folder
+tampak berisi lebih dari satu item. Ini merupakan **bukti
+pengorganisasian arsip installer**, bukan bukti bahwa setiap folder
+berisi ZIP versi yang saat ini terpasang.
+
+**Penting:** tampilan lokasi bertuliskan `Penyimpanan Utama`;
+belum ada bukti bahwa arsip `ARoot/modulKSU/Simpan` juga telah
+disalin dan diverifikasi pada flashdisk. Status verifikasi 7/7
+sebelumnya berlaku **hanya untuk backup tujuh image kernel**, bukan
+folder installer modul.
+
+Hal yang belum terlihat sebagai folder khusus pada screenshot:
+ACC, YouTube Morphe, zygisk-detach, dan NoMount. Ini **bukan
+klaim berkas hilang**: bisa tersimpan dalam kategori berbeda,
+misalnya MetaModule, ataupun di folder lain.
+
+**Rencana yang disederhanakan:**
+- Pertahankan struktur direktori installer yang sudah dibuat pengguna.
+- Cocokkan installer ZIP dan versi modul yang penting dengan daftar
+  16 modul yang terdeteksi; tidak perlu backup penuh semua `/data/adb`
+  jika pengguna bersedia instalasi ulang dan menyetel ulang.
+- **Salin** (jangan pindahkan) folder installer ke flashdisk atau
+  perangkat cadangan lain, kemudian cek keberadaan file dan checksum
+  salinannya jika diperlukan. Jangan menghapus file asal.
+- Periksa ulang konfigurasi pribadi yang sulit direkonstruksi secara
+  terpisah, hanya jika memang dibutuhkan.
+- Tidak ada izin flashing, restore, pengubahan root atau penghapusan
+  modul akibat screenshot ini.
+
+**Status:** penyimpanan installer terorganisasi secara visual;
+kelengkapan ZIP versi terpasang dan integritas salinan eksternal
+**belum diverifikasi**.
+
