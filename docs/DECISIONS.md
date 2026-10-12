@@ -43,6 +43,21 @@ yang merupakan perintah untuk flashing.
   Daftar modul pribadi tidak dipublikasikan.
 - **Referensi:** [audit modul BakaSU](ROTHKO_BAKASU_MODULE_SAFETY.md).
 
+### D-013 — Utamakan installer ZIP untuk pemulihan modul
+
+- **Tanggal:** 2026-10-12.
+- **Permintaan pengguna:** tidak perlu backup penuh seluruh 16 modul
+  jika tersedia installer ZIP dan pengguna bersedia menginstal ulang.
+- **Keputusan:** gunakan strategi **installer-first**: simpan ZIP
+  versi yang tepat di flashdisk dan catat versi/ketergantungan.
+  Cadangkan konfigurasi khusus hanya jika sulit dibuat ulang.
+- **Batasan:** berkas ZIP saja tidak memulihkan seluruh data dan
+  preferensi; kernel/root BakaSU sendiri berbeda dari modul biasa.
+  Belum ada audit bahwa ZIP untuk semua modul sudah tersedia.
+- **Pengaman tetap:** belum ada izin restore/flash, perubahan slot
+  atau eksperimen dengan `init_boot_a`.
+- **Referensi:** [perlindungan modul](ROTHKO_BAKASU_MODULE_SAFETY.md).
+
 ## Format keputusan baru
 
 ```md
