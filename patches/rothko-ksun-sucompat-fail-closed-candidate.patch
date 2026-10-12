@@ -1,7 +1,7 @@
 diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
 --- a/kernel/feature/sucompat.c
 +++ b/kernel/feature/sucompat.c
-@@ -227,6 +227,7 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
+@@ -227,5 +227,6 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
  {
      struct filename *filename;
 +    struct filename *replacement;
