@@ -48,6 +48,24 @@ on:
 permissions:
   contents: read
 jobs:
+  gitlab_probe:
+    name: GitLab SUSFS read-only connectivity (non-gating)
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    continue-on-error: true
+    steps:
+      - name: Verify pinned SUSFS GitLab fetch without modifying kernel
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          getent ahostsv4 gitlab.com
+          curl --fail --location --silent --show-error --connect-timeout 10 --max-time 25 --output /dev/null https://gitlab.com/simonpunk/susfs4ksu
+          pin=5192aa2d33b381b58c1051532f9e1dfa5de6e8d3
+          git init -q /tmp/susfs-connectivity
+          git -C /tmp/susfs-connectivity remote add origin https://gitlab.com/simonpunk/susfs4ksu.git
+          timeout 90 git -C /tmp/susfs-connectivity -c http.version=HTTP/1.1 fetch --quiet --depth=1 origin "$pin"
+          test "$(git -C /tmp/susfs-connectivity rev-parse FETCH_HEAD)" = "$pin"
+          echo "PASS: pinned SUSFS GitLab source reachable from GitHub Actions"
   candidate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
