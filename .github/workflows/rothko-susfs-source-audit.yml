@@ -1,0 +1,25 @@
+name: Rothko SUSFS source audit (read-only)
+on:
+  push:
+    branches:
+      - feat/rothko-ksun-susfs-compat-audit
+    paths:
+      - scripts/rothko_susfs_source_probe.sh
+      - .github/workflows/rothko-susfs-source-audit.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout audit script only
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/rothko_susfs_source_probe.sh
+      - name: Acquire upstream and check compatibility gates
+        shell: bash
+        run: bash scripts/rothko_susfs_source_probe.sh
