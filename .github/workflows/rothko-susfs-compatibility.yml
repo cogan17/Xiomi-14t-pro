@@ -9,6 +9,7 @@ on:
     paths:
       - '.github/workflows/rothko-susfs-compatibility.yml'
       - 'scripts/rothko_apply_susfs.sh'
+      - 'scripts/rothko_susfs_conflicts.py'
   workflow_dispatch:
 
 permissions:
