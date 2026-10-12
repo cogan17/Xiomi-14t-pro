@@ -25,7 +25,7 @@ diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
 diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
 --- a/kernel/policy/app_profile.c
 +++ b/kernel/policy/app_profile.c
-@@ -1,8 +1,9 @@
+@@ -196,8 +196,9 @@
      // on older kernels, per-UID process accounting lives in user_struct.
  #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
 -    if (set_cred_ucounts(cred)) {
