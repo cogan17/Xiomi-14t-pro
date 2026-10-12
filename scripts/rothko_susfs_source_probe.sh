@@ -55,6 +55,45 @@ for line in patch:
         print(line)
 PY
 echo "===== END PINNED SUSFS DIFF ====="
+echo "===== KSUN PINNED EXECVE / SELINUX SYMBOL AUDIT ====="
+git clone --quiet --filter=blob:none https://github.com/pershoot/KernelSU-Next.git "$tmp/ksun"
+git -C "$tmp/ksun" checkout --quiet "$KSUN_SHA"
+echo "Resolved KSUN SHA: $(git -C "$tmp/ksun" rev-parse HEAD)"
+python3 - "$tmp/ksun" "$tmp/susfs" "$tmp/rothko" <<'PY'
+import pathlib, re, sys
+ksun, susfs, rothko = map(pathlib.Path, sys.argv[1:])
+symbols = [
+    "ksu_handle_execveat", "ksu_handle_execveat_sucompat",
+    "ksu_handle_post_execveat_sucompat", "ksu_su_compat_enabled",
+    "susfs_is_current_proc_no_su", "TIF_PROC_NO_SU",
+    "selinux", "avc_has_perm", "security_bprm_check",
+]
+roots = [(ksun, "KSUN"), (susfs / "kernel_patches", "SUSFS"), (rothko, "ROTHKO")]
+for root, label in roots:
+    print("ROOT", label)
+    for symbol in symbols:
+        matches = []
+        for p in root.rglob("*"):
+            if not p.is_file() or p.suffix not in {".c", ".h", ".patch"}:
+                continue
+            if ".git" in p.parts:
+                continue
+            try:
+                for n, line in enumerate(p.read_text(errors="replace").splitlines(), 1):
+                    if re.search(r"(?<![A-Za-z0-9_])" + re.escape(symbol) + r"(?![A-Za-z0-9_])", line):
+                        matches.append(f"{p.relative_to(root)}:{n}:{line.strip()[:150]}")
+                        if len(matches) >= 12:
+                            break
+            except OSError:
+                pass
+            if len(matches) >= 12:
+                break
+        print("SYMBOL", symbol, "MATCHES", len(matches))
+        for match in matches:
+            print(" ", match)
+PY
+echo "===== END KSUN SYMBOL AUDIT ====="
+
 if git -C "$tmp/rothko" apply --check --verbose "$patch"; then
   echo "PASS: official 6.1 patch passes git apply --check against pristine Rothko BSP"
 else
