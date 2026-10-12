@@ -258,3 +258,35 @@ misalnya MetaModule, ataupun di folder lain.
 kelengkapan ZIP versi terpasang dan integritas salinan eksternal
 **belum diverifikasi**.
 
+## Klarifikasi pengguna: subfolder menyimpan file ZIP installer
+
+**Bukti baru:** screenshot File Manager membuka
+`Penyimpanan Utama/ARoot/modulKSU/Simpan/TCP_Optimizer`.
+Folder tersebut secara nyata memuat dua arsip:
+
+| Arsip terlihat | Ukuran yang ditampilkan |
+|---|---:|
+| `TCP_Optimiser-2.4-16.zip` | 25,45 kB |
+| `TCP_Optimiser-2.5-17.zip` | 396 kB |
+
+Kedua file diperlihatkan sebagai arsip ZIP dalam kategori yang sama.
+Pengguna menjelaskan bahwa **subfolder pada screenshot terdahulu
+memang dipakai untuk menyimpan installer ZIP per modul**, dengan
+kemungkinan lebih dari satu versi di satu folder. Ini mengoreksi
+keraguan sebelumnya apakah subfolder berisi ZIP.
+
+**Yang belum diperiksa:** isi/struktur ZIP itu sendiri, checksum,
+keberadaan file installer pada **setiap** subfolder, versi arsip untuk
+seluruh 16 modul yang sedang terpasang, serta apakah arsip sudah
+disalin ke media eksternal. Jangan menganggap arsip ini merupakan
+16 modul yang aktif: inventaris runtime/disk tetap sumber berbeda.
+
+Catatan teknis: contoh kategori TCP Optimizer adalah **koleksi
+installer**, bukan bukti bahwa modul TCP Optimizer terpasang atau
+perlu diaktifkan sekarang. Tidak ada perubahan rencana jaringan
+atau tindakan terhadap kernel.
+
+**Kesimpulan:** strategi pemulihan berbasis ZIP cocok dengan kebiasaan
+arsip pengguna. Pertahankan pengelompokan yang ada dan hindari
+pengarsipan penuh `/data/adb` yang tidak diperlukan.
+
