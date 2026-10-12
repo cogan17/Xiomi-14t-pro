@@ -69,7 +69,15 @@ def main() -> int:
 
         for label, scope, old, new in MUTATIONS:
             lo, hi = ranges[scope]
-            pos = original.find(old, lo, hi)
+            # A return mutation must hit the error branch, not an unrelated
+            # early return in the same syscall handler.
+            search_from = lo
+            if old in ("return 0;", "return;"):
+                guard = original.find("if (setup_ksu_cred()) {", lo, hi)
+                if guard < 0:
+                    raise RuntimeError(f"{label}: expected checked helper branch is missing")
+                search_from = guard
+            pos = original.find(old, search_from, hi)
             if pos < 0:
                 raise RuntimeError(f"{label}: target not in intended source segment")
             edited = original[:pos] + new + original[pos+len(old):]
