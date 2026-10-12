@@ -85,13 +85,6 @@ int arch_dup_task_struct(struct task_struct *dst,
 #define TIF_SME			27	/* SME in use */
 #define TIF_SME_VL_INHERIT	28	/* Inherit SME vl_onexec across exec */
 
-/* SUSFS process no-su marker: deliberately outside the low syscall/work bits.
- * Keep this conditional until the pinned KSUN/SUSFS integration is validated.
- */
-#ifdef CONFIG_KSU_SUSFS
-#define TIF_PROC_NO_SU		34
-#endif
-
 #define _TIF_SIGPENDING		(1 << TIF_SIGPENDING)
 #define _TIF_NEED_RESCHED	(1 << TIF_NEED_RESCHED)
 #define _TIF_NOTIFY_RESUME	(1 << TIF_NOTIFY_RESUME)
