@@ -91,3 +91,23 @@ Scope: independent, read-only review of pinned `pershoot/KernelSU-Next@3438d6aa4
 - No universal pre-commit authorization proof, post-exec session mechanism, linking test, device ABI/KMI gate, or boot validation exists.
 
 **Gate disposition: BLOCKED.** Do not merge Draft PR #9, enable the suspended GitLab source job, publish artifacts, or flash. Unexpected changes in the pinned-source patterns must fail the source-evidence audit instead of silently marking a release compatible.
+
+
+### Negative regression gate for source audit (2026-10-12)
+
+To prevent a false green result caused by matching an unrelated function, the SUSFS sucompat UID/chroot preconditions and replacement-file checks are now scoped to the actual `ksu_handle_execveat_sucompat(int *fd, ...)` handler in `scripts/rothko_ksun_security_contract.py` (commit `789309a`). The checks are intentionally structural and do **not** establish runtime permission integrity.
+
+CI runs `tests/test_rothko_ksun_security_contract.py` against a **temporary copy of only the eight pinned KSUN source files**. Its nine negative cases intentionally remove or bypass an observed guard and require the validator to return nonzero with a `REVIEW REQUIRED` indication:
+1. su UID allowlist check;
+2. su chroot check;
+3. su filename redirection assignment;
+4. `GRANT_ROOT` ioctl permission mapping;
+5. per-ioctl permission invocation;
+6. root-profile SELinux error propagation;
+7. init SELinux failure handling;
+8. anonymous driver FD `O_CLOEXEC`;
+9. `setup_ksu_cred` SELinux failure observation.
+
+A passing mutation suite indicates only that **these exact regressions are detected by the static validator**. It is not a proof of complete control-flow dominance, hook authorization, Kconfig compatibility, FD lifecycle or kernel safety. The reported `setup_ksu_cred` path still merely logs failures. The seccomp candidate also requires review of task-state changes between preallocation and credential commit, plus real kernel seccomp locking semantics.
+
+No kernel compilation, GitLab fetching, changes to Rothko BSP, artifact creation, merge, release or flashing are performed by this suite. **PR #9 remains Draft; RELEASE BLOCKED.**
