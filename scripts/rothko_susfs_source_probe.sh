@@ -166,7 +166,9 @@ echo "===== WHOLE-TREE ARM64 FLAG COLLISION AUDIT ====="
 # Exclude the expected SUSFS definition itself; otherwise the audit flags its
 # own intentional TIF_PROC_NO_SU reservation as a collision.
 collision_matches="$(git -C "$tmp/rothko" grep -nE '^[[:space:]]*#[[:space:]]*define[[:space:]]+TIF_[A-Za-z0-9_]+[[:space:]]+34([[:space:]]|$)' -- 'arch/arm64/**' 'include/**' || true)"
-collision_matches="$(printf '%s\\n' "$collision_matches" | grep -vE '(^|:)#define[[:space:]]+TIF_PROC_NO_SU[[:space:]]+34([[:space:]]|$)' || true)"
+# git grep prefixes each match with path:line:, so match only the macro
+# definition portion rather than guessing how many prefix separators exist.
+collision_matches="$(printf '%s\\n' "$collision_matches" | grep -vE ':[[:digit:]]+:[[:space:]]*#[[:space:]]*define[[:space:]]+TIF_PROC_NO_SU[[:space:]]+34([[:space:]]|$)' || true)"
 if [[ -n "$collision_matches" ]]; then
   printf '%s\\n' "$collision_matches"
   echo "BLOCK: another TIF bit-34 definition requires manual collision review"
