@@ -1,0 +1,57 @@
+diff --git a/kernel/selinux/selinux.h b/kernel/selinux/selinux.h
+--- a/kernel/selinux/selinux.h
++++ b/kernel/selinux/selinux.h
+@@ -33,7 +33,7 @@
+ 
+ int handle_sepolicy(void __user *user_data, u64 data_len);
+ 
+-void setup_ksu_cred();
++int setup_ksu_cred(void);
+ 
+ void escape_to_root_for_adb_root();
+ 
+diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
+--- a/kernel/selinux/selinux.c
++++ b/kernel/selinux/selinux.c
+@@ -1,5 +1,6 @@
+ #include "selinux.h"
+-#include "linux/cred.h"
++#include "linux/cred.h"
++#include <linux/errno.h>
+ #include "linux/sched.h"
+ #include "objsec.h"
+ #include "linux/version.h"
+@@ -156,13 +157,26 @@
+     return ret;
+ }
+ 
+-void setup_ksu_cred(void)
+-{
+-    if (ksu_cred) {
+-        if (setup_selinux(KERNEL_SU_CONTEXT, ksu_cred))
+-            pr_err("Failed to initialize KernelSU credentials SELinux context\n");
+-    }
+-}
++int setup_ksu_cred(void)
++{
++    int ret;
++
++    if (!ksu_cred)
++        return -EINVAL;
++
++    ret = setup_selinux(KERNEL_SU_CONTEXT, ksu_cred);
++    if (ret) {
++        pr_err("Failed to initialize KernelSU credentials SELinux context: %d\n", ret);
++        return ret;
++    }
++
++    if (!is_task_ksu_domain(ksu_cred)) {
++        pr_err("KernelSU shared credentials not in verified KSU domain\n");
++        return -EACCES;
++    }
++
++    return 0;
++}
+ 
+ void escape_to_root_for_adb_root(void)
+ {
