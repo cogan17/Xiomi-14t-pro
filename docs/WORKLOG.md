@@ -562,3 +562,13 @@ bukan menghapus jejak kejadian.
 - Tidak ada output siap-flash, release, perintah fastboot, atau perubahan HP.
 - Status kompilasi final harus diambil dari GitHub Actions PR; tidak
   membuktikan ABI/KMI/modul/DT vendor khusus Rothko.
+
+## 2026-10-12 — SUSFS Simonpunk 6.1: uji patch nyata (belum flash)
+
+- Uji CI menggabungkan BakaSU + NoMount dan mencoba menerapkan patch kernel
+  Simonpunk dari GitLab `gki-android14-6.1` (commit diawasi `153f88df`).
+- Aplikasi patch wajib bersih tanpa fuzz/reject; sumber asli dan ABI guard
+  tidak diubah untuk meloloskan build. Patch KernelSU generik tidak dipaksakan
+  ke BakaSU karena BakaSU memiliki mekanisme SUSFS tersendiri.
+- Hasil CI belum diketahui saat PR dibuat. Kompilasi eksperimen saja,
+  bukan pembuktian board MT6989/vendor CRC atau izin flashing.
