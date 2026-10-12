@@ -29,6 +29,12 @@ def main() -> int:
     selinux = source(root, "selinux/selinux.c")
     selinux_h = source(root, "selinux/selinux.h")
     bridge = source(root, "hook/syscall_event_bridge.c")
+    # Scope the checks to the exact SUSFS-style sucompat handler, rather than
+    # accepting a UID check in an unrelated function elsewhere in the file.
+    su_section = su.split("int ksu_handle_execveat_sucompat(int *fd", 1)
+    su_body = su_section[1].split("extern struct static_key_true is_first_zygote;", 1)[0] if len(su_section) == 2 else ""
+    before_escape = su_body.split("ret = escape_with_root_profile();", 1)[0]
+    after_escape = su_body.split("ret = escape_with_root_profile();", 1)[1] if "ret = escape_with_root_profile();" in su_body else ""
     results: list[tuple[str, bool]] = []
 
     def check(label: str, condition: bool) -> None:
@@ -51,9 +57,9 @@ def main() -> int:
 
     # These are concrete upstream ENTRY-POINT checks, not a general
     # authorization theorem for every caller of escape_with_root_profile.
-    check("sucompat checks chroot and current UID allowlist",
-          "current_chrooted()" in su and
-          "if (!ksu_is_allow_uid_for_current(current_uid().val))" in su)
+    check("sucompat checks chroot and current UID allowlist before escape",
+          "current_chrooted()" in before_escape and
+          "if (!ksu_is_allow_uid_for_current(current_uid().val))" in before_escape)
     check("GRANT_ROOT ioctl maps to allowed_for_su",
           ".perm_check = allowed_for_su" in grant_block and
           "return is_manager() || ksu_is_allow_uid_for_current(current_uid().val);" in perm)
@@ -61,10 +67,11 @@ def main() -> int:
           "ksu_ioctl_handlers[i].perm_check()" in ioctl_block and
           "return -EPERM;" in ioctl_block)
     check("candidate redirects su filename only after checking escape",
-          "replacement = getname_kernel(ksud_path)" in su and
-          "ret = escape_with_root_profile();" in su and
-          "if (!uid_eq(current_euid(), GLOBAL_ROOT_UID)" in su and
-          "*filename_ptr = replacement;" in su)
+          "replacement = getname_kernel(ksud_path)" in before_escape and
+          "if (!uid_eq(current_euid(), GLOBAL_ROOT_UID)" in after_escape and
+          "*filename_ptr = replacement;" in after_escape and
+          after_escape.index("if (!uid_eq(current_euid(), GLOBAL_ROOT_UID)") < after_escape.index("*filename_ptr = replacement;")
+          if ("if (!uid_eq(current_euid(), GLOBAL_ROOT_UID)" in after_escape and "*filename_ptr = replacement;" in after_escape) else False)
     check("candidate propagates group and SELinux errors before commit",
           "ret = setup_groups(profile, cred);" in before_commit and
           "ret = setup_selinux(profile->selinux_domain, cred);" in before_commit and
