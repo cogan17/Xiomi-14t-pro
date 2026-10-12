@@ -448,3 +448,25 @@ bukan menghapus jejak kejadian.
   restore, reboot eksperimen atau perubahan kernel/modul.
 - **Rujukan:** [audit init_boot aktif](ROTHKO_ACTIVE_INIT_BOOT_AUDIT.md).
 
+## 2026-10-12 — Pengguna menjalankan metode fatalcoder: init Rothko lalu Cogan r7
+
+- **Tindakan yang dilaporkan pengguna:** flash `init_boot.img` Rothko lalu
+  installer Cogan r7, reboot berhasil mencapai home screen, kemudian
+  membuat backup RAW `2026-10-12--09-09`.
+- **Bukti:** log Kernel Flasher/AnyKernel3 pukul 09.07, manifest
+  backup `09-09` dan ketujuh image RAW yang diunggah.
+- **Audit independen:** semua tujuh SHA-256 image cocok manifest.
+  **Enam image identik dibanding `07-19`**, termasuk `boot` Cogan r7.
+  Satu-satunya perubahan adalah `init_boot.img`: SHA-256 `951f0961...`
+  (stock Degas) → `4b25ce3f...` (stock Rothko).
+- **Log installer:** menargetkan `/dev/block/by-name/boot_a`, GKI
+  supported, header boot v4, repack/penulisan boot, selesai `Done!`.
+  `ash: bad number` dicatat sebagai warning yang tidak menghentikan
+  log instalasi, penyebabnya belum dianalisis.
+- **Batas bukti:** pengguna melaporkan reboot berhasil; belum ada uji
+  root Manager/Driver, SUSFS, NoMount dan seluruh 16 modul pasca-flash.
+  Backup baru `09-09` belum terverifikasi pada USB, sementara copy USB
+  `07-19` sudah PASS 7/7. Pertahankan **kedua** kondisi.
+- **Tidak dilakukan oleh asisten:** flashing, reboot, penulisan
+  partisi, perubahan slot/root/modul, atau publikasi image mentah.
+- **Referensi:** [laporan lengkap](ROTHKO_POST_FLASH_INIT_BOOT_0909.md).
