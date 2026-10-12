@@ -78,3 +78,11 @@ GitHub connector **successfully fetched source contents** at `pershoot/KernelSU-
 - `kernel/tools/susfs_compat.mk`: 404 at this SHA/path, unlike BakaSU; **absence of this one file is not proof of compatibility**.
 - WildKernels `.github/workflows/main.yml` was fetched directly, but its size and complexity require exact pin extraction before applying any recipes.
 - Remaining blocking work: obtain exact Simonpunk SUSFS source at a pinned SHA, compare all KSUN SUSFS hook signatures and proc/maps changes against Rothko BSP, then validate Kconfig integration and `git apply --check`. No source code was changed and no CI build started.
+
+## Fifth investigation — pinned KSUN call-site audit (2026-10-12)
+Source read directly from `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161`:
+- `kernel/core/init.c:94-98` calls `susfs_init()` whenever `CONFIG_KSU_SUSFS` is enabled. Confirm the matching declaration and implementation exist in the selected SUSFS source and are safe at this init phase.
+- `kernel/supercall/dispatch.c:1044-1145` implements `ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg)` and dispatches SUSFS commands. It references `SUSFS_MAGIC`, `CMD_SUSFS_*`, `susfs_add_sus_path_loop`, `susfs_set_avc_log_spoofing`, `susfs_get_enabled_features`, `susfs_show_variant`, `susfs_show_version`, among others. **Each** must be checked against the pinned SUSFS headers/implementation before a build.
+- `kernel/Kbuild:22` excludes regular syscall hook objects under `CONFIG_KSU_SUSFS=y`, so the expected inline hooks must actually be present in the patched BSP. Check syscall signatures, config gates, symbol resolution, and LSM integration.
+- **New concern:** `ksu_handle_sys_reboot` and its toolkit fallback must be checked for exact calling conventions and semantics in the Xiaomi BSP; do not assume generic GKI hook offsets.
+- These are real source observations, not a completed API or vendor audit. No compile authorization yet.
