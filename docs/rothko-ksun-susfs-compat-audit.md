@@ -118,3 +118,13 @@ Source: GitLab-indexed official Simonpunk `kernel_patches/KernelSU/10_enable_sus
 - `kernel_patches/include/linux/susfs_def.h` was 404 on that mirror SHA; whether it exists elsewhere or in the official source is unknown.
 - The Rothko base branch `dev/rothko` does not have these three files at root paths `include/linux/susfs.h`, `include/linux/susfs_def.h`, `fs/susfs.c` (404), as expected for unintegrated source; absence alone does not establish patch applicability.
 - **Gate:** require complete pinned official/fork header and implementation, full API symbol and structure comparison, plus kernel patch dry run before CI compile. No file was copied from the rejected mirror into Rothko.
+
+## Tenth investigation — all three SUSFS files obtained from an independent snapshot (2026-10-12)
+- GitLab raw links for Simonpunk and pershoot remain inaccessible through web fetch (DisabledError); this **does not** establish upstream compatibility.
+- GitHub code search identified an independent integrated SUSFS snapshot: `crdroidandroid/android_kernel_xiaomi_sm8150@f9ef69053739a482d867f028db97887fc9aa4ac9`. Directly fetched:
+  - `include/linux/susfs.h` 9,099 bytes, blob `f9ef61d99dad05007972b7dea3ca1cd93f0a02de`, `SUSFS_VERSION "v2.3.0"`;
+  - `include/linux/susfs_def.h` 4,747 bytes, blob `73e6e7cbe5b8e4c633aa3e2ed9c5b60547094e2b`;
+  - `fs/susfs.c` 60,575 bytes, blob `e88dde044c40a91695a0700874bcde71366a8fbc`.
+- In this snapshot, `susfs.h` declares and `fs/susfs.c` defines: `susfs_add_sus_path_loop(void __user **)`, `susfs_set_avc_log_spoofing(void __user **)`, `susfs_get_enabled_features(void __user **)`, `susfs_show_version(void __user **)`, and `susfs_init(void)`. The first four correspond to calls in pinned pershoot KSUN dispatcher; these **specific prototypes and implementations agree internally** in this snapshot.
+- This is **a reference snapshot from another device**, not a verified matching Simonpunk/pershoot commit pair, and must **never** be copied into Rothko without provenance, kernel-version and patch analysis. Its v2.3.0 label alone is insufficient to infer compatibility.
+- Remaining audit: compare complete `susfs_def.h` constants and struct layouts against pinned KSUN/userspace; enumerate all called symbols; acquire matching GitLab patch and SHA; dry-run against Xiaomi BSP and validate ABI/KMI. Gate stays closed.
