@@ -1,7 +1,7 @@
 name: Cogan Rothko - Simonpunk SUSFS Patch Compatibility (Experimental)
 
 # Real patch application + kernel compile if clean. No boot.img/AK3/release.
-# GitLab short commit prefix is temporary: lock full SHA after recording it.
+# Pin the exact Simonpunk GitLab commit. Fail on unexpected branch movement.
 on:
   pull_request:
     branches:
@@ -25,7 +25,7 @@ jobs:
       LLVM_IAS: '1'
       BAKASU_PIN: f6cb7e70c10ebde149f3121ae68b945514fd0801
       NOMOUNT_PIN: 8005194827ca3edc7e75b9523a874307b2c3e883
-      SUSFS_EXPECTED_PREFIX: '153f88df'
+      SUSFS_PIN: '17dc6b683b26e036242bfcfe86b33c5982590237'
     steps:
       - name: Checkout Xiaomi BSP kernel source on Linux
         uses: actions/checkout@v4
@@ -71,8 +71,8 @@ jobs:
             https://gitlab.com/simonpunk/susfs4ksu.git "$RUNNER_TEMP/susfs"
           actual="$(git -C "$RUNNER_TEMP/susfs" rev-parse HEAD)"
           echo "Official SUSFS full upstream SHA: $actual"
-          [[ "$actual" == "$SUSFS_EXPECTED_PREFIX"* ]] || {
-            echo '::error::SUSFS upstream moved; manually review and pin new revision'; exit 1;
+          [[ "$actual" == "$SUSFS_PIN" ]] || {
+            echo "::error::SUSFS upstream revision mismatch. Expected $SUSFS_PIN, got $actual. Review before repinning."; exit 1;
           }
           echo "- Simonpunk SUSFS source: $actual" >> "$GITHUB_STEP_SUMMARY"
       - name: Attempt STRICT upstream 6.1 SUSFS patch application
