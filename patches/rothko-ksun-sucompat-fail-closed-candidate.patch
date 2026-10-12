@@ -1,7 +1,7 @@
 diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
 --- a/kernel/feature/sucompat.c
 +++ b/kernel/feature/sucompat.c
-@@ -257,13 +257,18 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
+@@ -257,13 +257,16 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
                                                           (const char __user *const __user *)argv_ptr->ptr.native,
                                                           GFP_KERNEL);
  
