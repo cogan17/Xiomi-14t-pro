@@ -569,3 +569,13 @@ bukan menghapus jejak kejadian.
 - Menambahkan `.github/workflows/rothko-susfs-source-audit.yml` untuk menjalankan probe pada GitHub Actions branch eksperimen, tanpa write token, build kernel, flash, release, atau perubahan partisi.
 - Snapshot SUSFS pihak ketiga v2.3.0 tidak cocok secara lengkap dengan KSUN pershoot pinned karena fungsi `susfs_is_current_proc_no_su()` dan flag `TIF_PROC_NO_SU` belum tersedia dalam snapshot tersebut. Snapshot **tidak diintegrasikan**.
 - Uji penerapan patch `git apply --check`, validasi ABI lengkap, dan kompilasi diagnostik **belum dinyatakan lolos**. PR tetap Draft dan tidak boleh menghasilkan artifact siap-flash.
+
+
+## 2026-10-12 — Source alignment dan kompilasi baseline manual (PR #9)
+
+- **Keputusan:** hentikan penambahan suite audit KSUN yang mengulang risiko yang sudah diketahui; pertahankan hasil lama dan fokus ke kesesuaian kernel common, firmware, dan modul vendor Rothko.
+- Memastikan source `dev/rothko` memakai Linux **6.1.57**, deklarasi `KMI_GENERATION=11`, dan `build.config.constants` menunjuk `android14-6.1` dengan toolchain rujukan `clang-r487747c`. Referensi modul resmi Xiaomi `MiCode/MTK_kernel_modules:bsp-rothko-u-oss@a875701d71d29cfac0a9456c1e9c223d44f53d68` memuat GPU `mt6989`. Verifikasi CRC/ABI modul vendor dan kernel aktif **belum tersedia**.
+- Meluruskan interpretasi sumber: angka **6.1.177** di catatan lineage adalah versi **yang diminta workflow GKI**, bukan bukti binary/kernel yang sedang berjalan; `uname` dapat dipengaruhi spoofing SUSFS.
+- Menggunakan kembali `.github/workflows/rothko-bsp-compile-smoke.yml` dan `scripts/rothko_bsp_compile_smoke.sh` yang sudah tersedia. Workflow kini **manual `workflow_dispatch` saja** pada `dev/rothko`, default hanya `config`; tahap `image` memerlukan konfirmasi `DIAGNOSTIC`. Tidak ada trigger PR, upload artefak, AK3, boot.img, release, atau flashing.
+- Branch modul vendor official dipin; jika commit upstream berubah, workflow berhenti untuk meminta tinjauan sumber. Compiler CI masih versi Ubuntu (bukan clang Android r487747c), sehingga hasil compile-only tidak membuktikan ABI atau kompatibilitas runtime perangkat.
+- Semua perubahan baru hanya ada pada **Draft PR #9 branch eksperimen**, belum ada merge ke `dev/rothko` dan **tidak ada kompilasi yang dijalankan** dalam pekerjaan ini. Perubahan manual workflow baru efektif pada branch terpilih setelah review dan integrasi terpisah.
