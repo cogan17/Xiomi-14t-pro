@@ -33,3 +33,48 @@ jobs:
       - name: Acquire upstream and check compatibility gates
         shell: bash
         run: bash scripts/rothko_susfs_source_probe.sh
+
+  gitlab-transport:
+    # One read-only GitLab availability/provenance check on this PR's workflow
+    # update. Do NOT unblock the existing full SUSFS audit or initiate a build.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Fetch Simonpunk SUSFS exact pinned commit from official GitLab
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export GIT_TERMINAL_PROMPT=0
+          pin=5192aa2d33b381b58c1051532f9e1dfa5de6e8d3
+          expected_tree=b39cd4117178ce73d2973f7bcdae5c74defc8f68
+          upstream=https://gitlab.com/simonpunk/susfs4ksu.git
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          git -C "$tmp" init -q
+          if ! timeout 105 git -C "$tmp" -c http.version=HTTP/1.1 fetch --depth=1 "$upstream" "$pin"; then
+            echo "::error::Official GitLab exact-SHA transport did not succeed from GitHub runner"
+            echo "BLOCK: this does not by itself establish a GitLab.com-wide outage"
+            exit 1
+          fi
+          git -C "$tmp" checkout --quiet --detach FETCH_HEAD
+          actual_sha="$(git -C "$tmp" rev-parse HEAD)"
+          actual_tree="$(git -C "$tmp" rev-parse 'HEAD^{tree}')"
+          [[ "$actual_sha" == "$pin" ]] || { echo "::error::Pinned commit mismatch"; exit 1; }
+          [[ "$actual_tree" == "$expected_tree" ]] || { echo "::error::Pinned tree mismatch"; exit 1; }
+          for source in \
+            kernel_patches/50_add_susfs_in_gki-android14-6.1.patch \
+            kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch \
+            kernel_patches/include/linux/susfs_def.h; do
+            test -s "$tmp/$source" || { echo "::error::Missing pinned upstream source: $source"; exit 1; }
+            sha256sum "$tmp/$source"
+          done
+          {
+            echo "### Simonpunk GitLab pinned-source availability"
+            echo
+            echo "- Exact pinned SUSFS SHA: $actual_sha"
+            echo "- Exact verified Git tree: $actual_tree"
+            echo "- Official GitLab fetch: successful from GitHub runner"
+            echo "- Source NOT patched, built, integrated, uploaded or flashed."
+            echo "- KSUN/SUSFS compatibility and PR #9 release: STILL BLOCKED."
+          } >> "$GITHUB_STEP_SUMMARY"
