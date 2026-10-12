@@ -89,6 +89,16 @@ done
 if find "$tree" -name '*.rej' -o -name '*.orig' | grep -q .; then
   echo "::error::Unexpected patch reject/backup file"; exit 1;
 fi
+# Detect Android page-size-migration references introduced by the patch.
+# This Xiaomi BSP has no guarantee of the matching implementation. Fail closed
+# rather than synthesizing VMA_PAD_START or silently changing /proc semantics.
+if grep -Eq 'VMA_PAD_START[[:space:]]*\\(' "$tree/fs/proc/task_mmu.c"; then
+  if ! grep -RqlE '^[[:space:]]*#[[:space:]]*define[[:space:]]+VMA_PAD_START[[:space:]]*\\(' "$tree/include" "$tree/arch/arm64/include"; then
+    echo "::error::Patched task_mmu.c references VMA_PAD_START, but no matching page-size migration definition exists in kernel headers."
+    echo "::error::Semantic Xiaomi BSP port required; refusing to fake a macro or modify memory-map behavior."
+    exit 1
+  fi
+fi
 git -C "$tree" diff --check
 echo "Kernel-only SUSFS patch applied; BakaSU KSU patch intentionally NOT applied."
 echo "Not a device-validated kernel and NOT approved for flashing."
