@@ -1,0 +1,38 @@
+name: Rothko KSUN independent candidate audit
+on:
+  push:
+    branches:
+      - feat/rothko-ksun-susfs-compat-audit
+    paths:
+      - patches/rothko-ksun-sucompat-fail-closed-candidate.patch
+      - .github/workflows/rothko-ksun-candidate-audit.yml
+  pull_request:
+    paths:
+      - patches/rothko-ksun-sucompat-fail-closed-candidate.patch
+      - .github/workflows/rothko-ksun-candidate-audit.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify immutable KSUN candidate without GitLab
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pin=3438d6aa431f96a23f9e625bec3d53ce1fb14161
+          git init -q /tmp/ksun
+          git -C /tmp/ksun remote add origin https://github.com/pershoot/KernelSU-Next.git
+          git -C /tmp/ksun -c http.version=HTTP/1.1 fetch --quiet --depth=1 origin "$pin"
+          git -C /tmp/ksun checkout --quiet --detach FETCH_HEAD
+          test "$(git -C /tmp/ksun rev-parse HEAD)" = "$pin"
+          git -C /tmp/ksun apply --check --verbose "$GITHUB_WORKSPACE/patches/rothko-ksun-sucompat-fail-closed-candidate.patch"
+          echo "PASS: candidate applies to immutable KSUN source"
+          echo "BLOCK: credential authorization before commit_creds not demonstrated"
+          echo "BLOCK: authenticated post-exec session FD not implemented"
+          echo "This job validates patch applicability ONLY; it is not release approval."
