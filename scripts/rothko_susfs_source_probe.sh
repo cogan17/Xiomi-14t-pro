@@ -180,7 +180,8 @@ checks = {
  "KSUN sucompat uses SUSFS process exclusion": "susfs_is_current_proc_no_su()" in su,
  "SUSFS kernel patch requires post-execve hook": "ksu_handle_post_execveat_sucompat" in kernel_patch,
  "KSUN provides post-execve hook": "ksu_handle_post_execveat_sucompat" in (su + hdr + bridge),
- "KSUN has su session FD installer": any(re.search(r"\bksu_install_su_fd\s*\(", p.read_text(errors="replace")) for p in (ksun / "kernel").rglob("*.c")),
+ "KSUN has su session FD installer definition": any(re.search(r"(?m)^[ \\t]*(?:static[ \\t]+)?(?:inline[ \\t]+)?(?:int|long|unsigned[ \\t]+int|unsigned[ \\t]+long)[ \\t]+ksu_install_su_fd[ \\t]*\\([^;{}]*\\)[ \\t]*(?:\\n[ \\t]*)?\\{", p.read_text(errors="replace")) for p in (ksun / "kernel").rglob("*.c")),
+ "KSUN post-execve references session installer": bool(re.search(r"\\bksu_handle_post_execveat_sucompat[ \\t]*\\([^;{}]*\\)[ \\t]*\\{[^}]*\\bksu_install_su_fd[ \\t]*\\(", su, re.S)),
  "SUSFS thread flag defined": bool(re.search(r"^#define\s+TIF_PROC_NO_SU\s+34\b", defs, re.M)),
  "Rothko reserves/defines TIF_PROC_NO_SU": bool(re.search(r"^#define\s+TIF_PROC_NO_SU\s+34\b", arm, re.M)),
 }
@@ -200,7 +201,8 @@ for label, ok in checks.items():
     print(("PASS" if ok else "BLOCK") + ": " + label, flush=True)
 blocking = [
     "KSUN provides post-execve hook",
-    "KSUN has su session FD installer",
+    "KSUN has su session FD installer definition",
+    "KSUN post-execve references session installer",
     "Rothko reserves/defines TIF_PROC_NO_SU",
     "ARM64 bit 34 unassigned in thread_info.h",
     "ARM64 thread flags use unsigned long",
