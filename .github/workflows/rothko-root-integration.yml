@@ -1,0 +1,138 @@
+name: Cogan Rothko - Real Root Driver Integration (Experimental)
+
+# All root flavors are integrated in SEPARATE CI checkouts.
+# No SUSFS/NoMount patch is implied. No boot.img, AK3, APK or flashable artifacts.
+on:
+  pull_request:
+    branches:
+      - dev/rothko
+    paths:
+      - '.github/workflows/rothko-root-integration.yml'
+      - 'scripts/rothko_install_root_driver.py'
+      - 'tests/test_rothko_install_root_driver.py'
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/rothko_install_root_driver.py
+            tests/test_rothko_install_root_driver.py
+          sparse-checkout-cone-mode: false
+      - run: python3 -m unittest discover -s tests -p 'test_rothko_install_root_driver.py' -v
+
+  integrate:
+    name: Integrate ${{ matrix.flavor }} source (NO FLASH)
+    needs: unit-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavor: BakaSU
+            repo: Baka-SU/BakaSU
+            sha: f6cb7e70c10ebde149f3121ae68b945514fd0801
+          - flavor: KernelSU
+            repo: tiann/KernelSU
+            sha: f895b80a3aad79948ba8074f53cf8f65a314d576
+          - flavor: KernelSU-Next
+            repo: KernelSU-Next/KernelSU-Next
+            sha: 02a9e1c5fb2c4fd8117429fe004136332788c1b6
+    steps:
+      - name: Checkout only required BSP integration files
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            Makefile
+            build.config.common
+            drivers/Kconfig
+            drivers/Makefile
+            scripts/rothko_install_root_driver.py
+          sparse-checkout-cone-mode: false
+      - name: Fetch EXACT reviewed root source SHA
+        shell: bash
+        env:
+          ROOT_REPO: ${{ matrix.repo }}
+          ROOT_SHA: ${{ matrix.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/rothko-root-src"
+          git -C "$RUNNER_TEMP/rothko-root-src" init
+          git -C "$RUNNER_TEMP/rothko-root-src" remote add origin "https://github.com/$ROOT_REPO.git"
+          git -C "$RUNNER_TEMP/rothko-root-src" fetch --depth=1 origin "$ROOT_SHA"
+          git -C "$RUNNER_TEMP/rothko-root-src" checkout --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/rothko-root-src" rev-parse HEAD)" = "$ROOT_SHA"
+      - name: Apply real driver integration without running setup.sh
+        env:
+          ROOT_FLAVOR: ${{ matrix.flavor }}
+        run: |
+          set -euo pipefail
+          python3 scripts/rothko_install_root_driver.py \
+            --root "$ROOT_FLAVOR" --tree "$GITHUB_WORKSPACE" \
+            --upstream-checkout "$RUNNER_TEMP/rothko-root-src"
+          git diff --check
+          test -f drivers/kernelsu/Kconfig
+          grep -Fq 'obj-$(CONFIG_KSU) += kernelsu/' drivers/Makefile
+          grep -Fq 'source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+          {
+            echo '### Root driver actually integrated in isolated CI checkout'
+            echo "- Root flavor: $ROOT_FLAVOR"
+            echo "- Exact root source: $(git -C "$RUNNER_TEMP/rothko-root-src" rev-parse HEAD)"
+            echo '- Source code integration present in drivers/{Kconfig,Makefile}.'
+            echo '- No mixed roots. No SUSFS/NoMount, boot image, or flashable ZIP.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  compile-bakasu:
+    name: Compile BakaSU-enabled ARM64 Image (NON-FLASHABLE)
+    needs: integrate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ARCH: arm64
+      LLVM: '1'
+      LLVM_IAS: '1'
+      ROOT_SHA: f6cb7e70c10ebde149f3121ae68b945514fd0801
+    steps:
+      - name: Checkout full source tree on Linux
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Install toolchain for compile experiment
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq clang lld llvm bc bison flex libssl-dev libelf-dev dwarves cpio rsync python3
+      - name: Fetch pinned BakaSU and patch driver references
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/rothko-bakasu-src"
+          git -C "$RUNNER_TEMP/rothko-bakasu-src" init
+          git -C "$RUNNER_TEMP/rothko-bakasu-src" remote add origin https://github.com/Baka-SU/BakaSU.git
+          git -C "$RUNNER_TEMP/rothko-bakasu-src" fetch --depth=1 origin "$ROOT_SHA"
+          git -C "$RUNNER_TEMP/rothko-bakasu-src" checkout --detach FETCH_HEAD
+          python3 scripts/rothko_install_root_driver.py --root BakaSU \
+            --tree "$GITHUB_WORKSPACE" --upstream-checkout "$RUNNER_TEMP/rothko-bakasu-src"
+      - name: Generate GKI diagnostic config and build root-enabled kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 gki_defconfig
+          scripts/config --file out/.config --enable KSU --enable KSU_TRACEPOINT_HOOK --disable KSU_SUSFS
+          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 olddefconfig
+          grep -qx 'CONFIG_KSU=y' out/.config || { echo '::error::CONFIG_KSU not enabled'; exit 1; }
+          if grep -qx 'CONFIG_KSU_SUSFS=y' out/.config; then
+            echo '::error::SUSFS source patches not verified, cannot enable'; exit 1
+          fi
+          make -j2 O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 Image
+          test -s out/arch/arm64/boot/Image
+          echo 'BakaSU diagnostic Image compiled. NOT Rothko flash-ready.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No image uploaded. No AK3/boot.img packaged. ABI/KMI not proven.' >> "$GITHUB_STEP_SUMMARY"
