@@ -494,3 +494,20 @@ bukan menghapus jejak kejadian.
   pemeriksaan CI dan review; baseline `bsp-rothko-u-oss` tetap utuh.
 - **Langkah berikut:** uji PR, tinjau matriks/summary, lalu lakukan audit
   ABI/KMI/board/pinning patch sebelum membuat jalur build sesungguhnya.
+
+## 2026-10-12 — Implementasi dua jalur distribusi (kandidat, belum flash)
+
+- Kode: `scripts/rothko_dual_package.py` membuat pasangan `boot.img`
+  dan AnyKernel3 ZIP dari `Image` yang sama, memverifikasi kernel
+  tersemat pada `boot.img` dan mencatat hash SHA-256.
+- Windows: `tools/platform-tools/flash-rothko.cmd` dan
+  `Flash-Rothko.ps1` menyiapkan pemeriksaan Platform-Tools,
+  khusus `rothko`/Slot A/partisi boot; default read-only.
+- **Keamanan:** output diberi `approved_for_flash=false`; AK3
+  mengandung blokir eksekusi. Tidak ada ZIP siap-flash, kompilasi,
+  perubahan partisi, atau flashing perangkat.
+- Uji kontrak dengan data sintetik ditambahkan ke CI. Tidak
+  membuktikan kecocokan ABI/KMI atau kemampuan boot di Rothko.
+- Berikutnya: temukan konfigurasi board/DT yang benar, kompile
+  kernel khusus perangkat, cocokkan vendor ABI serta firmware
+  sebelum meninjau izin instalasi dua format.

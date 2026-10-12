@@ -1,0 +1,74 @@
+name: Cogan Rothko - Dual Delivery Candidate Tests
+
+on:
+  pull_request:
+    branches:
+      - dev/rothko
+    paths:
+      - 'scripts/rothko_dual_package.py'
+      - 'tests/test_rothko_dual_package.py'
+      - 'tools/platform-tools/**'
+      - '.github/workflows/test-rothko-dual-delivery.yml'
+  push:
+    branches:
+      - dev/rothko
+    paths:
+      - 'scripts/rothko_dual_package.py'
+      - 'tests/test_rothko_dual_package.py'
+      - 'tools/platform-tools/**'
+      - '.github/workflows/test-rothko-dual-delivery.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-package-tests:
+    name: Validate APK-free AK3 and fastboot image candidate contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/rothko_dual_package.py
+            tests/test_rothko_dual_package.py
+            tools/platform-tools/
+          sparse-checkout-cone-mode: false
+      - name: Run local mock packaging tests (no real image, no flash)
+        run: python3 -m unittest discover -s tests -p 'test_rothko_dual_package.py' -v
+      - name: Check Windows CMD launcher target
+        run: |
+          grep -Fq 'Flash-Rothko.ps1' tools/platform-tools/flash-rothko.cmd
+          grep -Fq 'approved_for_flash' tools/platform-tools/Flash-Rothko.ps1
+          grep -Fq 'flash boot_a' tools/platform-tools/Flash-Rothko.ps1
+          grep -Fq 'ANDROID!' tools/platform-tools/Flash-Rothko.ps1
+
+  windows-platform-tools-syntax:
+    name: Validate Windows PowerShell installer syntax (no flash)
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      # Windows cannot check out some Linux kernel paths (e.g. aux.c).
+      # Fetch ONLY the candidate script by immutable PR SHA.
+      - name: Download the PowerShell file without checking out kernel sources
+        shell: powershell
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $url = "https://raw.githubusercontent.com/${{ github.repository }}/$env:SOURCE_SHA/tools/platform-tools/Flash-Rothko.ps1"
+          Invoke-WebRequest -Uri $url -OutFile (Join-Path $env:RUNNER_TEMP 'Flash-Rothko.ps1')
+      - name: Parse Flash-Rothko.ps1 without executing it
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          $scriptPath = Join-Path $env:RUNNER_TEMP 'Flash-Rothko.ps1'
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $scriptPath, [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+          Write-Host 'PowerShell parser PASS; no fastboot command executed.'
