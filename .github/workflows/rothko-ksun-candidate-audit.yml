@@ -21,6 +21,8 @@ on:
       - patches/rothko-ksun-shared-cred-stage-guard-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
+      - scripts/rothko_ksun_g2_g4_risk_audit.py
+      - tests/test_rothko_ksun_g2_g4_risk_audit.py
   pull_request:
     paths:
       - patches/rothko-ksun-sucompat-fail-closed-candidate.patch
@@ -40,6 +42,8 @@ on:
       - patches/rothko-ksun-shared-cred-stage-guard-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
+      - scripts/rothko_ksun_g2_g4_risk_audit.py
+      - tests/test_rothko_ksun_g2_g4_risk_audit.py
   workflow_dispatch:
 permissions:
   contents: read
@@ -168,3 +172,9 @@ jobs:
           python3 "$GITHUB_WORKSPACE/scripts/rothko_ksun_stage_guard_candidate_audit.py" "/tmp/ksun/kernel"
           python3 "$GITHUB_WORKSPACE/tests/test_rothko_ksun_stage_guard_candidate.py" "/tmp/ksun/kernel" "$GITHUB_WORKSPACE/scripts/rothko_ksun_stage_guard_candidate_audit.py"
           echo "BLOCK: G3 check ordering is source-only; retries, cleanup, FD, KMI and release unverified"
+      - name: Map G2 late-load unwind and G4 module rc credential hazards
+        shell: bash
+        run: python3 "$GITHUB_WORKSPACE/scripts/rothko_ksun_g2_g4_risk_audit.py" "/tmp/ksun/kernel"
+      - name: Reject 21 G2 G4 risk inventory mutations and keep remediation denied
+        shell: bash
+        run: python3 "$GITHUB_WORKSPACE/tests/test_rothko_ksun_g2_g4_risk_audit.py" "/tmp/ksun/kernel" "$GITHUB_WORKSPACE/scripts/rothko_ksun_g2_g4_risk_audit.py"
