@@ -1,0 +1,84 @@
+name: Cogan Rothko - NoMount Kernel Source Integration (Experimental)
+
+# Actual compile experiment, not a device-compatible artifact.
+# No download artifacts, release, AK3, boot.img, root manager, or flashing.
+on:
+  pull_request:
+    branches:
+      - dev/rothko
+    paths:
+      - '.github/workflows/rothko-nomount-integration.yml'
+      - 'scripts/rothko_install_nomount.py'
+      - 'tests/test_rothko_install_nomount.py'
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Test source integration contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/rothko_install_nomount.py
+            tests/test_rothko_install_nomount.py
+          sparse-checkout-cone-mode: false
+      - run: python3 -m unittest discover -s tests -p 'test_rothko_install_nomount.py' -v
+
+  compile:
+    name: Compile NoMount-enabled ARM64 Image (NON-FLASHABLE)
+    needs: tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ARCH: arm64
+      LLVM: '1'
+      LLVM_IAS: '1'
+      NOMOUNT_SHA: 8005194827ca3edc7e75b9523a874307b2c3e883
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Install compiler dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq clang lld llvm bc bison flex libssl-dev libelf-dev dwarves cpio rsync python3
+      - name: Fetch pinned NoMount source without running remote setup.sh
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/nomount"
+          git -C "$RUNNER_TEMP/nomount" init
+          git -C "$RUNNER_TEMP/nomount" remote add origin https://github.com/maxsteeel/nomount.git
+          git -C "$RUNNER_TEMP/nomount" fetch --depth=1 origin "$NOMOUNT_SHA"
+          git -C "$RUNNER_TEMP/nomount" checkout --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/nomount" rev-parse HEAD)" = "$NOMOUNT_SHA"
+          python3 scripts/rothko_install_nomount.py \
+            --tree "$GITHUB_WORKSPACE" --upstream-checkout "$RUNNER_TEMP/nomount"
+          grep -Fq 'obj-$(CONFIG_NOMOUNT) += nomount/' fs/Makefile
+          grep -Fq 'source "fs/nomount/Kconfig"' fs/Kconfig
+          git diff --check
+      - name: Compile real kernel source with CONFIG_NOMOUNT=y
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 gki_defconfig
+          scripts/config --file out/.config --enable NOMOUNT
+          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 olddefconfig
+          grep -qx 'CONFIG_NOMOUNT=y' out/.config || { echo '::error::NoMount not enabled'; exit 1; }
+          grep -qx 'CONFIG_MODVERSIONS=y' out/.config || { echo '::error::Module version checking not enabled'; exit 1; }
+          make -j2 O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 Image
+          test -s out/arch/arm64/boot/Image
+          {
+            echo '### NoMount kernel compile: experimental'
+            echo '- Source: Xiaomi BSP 6.1.57, host LLVM, generic GKI defconfig'
+            echo "- NoMount commit: $NOMOUNT_SHA"
+            echo '- CONFIG_NOMOUNT=y and CONFIG_MODVERSIONS=y checked.'
+            echo '- No SUSFS/Root framework or MTK device-specific ABI tested.'
+            echo '- No artifact uploaded or approved for flashing.'
+          } >> "$GITHUB_STEP_SUMMARY"
