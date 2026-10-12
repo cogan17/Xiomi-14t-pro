@@ -284,3 +284,5 @@ bukan menghapus jejak kejadian.
 - **Berikutnya:** jalankan skrip read-only setelah membaca isinya,
   tentukan modul kritis, lalu susun backup privat di USB dan review
   risiko sebelum mempertimbangkan perubahan `init_boot_a`.
+
+- **Validasi skrip:** [GitHub Actions #38192045412](https://github.com/cogan17/Xiomi-14t-pro/actions/runs/38192045412) selesai **success** untuk pemeriksaan sintaks shell dan batas operasi read-only. **Belum diuji pada HP** dan belum membuktikan kompatibilitas modul.
