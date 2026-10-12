@@ -72,8 +72,20 @@ git -C "$tree" apply --check --whitespace=error "$patchfile" || {
 }
 git -C "$tree" apply --whitespace=error "$patchfile"
 cp "$susfs/kernel_patches/fs/susfs.c" "$tree/fs/susfs.c"
-cp "$susfs/kernel_patches/include/linux/susfs.h" "$tree/include/linux/susfs.h"
-[[ -s "$tree/fs/susfs.c" && -s "$tree/include/linux/susfs.h" ]]
+# Copy all official kernel-side SUSFS headers from the SAME pinned commit.
+# Refuse missing, empty, or pre-existing destination files; never synthesize headers.
+shopt -s nullglob
+susfs_headers=("$susfs"/kernel_patches/include/linux/*)
+(( ${#susfs_headers[@]} > 0 )) || { echo "::error::No upstream SUSFS headers"; exit 1; }
+for header in "${susfs_headers[@]}"; do
+  [[ -f "$header" && -s "$header" ]] || { echo "::error::Invalid SUSFS header: $header"; exit 1; }
+  destination="$tree/include/linux/$(basename "$header")"
+  [[ ! -e "$destination" ]] || { echo "::error::Refusing to overwrite $destination"; exit 1; }
+  cp -- "$header" "$destination"
+done
+[[ -s "$tree/fs/susfs.c" && -s "$tree/include/linux/susfs.h" && -s "$tree/include/linux/susfs_def.h" ]] || {
+  echo "::error::Required official SUSFS headers missing"; exit 1;
+}
 if find "$tree" -name '*.rej' -o -name '*.orig' | grep -q .; then
   echo "::error::Unexpected patch reject/backup file"; exit 1;
 fi
