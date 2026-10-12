@@ -313,3 +313,18 @@ bukan menghapus jejak kejadian.
   *private/offline* untuk modul serta konfigurasi penting. Jangan
   menyamakan backup image `boot` dan `*_dlkm` dengan backup modul.
 - **Laporan:** [ROTHKO_BAKASU_MODULE_SAFETY.md](ROTHKO_BAKASU_MODULE_SAFETY.md).
+
+## 2026-10-12 — Sederhanakan pemulihan modul berbasis ZIP
+
+- **Preferensi pengguna:** punya installer setiap modul dan
+  instal ulang jika diperlukan; tidak perlu backup penuh
+  konfigurasi keenam belas modul.
+- **Keputusan yang dicatat:** utamakan ZIP installer
+  versi yang cocok pada flashdisk dan catat dependensinya;
+  hanya simpan setelan/kunci tertentu jika sulit diulang.
+- **Belum terverifikasi:** ketersediaan 16 installer ZIP
+  dan checksum paket pada penyimpanan eksternal.
+- **Keselamatan:** root/kernel BakaSU tetap memerlukan
+  perlindungan terpisah; audit modul read-only sudah selesai;
+  tidak ada flashing, restore, atau perubahan konfigurasi HP.
+
