@@ -1,0 +1,38 @@
+diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
+--- a/kernel/policy/app_profile.c
++++ b/kernel/policy/app_profile.c
+@@ -29,7 +29,7 @@
+-void setup_groups(struct root_profile *profile, struct cred *cred)
++static int setup_groups(struct root_profile *profile, struct cred *cred)
+ {
+     if (profile->groups_count > KSU_MAX_GROUPS) {
+         pr_warn("Failed to setgroups, too large group: %d!\n", profile->uid);
+-        return;
++        return -EINVAL;
+@@ -39,7 +39,7 @@
+         if (cred->group_info)
+             put_group_info(cred->group_info);
+         cred->group_info = get_group_info(&root_groups);
+-        return;
++        return 0;
+@@ -48,7 +48,7 @@
+     if (!group_info) {
+         pr_warn("Failed to setgroups, ENOMEM for: %d\n", profile->uid);
+-        return;
++        return -ENOMEM;
+@@ -59,7 +59,7 @@
+             pr_warn("Failed to setgroups, invalid gid: %d\n", gid);
+             put_group_info(group_info);
+-            return;
++            return -EINVAL;
+@@ -67,6 +67,7 @@
+     set_groups(cred, group_info);
+     put_group_info(group_info);
++    return 0;
+ }
+@@ -206,7 +207,9 @@
+-    setup_groups(profile, cred);
++    ret = setup_groups(profile, cred);
++    if (ret)
++        goto out_abort_creds;
+     setup_selinux(profile->selinux_domain, cred);
