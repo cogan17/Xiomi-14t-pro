@@ -113,3 +113,43 @@ pemulihan yang sudah diperiksa.
 
 **Tidak dilakukan:** flashing, restore, penulisan partisi, penggantian
 slot, pengubahan root, atau penonaktifan SUSFS.
+
+## Koreksi riwayat pengguna: flashing ulang, LKM, lalu root GKI
+
+**Keterangan pengguna (12 Oktober 2026):** insiden bootloop modul
+yang sebelumnya diselamatkan dengan flash `boot.img` +
+`init_boot.img` adalah **kejadian lama yang berbeda** dari
+kondisi HP sekarang. Pengguna menjelaskan urutan/metode rooting
+ketika perangkat di-flash ulang:
+
+1. Metode **LKM** pada kernel biasa memerlukan `init_boot.img`
+   untuk dipatch dengan root manager; image hasil patch dipasang
+   ke partisi `init_boot`, kemudian Manager menampilkan LKM.
+2. Metode **GKI / built-in**, seperti kernel patch dari WildKernel
+   atau kernel Cogan yang kini terpasang, memperoleh dukungan root
+   dari kernel custom, bukan hanya dari patch LKM `init_boot`.
+3. Ini penjelasan metode yang digunakan pengguna, **bukan rekaman
+   lengkap file bertanggal dan hash tiap instalasi**. Tidak
+   diketahui apakah/pada tahap mana `init_boot_a` pernah
+   ditimpa ulang ketika beralih dari LKM ke GKI.
+
+**Kesesuaian teknis:** panduan instalasi resmi KernelSU menjelaskan
+LKM mempatch ramdisk (`init_boot` pada perangkat Android modern),
+sedangkan GKI mengganti kernel dalam `boot`. BakaSU merupakan
+turunan KernelSU, tetapi ini **tidak otomatis membuktikan** semua
+detail implementasi pada build pengguna. Referensi:
+https://kernelsu.org/id_ID/guide/installation.html
+https://github.com/Baka-SU/BakaSU
+
+**Fakta biner tetap:** `init_boot_a` sekarang SHA-256 identik
+dengan stock **Degas WNEIDXM** dan **berbeda dari stock Rothko
+WNNIDXM**. Image yang pernah dipatch untuk LKM lazimnya akan
+memiliki hash berbeda dari image stock asal, namun bukti ini
+**tidak menentukan asal atau waktu terpasangnya Degas stock**.
+Keberhasilan root Cogan GKI juga bukan bukti ramdisk Degas aman
+untuk semua operasi/OTA.
+
+**Gerbang keselamatan:** hanya inventaris/analisis read-only.
+Tidak menghapus bekas LKM, tidak mengubah `init_boot_a`,
+`boot_a`, slot, root manager atau modul berdasarkan dugaan.
+
