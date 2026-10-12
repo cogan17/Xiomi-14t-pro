@@ -78,6 +78,26 @@ else
 fi
 echo "===== END EARLY PINNED KSUN CANDIDATE CHECK ====="
 
+# Static safety contract: fail early even when SUSFS GitLab is unavailable.
+python3 - "$ROOT/patches/rothko-ksun-sucompat-fail-closed-candidate.patch" <<'PY'
+from pathlib import Path
+import sys
+patch = Path(sys.argv[1]).read_text()
+checks = {
+    "no direct filename buffer overwrite": "+    memcpy((void *)filename->name" not in patch,
+    "replacement filename allocated": "getname_kernel(ksud_path)" in patch,
+    "original filename released after replacement": "putname(filename);" in patch,
+    "post-escape domain check": "susfs_is_current_ksu_domain()" in patch,
+    "post-escape root check": "current_euid()" in patch,
+}
+for name, passed in checks.items():
+    print(("PASS" if passed else "FAIL") + ": candidate " + name, flush=True)
+if not all(checks.values()):
+    raise SystemExit(19)
+print("BLOCK: static checks cannot prove credential rollback or filename ownership", flush=True)
+PY
+
+
 # Fetch the immutable SUSFS commit rather than the moving branch tip.
 # This does not bypass provenance: the checked-out HEAD must equal the pin.
 EXPECTED_SUSFS_SHA="5192aa2d33b381b58c1051532f9e1dfa5de6e8d3"
