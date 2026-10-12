@@ -60,3 +60,11 @@ Required candidate design before enabling any integration: reserve the scratch t
 - `ksu_get_root_profile(cred->uid.val)` is a profile lookup, not by itself a proof of authorization to elevate. Verify upstream grant checks and entry-point trust boundaries, including SUSFS-specific hooks, before accepting the transition.
 - Even with preallocated seccomp scratch, inspect task/seccomp state changes between preallocation and credential commit, and verify cleanup against Rothko BSP locking semantics.
 - **Release gate remains blocked:** no verified pre-commit authorization, SELinux error propagation, authenticated post-exec FD lifecycle, or device build/boot proof. Keep PR #9 Draft and GitLab provenance on hold.
+
+### Confirmed pinned KSUN SELinux helper contract (2026-10-12)
+
+- Source: `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161`, `kernel/selinux/selinux.h` declares `void setup_selinux(const char *, struct cred *);`.
+- `kernel/selinux/selinux.c` implements it by calling `transive_to_domain(domain, cred, false)`; on nonzero return it logs `transive domain failed.` and returns **without propagating an error**.
+- Consequently, `kernel/policy/app_profile.c` may continue to `commit_creds(cred)` after a failed SELinux domain transition, on both `escape_with_root_profile()` and `escape_to_root_for_init()`. This is a confirmed release blocker, not merely an unverified concern.
+- A future candidate must change the helper contract to return an error, propagate it through **all callers** (including `setup_ksu_cred()` in `selinux.c`), and abort prepared credentials before commit. `setup_ksu_cred()` needs separate ownership/lifecycle review because it does not directly call `commit_creds()`.
+- Do not merge, release, or flash based on a passing source-only audit.
