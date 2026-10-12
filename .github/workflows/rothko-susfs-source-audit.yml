@@ -69,6 +69,44 @@ jobs:
             test -s "$tmp/$source" || { echo "::error::Missing pinned upstream source: $source"; exit 1; }
             sha256sum "$tmp/$source"
           done
+          echo "===== OFFICIAL SUSFS EXECVE SEMANTICS (PINNED) ====="
+          python3 - "$tmp" <<'PY'
+          from pathlib import Path
+          import sys
+          root=Path(sys.argv[1])
+          companion=(root/"kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch").read_text(errors="replace").splitlines()
+          kernel=(root/"kernel_patches/50_add_susfs_in_gki-android14-6.1.patch").read_text(errors="replace").splitlines()
+          def sections(lines):
+              found=[]
+              for line in lines:
+                  if line.startswith("diff --git "):
+                      found.append([])
+                  if found:
+                      found[-1].append(line)
+              return found
+          for label, lines, token, limit in [
+              ("KSUN companion POST EXEC",companion,"ksu_handle_post_execveat_sucompat",170),
+              ("KSUN companion REBOOT/FD",companion,"ksu_install_fd",100),
+              ("KERNEL fs/exec.c",kernel,"diff --git a/fs/exec.c",150),
+              ("KERNEL fs/namei.c",kernel,"diff --git a/fs/namei.c",110),
+          ]:
+              matching=[s for s in sections(lines) if any(token in x for x in s)]
+              print("=== "+label+": matches="+str(len(matching))+" ===",flush=True)
+              for s in matching[:3]:
+                  print("FILE",s[0],flush=True)
+                  if token.startswith("diff --git"):
+                      show=s[:limit]
+                  else:
+                      keep={0}
+                      for i,x in enumerate(s):
+                          if token in x:
+                              keep.update(range(max(0,i-18),min(len(s),i+37)))
+                      show=[f"{i+1}: {s[i]}" for i in sorted(keep)[:limit]]
+                  for line in show:
+                      print(line,flush=True)
+                  if len(s)>len(show):print("... section truncated (evidence only)",flush=True)
+          print("END OFFICIAL SUSFS PATCH EXCERPTS — NO SOURCE MODIFICATION",flush=True)
+          PY
           {
             echo "### Simonpunk GitLab pinned-source availability"
             echo
