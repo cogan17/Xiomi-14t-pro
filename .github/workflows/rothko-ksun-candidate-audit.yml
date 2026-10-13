@@ -1955,8 +1955,9 @@ jobs:
           test -s "$g4" && test -s "$g5"
           file=/tmp/ksun/kernel/runtime/ksud_integration.c
           original="$(sha256sum "$file" | cut -d' ' -f1)"
-          git -C /tmp/ksun apply --check "$g4"
-          git -C /tmp/ksun apply "$g4"
+          # The preceding G4 CI step already applied and retained this patch.
+          # Check that staged G4 is present; do not apply the same patch twice.
+          git -C /tmp/ksun apply --reverse --check "$g4"
           tmp="$(mktemp)"
           trap 'rm -f "$tmp"' EXIT
           cp "$file" "$tmp"
@@ -2011,7 +2012,7 @@ jobs:
           PY
           git -C /tmp/ksun apply --reverse "$g5"
           cmp "$file" "$tmp"
-          git -C /tmp/ksun apply --reverse "$g4"
+          git -C /tmp/ksun apply --reverse --check "$g4"
           test "$(sha256sum "$file" | cut -d' ' -f1)" = "$original"
           git -C /tmp/ksun diff --check
-          echo "PASS: G4 and G5 candidate stack fully reversible; no kernel build, merge or flash"
+          echo "PASS: G5 reverted and pre-existing G4 candidate state preserved; no kernel build, merge or flash"
