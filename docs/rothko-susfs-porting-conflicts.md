@@ -45,3 +45,10 @@ The official pinned 6.1 patch still fails `git apply --check`, including `fs/nam
 - **Integration implications:** `depends on KSU` alone does not establish that SUSFS can safely link when `KSU=m`. The existing Rothko `fs/Makefile` candidate uses `obj-$(CONFIG_KSU_SUSFS) += susfs.o`; its isolated y/n/unset success proves only object selection, not linkage. Built-in-only behavior, Kconfig symbol ownership and compatibility with KSUN must be checked together.
 - **Next bounded source-only action:** extract the `config KSU_SUSFS` block and adjacent `depends on` / `select` statements from the *pinned* companion patch, compare to Rothko Kconfig and candidate Makefile, then classify `KSU=y/m/n` against `KSU_SUSFS=y/n`. Do not create another CI or modify the kernel merely for this documentation review.
 - **No promotion:** no claim of Kconfig compatibility, compile, link, ABI, runtime safety or release readiness. PR #9 remains Draft / BUILD HOLD.
+
+## Verified pinned Kconfig declaration — run 38447497791
+
+- [Source-audit run 38447497791, job 115469582345](https://github.com/cogan17/Xiomi-14t-pro/actions/runs/38447497791) completed **success** and printed the `KSU_SUSFS` declaration from the immutable SUSFS tree (`5192aa2`, verified tree `b39cd4`). This supersedes the earlier moving-branch-only evidence for this specific declaration.
+- Verified patch block: `config KSU_SUSFS` is `bool`, `depends on KSU`, `depends on THREAD_INFO_IN_TASK`, `default y`. Additional SUSFS feature symbols depend on `KSU_SUSFS` and default to `y` in the inspected block.
+- **Not cleared:** the isolated source-layout job does not validate Rothko's effective `.config`, KSU tristate/built-in linkage, upstream patch application, compiler/linker behavior, or runtime/credential/FD contracts. Other jobs in the run were still active when inspected. Do not describe the entire workflow as green on the basis of this job.
+- **Next checkpoint:** inspect the Rothko Kconfig ownership of `KSU` and effective kernel config against the verified pinned declaration, without re-fetching or rerunning this already-successful layout job. Draft PR #9 and BUILD HOLD remain.
