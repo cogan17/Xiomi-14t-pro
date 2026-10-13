@@ -1,0 +1,58 @@
+diff --git a/kernel/feature/adb_root.c b/kernel/feature/adb_root.c
+--- a/kernel/feature/adb_root.c
++++ b/kernel/feature/adb_root.c
+@@ -1,5 +1,6 @@
+ 
+ #include <asm/ptrace.h>
++#include <linux/errno.h>
+ #include <linux/namei.h>
+ #include <linux/path.h>
+ #include <linux/printk.h>
+@@ -363,14 +364,31 @@
+     .set_handler = kernel_adb_root_feature_set,
+ };
+ 
+-void __init ksu_adb_root_init(void)
++/* Registered ownership is local to this feature; do not unregister a foreign handler. */
++static bool adb_root_handler_owned;
++
++int __init ksu_adb_root_init(void)
+ {
+-    if (ksu_register_feature_handler(&ksu_adb_root_handler)) {
+-        pr_err("Failed to register adb_root feature handler\n");
++    int ret;
++
++    if (adb_root_handler_owned)
++        return -EALREADY;
++
++    ret = ksu_register_feature_handler(&ksu_adb_root_handler);
++    if (ret) {
++        pr_err("Failed to register adb_root feature handler: %d\n", ret);
++        return ret;
+     }
++
++    adb_root_handler_owned = true;
++    return 0;
+ }
+ 
+ void __exit ksu_adb_root_exit(void)
+ {
++    if (!adb_root_handler_owned)
++        return;
++
++    adb_root_handler_owned = false;
+     ksu_unregister_feature_handler(KSU_FEATURE_ADB_ROOT);
+ }
+
+diff --git a/kernel/feature/adb_root.h b/kernel/feature/adb_root.h
+--- a/kernel/feature/adb_root.h
++++ b/kernel/feature/adb_root.h
+@@ -9,7 +9,7 @@
+ long ksu_adb_root_handle_execveat(struct pt_regs *regs);
+ #endif
+ 
+-void ksu_adb_root_init(void);
++int ksu_adb_root_init(void);
+ 
+ void ksu_adb_root_exit(void);
+ 
