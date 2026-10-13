@@ -169,3 +169,10 @@ Compared `kernel/Kconfig` directly at the **exact two pinned commits**, not thei
 - Same pinned `kernel/Kbuild` excludes `hook/syscall_event_bridge.o`, `hook/syscall_hook_manager.o`, `hook/tp_marker.o` and architecture syscall hook object when `CONFIG_KSU_SUSFS=y`. These observations are static build-selection evidence, not proof that a kernel config has been generated or compiled.
 - Consequently the separate syscall/register failure path previously flagged is **not an additional patch target for a SUSFS-enabled build**. Existing `patches/rothko-ksun-sucompat-fail-closed-candidate.patch` targets the SUSFS filename-pointer exec path. Preserve it; no duplicate patch/workflow.
 - Remaining blockers: candidate patch applicability, credential-domain postcondition, post-exec companion/FD authorization, kernel patch context and actual integration/build safety. PR #9 remains Draft / BUILD HOLD.
+
+## CI triage — 2026-10-14 (no rerun)
+
+- Source-only SUSFS isolated proc/memory candidate checks passed on runs [38479242299](https://github.com/cogan17/Xiomi-14t-pro/actions/runs/38479242299) and [38479754947](https://github.com/cogan17/Xiomi-14t-pro/actions/runs/38479754947). These are isolated apply/structural checks, not full integration.
+- BSP anchors workflow passed on [38479754952](https://github.com/cogan17/Xiomi-14t-pro/actions/runs/38479754952) after pinning its checkout to the exact BSP baseline; do not redo the resolved baseline investigation.
+- Full SUSFS source audit [38479755005](https://github.com/cogan17/Xiomi-14t-pro/actions/runs/38479755005) remains intentionally blocked: provenance exited 14 on credential/FD semantics; official upstream patches still conflict with the BSP and KSUN source. A green isolated candidate cannot clear this gate.
+- Next priority: G2/G5 shared credential lifetime across all six consumers, then SUSFS hook/Kconfig integration and NoMount. BakaSU deferred. PR #9 stays Draft; BUILD HOLD remains active.
