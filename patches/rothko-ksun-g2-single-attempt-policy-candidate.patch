@@ -1,7 +1,7 @@
 diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
 --- a/kernel/selinux/rules.c
 +++ b/kernel/selinux/rules.c
-@@ -43,9 +43,10 @@
+@@ -44,8 +44,9 @@
  
  int apply_kernelsu_rules(void)
  {
@@ -11,7 +11,7 @@ diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
      int ret = 0;
  
      if (!getenforce()) {
-@@ -53,7 +54,19 @@
+@@ -54,6 +55,18 @@
      }
  
      mutex_lock(&selinux_state.policy_mutex);
