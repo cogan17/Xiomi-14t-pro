@@ -8,7 +8,15 @@ SUSFS_REF="${SUSFS_REF:-gki-android14-6.1}"
 KSUN_SHA="3438d6aa431f96a23f9e625bec3d53ce1fb14161"
 SUSFS_URL="https://gitlab.com/simonpunk/susfs4ksu.git"
 tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
+cleanup_probe() {
+  local status=$?
+  if ! rm -rf -- "$tmp"; then
+    printf 'WARN: temporary probe cleanup failed: %s\n' "$tmp" >&2
+    if (( status == 0 )); then status=1; fi
+  fi
+  exit "$status"
+}
+trap cleanup_probe EXIT
 echo "Kernel ref: $KERNEL_REF; SUSFS branch: $SUSFS_REF; KSUN pin: $KSUN_SHA"
 # Validate locally maintained patch structure before any upstream network call.
 # This catches malformed hunk counts even if GitLab is unavailable.
