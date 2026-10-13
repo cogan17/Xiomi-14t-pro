@@ -38,6 +38,7 @@ on:
       - patches/rothko-ksun-lateload-adb-root-owned-handler-candidate.patch
       - patches/rothko-ksun-lateload-sucompat-owned-handler-candidate.patch
       - patches/rothko-ksun-lateload-sucompat-static-key-teardown-candidate.patch
+      - patches/rothko-ksun-susfs-builtin-only-mode-guard-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -80,6 +81,7 @@ on:
       - patches/rothko-ksun-lateload-adb-root-owned-handler-candidate.patch
       - patches/rothko-ksun-lateload-sucompat-owned-handler-candidate.patch
       - patches/rothko-ksun-lateload-sucompat-static-key-teardown-candidate.patch
+      - patches/rothko-ksun-susfs-builtin-only-mode-guard-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -1775,3 +1777,98 @@ jobs:
           print("BLOCK: runtime SUSFS teardown and G5 shared-credential ownership still unresolved")
           PY
           echo "BLOCK: GKI device build and release prohibited"
+
+      - name: Verify built-in-only SUSFS mode guard against unloadable module configuration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-susfs-builtin-only-mode-guard-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          init = Path("/tmp/ksun/kernel/core/init.c").read_text()
+          kconfig = Path("/tmp/ksun/kernel/Kconfig").read_text()
+          guard = (
+              '#if defined(CONFIG_KSU_SUSFS) && defined(MODULE)\n'
+              '#error "KernelSU SUSFS requires built-in mode: pinned SUSFS has no module teardown"\n'
+              '#endif'
+          )
+          kblock = (
+              'config KSU_SUSFS\n'
+              '\tbool "KernelSU addon - SUSFS"\n'
+              '\tdepends on KSU\n'
+              '\tdepends on KSU=y\n'
+              '\tdepends on THREAD_INFO_IN_TASK'
+          )
+          def accepts(src, conf):
+              try:
+                  section = src.split('#include "feature/sucompat.h"', 1)[1].split(
+                      "int __init kernelsu_init(void)", 1
+                  )[0]
+                  config = conf.split("config KSU_SUSFS\n", 1)[1].split(
+                      "\nconfig KSU_SUSFS_", 1
+                  )[0]
+                  return all((
+                      src.count(guard) == 1,
+                      section.count(guard) == 1,
+                      src.index(guard) < src.index("int __init kernelsu_init(void)"),
+                      src.index(guard) < src.index("\tsusfs_init();"),
+                      conf.count(kblock) == 1,
+                      config.count("\tdepends on KSU=y") == 1,
+                      config.count("\tdepends on KSU") == 2,
+                      config.index("depends on KSU=y") < config.index("default y"),
+                  ))
+              except (IndexError, ValueError):
+                  return False
+
+          assert accepts(init, kconfig), "invalid module/SUSFS fail-closed compile gate"
+          mutations = (
+              ("allow module and SUSFS by AND removal", init.replace(
+                  "defined(CONFIG_KSU_SUSFS) && defined(MODULE)",
+                  "defined(CONFIG_KSU_SUSFS) || defined(MODULE)", 1), kconfig),
+              ("remove rejection directive", init.replace(
+                  '#error "KernelSU SUSFS requires built-in mode: pinned SUSFS has no module teardown"\n',
+                  "", 1), kconfig),
+              ("guard wrong build symbol", init.replace(
+                  "defined(CONFIG_KSU_SUSFS) && defined(MODULE)",
+                  "defined(CONFIG_SUSFS) && defined(MODULE)", 1), kconfig),
+              ("invert module check", init.replace(
+                  "defined(CONFIG_KSU_SUSFS) && defined(MODULE)",
+                  "defined(CONFIG_KSU_SUSFS) && !defined(MODULE)", 1), kconfig),
+              ("drop Kconfig built-in requirement", init, kconfig.replace(
+                  "\tdepends on KSU=y\n", "", 1)),
+              ("incorrect Kconfig module requirement", init, kconfig.replace(
+                  "\tdepends on KSU=y\n", "\tdepends on KSU=m\n", 1)),
+          )
+          for label, altered, config in mutations:
+              assert altered != init or config != kconfig, label + ": mutation ineffective"
+              assert not accepts(altered, config), label + ": invalid mode accepted"
+              print("PASS: refuse unsafe mode mutation — " + label)
+
+          # Only preprocess the isolated literal guard. No kernel compilation.
+          snippet = guard + "\nint preprocessor_mode_smoke;\n"
+          for module in (False, True):
+              for susfs in (False, True):
+                  flags = (["-DMODULE"] if module else []) + (
+                      ["-DCONFIG_KSU_SUSFS"] if susfs else [])
+                  res = subprocess.run(
+                      ["cc", "-x", "c", "-E", "-P", *flags, "-"],
+                      input=snippet, text=True, capture_output=True, check=False
+                  )
+                  assert (res.returncode != 0) == (module and susfs), (
+                      f"guard matrix mismatch module={module} susfs={susfs}: {res.stderr}"
+                  )
+                  if module and susfs:
+                      assert "built-in mode" in res.stderr
+                  print(f"PASS: preprocessor mode module={module}, susfs={susfs}, rejected={res.returncode != 0}")
+          print("PASS: MODULE + SUSFS is fail-closed; built-in and non-SUSFS configurations untouched")
+          print("BLOCK: preprocessor snippet is not a kernel compile; Kconfig resolver/runtime untested")
+          print("BLOCK: pinned Simonpunk SUSFS workqueue lacks proven active teardown; built-in init still needs integration")
+          print("BLOCK: G2/G5 credentials, post-exec FD, SUSFS patch conflicts and device runtime remain NO-GO")
+          PY
+          echo "BLOCK: no device build, AK3 image, merge, release, or flash"
