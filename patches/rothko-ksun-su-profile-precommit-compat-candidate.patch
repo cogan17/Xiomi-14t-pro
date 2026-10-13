@@ -1,0 +1,46 @@
+diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
+--- a/kernel/policy/app_profile.c
++++ b/kernel/policy/app_profile.c
+@@ -133,5 +133,5 @@
+ }
+ 
+-static int escape_with_root_profile_common(bool require_su_domain)
++static int escape_with_root_profile_common(bool require_su_profile)
+ {
+     int ret = 0;
+@@ -234,13 +234,19 @@
+ 
+ #ifdef CONFIG_KSU_SUSFS
+-    /* SU-only: validate prepared credentials before publishing root. */
+-    if (require_su_domain &&
+-        (!uid_eq(cred->euid, GLOBAL_ROOT_UID) ||
+-         !is_task_ksu_domain(cred))) {
+-        ret = -EACCES;
+-        goto out_abort_creds;
+-    }
+-#else
+-    (void)require_su_domain;
++    /*
++     * SU-only: prepared UID/GID must match the authorized profile selected
++     * by KSUN's allowlist. setup_selinux(profile->selinux_domain, cred)
++     * succeeded above. This does not authorize an SU_SESSION FD.
++     */
++    if (require_su_profile &&
++        (cred->uid.val != profile->uid ||
++         cred->euid.val != profile->uid ||
++         cred->gid.val != profile->gid ||
++         cred->egid.val != profile->gid)) {
++        ret = -EACCES;
++        goto out_abort_creds;
++    }
++#else
++    (void)require_su_profile;
+ #endif
+ 
+@@ -280,5 +286,5 @@
+ 
+ #ifdef CONFIG_KSU_SUSFS
+-/* Only the su redirection path requires the stronger pre-commit domain. */
++/* SU redirect checks selected-profile consistency; FD permission is separate. */
+ int escape_with_root_profile_for_su(void)
+ {
