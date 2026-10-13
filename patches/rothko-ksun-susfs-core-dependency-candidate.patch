@@ -1,0 +1,13 @@
+diff --git a/kernel/Kconfig b/kernel/Kconfig
+--- a/kernel/Kconfig
++++ b/kernel/Kconfig
+@@ -57,8 +57,9 @@
+ config KSU_SUSFS
+ 	bool "KernelSU addon - SUSFS"
+ 	depends on KSU
+ 	depends on KSU=y
+ 	depends on THREAD_INFO_IN_TASK
++	depends on SUSFS
+ 	default y
+ 	help
+ 	  Patch and Enable SUSFS to kernel with KernelSU.

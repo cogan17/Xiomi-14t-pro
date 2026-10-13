@@ -40,6 +40,7 @@ on:
       - patches/rothko-ksun-lateload-sucompat-owned-handler-candidate.patch
       - patches/rothko-ksun-lateload-sucompat-static-key-teardown-candidate.patch
       - patches/rothko-ksun-susfs-builtin-only-mode-guard-candidate.patch
+      - patches/rothko-ksun-susfs-core-dependency-candidate.patch
       - patches/rothko-ksun-susfs-lsm-kbuild-exclusion-candidate.patch
       - patches/rothko-ksun-lateload-g2-cred-escape-gate-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
@@ -86,6 +87,7 @@ on:
       - patches/rothko-ksun-lateload-sucompat-owned-handler-candidate.patch
       - patches/rothko-ksun-lateload-sucompat-static-key-teardown-candidate.patch
       - patches/rothko-ksun-susfs-builtin-only-mode-guard-candidate.patch
+      - patches/rothko-ksun-susfs-core-dependency-candidate.patch
       - patches/rothko-ksun-susfs-lsm-kbuild-exclusion-candidate.patch
       - patches/rothko-ksun-lateload-g2-cred-escape-gate-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
@@ -2077,3 +2079,65 @@ jobs:
           test "$(sha256sum "$file" | cut -d' ' -f1)" = "$before"
           git -C /tmp/ksun diff --check
           echo "PASS: one Kbuild candidate reversible with existing KSUN patches retained"
+
+      - name: Verify Kconfig SUSFS addon requires core SUSFS and built-in KSUN
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C /tmp/ksun rev-parse HEAD)" = 3438d6aa431f96a23f9e625bec3d53ce1fb14161
+          builtin="$GITHUB_WORKSPACE/patches/rothko-ksun-susfs-builtin-only-mode-guard-candidate.patch"
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-susfs-core-dependency-candidate.patch"
+          test -s "$builtin" && test -s "$patch"
+          file=/tmp/ksun/kernel/Kconfig
+          original="$(sha256sum "$file" | cut -d' ' -f1)"
+          git -C /tmp/ksun apply --reverse --check "$builtin"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          from subprocess import check_output
+          from itertools import product
+          src=Path("/tmp/ksun/kernel/Kconfig").read_text()
+          pinned=check_output(["git","-C","/tmp/ksun","show","HEAD:kernel/Kconfig"],text=True)
+          plain=("config KSU_SUSFS\n"
+                 "\tbool \"KernelSU addon - SUSFS\"\n"
+                 "\tdepends on KSU\n"
+                 "\tdepends on THREAD_INFO_IN_TASK\n"
+                 "\tdefault y\n")
+          guarded=plain.replace("\tdepends on KSU\n",
+              "\tdepends on KSU\n\tdepends on KSU=y\n",1).replace(
+              "\tdepends on THREAD_INFO_IN_TASK\n",
+              "\tdepends on THREAD_INFO_IN_TASK\n\tdepends on SUSFS\n",1)
+          assert pinned.count(plain)==1
+          assert src==pinned.replace(plain,guarded,1), "extra Kconfig mutation"
+          assert "\tdepends on KPROBES || SUSFS\n" in pinned
+          block=src.split("config KSU_SUSFS\n",1)[1].split(
+              "\nconfig KSU_SUSFS_",1)[0]
+          deps=[x.strip()[len("depends on "):] for x in block.splitlines()
+                if x.strip().startswith("depends on ")]
+          expected=["KSU","KSU=y","THREAD_INFO_IN_TASK","SUSFS"]
+          assert deps==expected, (deps,expected)
+          for ksu,thread,susfs in product(("n","m","y"),("n","y"),("n","y")):
+              resolved={"KSU":ksu!="n","KSU=y":ksu=="y",
+                        "THREAD_INFO_IN_TASK":thread=="y","SUSFS":susfs=="y"}
+              assert all(resolved[d] for d in deps)==(ksu=="y" and thread=="y" and susfs=="y")
+          for label,mutant in (
+              ("core dependency removed",block.replace("\tdepends on SUSFS\n","",1)),
+              ("KPROBES wrongly substitutes for SUSFS",block.replace(
+                   "\tdepends on SUSFS\n","\tdepends on KPROBES || SUSFS\n",1)),
+              ("built-in rule removed",block.replace("\tdepends on KSU=y\n","",1))
+          ):
+              assert mutant!=block
+              altered=[x.strip()[len("depends on "):] for x in mutant.splitlines()
+                       if x.strip().startswith("depends on ")]
+              assert altered!=expected, label
+              print("PASS: reject "+label)
+          print("PASS: addon dependency guarded even if KPROBES permits KSUN")
+          print("BLOCK: static Kconfig source contract, NOT full kernel config resolution/compile")
+          PY
+          git -C /tmp/ksun apply --reverse "$patch"
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = "$original"
+          git -C /tmp/ksun diff --check
+          echo "PASS: new Kconfig candidate reversed, prior KSUN candidates untouched"
