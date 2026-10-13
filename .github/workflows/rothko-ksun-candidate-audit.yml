@@ -14,6 +14,7 @@ on:
       - patches/rothko-ksun-groups-fail-closed-candidate.patch
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
+      - patches/rothko-ksun-susfs-sid0-fail-closed-candidate.patch
       - .github/workflows/rothko-ksun-candidate-audit.yml
       - scripts/rothko_ksun_security_contract.py
       - tests/test_rothko_ksun_security_contract.py
@@ -61,6 +62,7 @@ on:
       - patches/rothko-ksun-groups-fail-closed-candidate.patch
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
+      - patches/rothko-ksun-susfs-sid0-fail-closed-candidate.patch
       - .github/workflows/rothko-ksun-candidate-audit.yml
       - scripts/rothko_ksun_security_contract.py
       - tests/test_rothko_ksun_security_contract.py
@@ -2141,3 +2143,90 @@ jobs:
           test "$(sha256sum "$file" | cut -d' ' -f1)" = "$original"
           git -C /tmp/ksun diff --check
           echo "PASS: new Kconfig candidate reversed, prior KSUN candidates untouched"
+
+      - name: Verify SUSFS cached SID comparison rejects uninitialized SID and null credentials
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pinned=3438d6aa431f96a23f9e625bec3d53ce1fb14161
+          test "$(git -C /tmp/ksun rev-parse HEAD)" = "$pinned"
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-susfs-sid0-fail-closed-candidate.patch"
+          test -s "$patch"
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          git -C "$tmp" init -q
+          mkdir -p "$tmp/kernel/selinux"
+          git -C /tmp/ksun show "$pinned:kernel/selinux/selinux.c" > "$tmp/kernel/selinux/selinux.c"
+          file="$tmp/kernel/selinux/selinux.c"
+          original="$(sha256sum "$file" | cut -d' ' -f1)"
+          git -C "$tmp" apply --check --verbose "$patch"
+          git -C "$tmp" apply "$patch"
+          git -C "$tmp" apply --reverse --check "$patch"
+          python3 - "$file" "$tmp/sid.c" <<'PY'
+          import sys
+          from pathlib import Path
+          source=Path(sys.argv[1]).read_text()
+          pristine=source.split(
+              "    /* SID 0 is uninitialized; never match it or dereference NULL creds. */\n"
+              "    if (!cred || !sid2)\n"
+              "        return false;\n\n",1)
+          assert len(pristine)==2
+          before="bool susfs_is_sid_equal(const struct cred *cred, u32 sid2) {"
+          after="\nu32 susfs_get_sid_from_name("
+          fn=source.split(before,1)[1].split(after,1)[0]
+          baseline=pristine[0].split(before,1)[1]+pristine[1].split(after,1)[0]
+          guard=(
+              "\n    /* SID 0 is uninitialized; never match it or dereference NULL creds. */\n"
+              "    if (!cred || !sid2)\n"
+              "        return false;\n"
+          )
+          assert fn.count(guard)==1
+          assert fn.replace(guard,"",1)==baseline
+          assert fn.index(guard)<fn.index("selinux_cred(cred)")
+          assert "if (!tsec)" in fn and "return tsec->sid == sid2;" in fn
+          for label,mutant in (
+              ("missing SID zero check", fn.replace("!cred || !sid2","!cred",1)),
+              ("missing NULL credential check",fn.replace("!cred || !sid2","!sid2",1)),
+              ("check after dereference",fn.replace(guard,"",1)+guard),
+          ):
+              assert mutant!=fn and mutant!=baseline
+              print("PASS: rejected unsafe SID predicate mutation — "+label)
+          harness=r'''
+          #include <stdbool.h>
+          typedef unsigned int u32;
+          #define KERNEL_VERSION(x,y,z) (((x)<<16)|((y)<<8)|(z))
+          struct task_security_struct {u32 sid;};
+          struct cred_security_struct {u32 sid;};
+          struct cred {const void *sec;};
+          static const void *selinux_cred(const struct cred *cred) {return cred->sec;}
+          '''
+          harness+=before+fn+"\n"
+          harness+=r'''
+          int main(void) {
+              struct task_security_struct t={.sid=123};
+              struct task_security_struct zero={.sid=0};
+              struct cred valid={.sec=&t};
+              struct cred unset={.sec=&zero};
+              struct cred missing={.sec=0};
+              if (susfs_is_sid_equal(0,123)) return 1;
+              if (susfs_is_sid_equal(&valid,0)) return 2;
+              if (susfs_is_sid_equal(&unset,0)) return 3;
+              if (!susfs_is_sid_equal(&valid,123)) return 4;
+              if (susfs_is_sid_equal(&valid,124)) return 5;
+              if (susfs_is_sid_equal(&missing,123)) return 6;
+              return 0;
+          }
+          '''
+          Path(sys.argv[2]).write_text(harness)
+          print("PASS: candidate differs only by fail-closed early return")
+          PY
+          for version in 0x060139 0x061200; do
+            cc -std=gnu11 -Wall -Wextra -Werror -DLINUX_VERSION_CODE="$version" \
+              "$tmp/sid.c" -o "$tmp/sid-smoke"
+            "$tmp/sid-smoke"
+            echo "PASS: isolated cached-SID predicate harness, kernel version code $version"
+          done
+          git -C "$tmp" apply --reverse "$patch"
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = "$original"
+          git -C "$tmp" diff --check
+          echo "PASS: isolated SID guard reversible; no kernel build, integration or release"

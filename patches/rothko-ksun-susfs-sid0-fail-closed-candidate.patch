@@ -1,0 +1,14 @@
+diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
+--- a/kernel/selinux/selinux.c
++++ b/kernel/selinux/selinux.c
+@@ -269,6 +269,10 @@
+ bool susfs_is_sid_equal(const struct cred *cred, u32 sid2) {
++    /* SID 0 is uninitialized; never match it or dereference NULL creds. */
++    if (!cred || !sid2)
++        return false;
++
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
+     const struct task_security_struct *tsec = selinux_cred(cred);
+ #else
+     const struct cred_security_struct *tsec = selinux_cred(cred);
+ #endif
