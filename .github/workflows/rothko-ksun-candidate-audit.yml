@@ -25,6 +25,7 @@ on:
       - scripts/rothko_ksun_shared_cred_candidate_audit.py
       - tests/test_rothko_ksun_shared_cred_candidate.py
       - patches/rothko-ksun-shared-cred-stage-guard-candidate.patch
+      - patches/rothko-ksun-shared-cred-rc-prelatch-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -54,6 +55,7 @@ on:
       - scripts/rothko_ksun_shared_cred_candidate_audit.py
       - tests/test_rothko_ksun_shared_cred_candidate.py
       - patches/rothko-ksun-shared-cred-stage-guard-candidate.patch
+      - patches/rothko-ksun-shared-cred-rc-prelatch-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -726,3 +728,66 @@ jobs:
           echo "BLOCK: inputs are NOT cryptographically authenticated; no kernel-owned request"
           echo "BLOCK: no post-exec callback, actual FD issuer or credential rollback proof"
           echo "BLOCK: model's unbounded token set is NOT a production kernel design"
+
+      - name: Apply-check G4 module rc one-shot pre-latch candidate (no kernel build)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-shared-cred-rc-prelatch-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("/tmp/ksun/kernel/runtime/ksud_integration.c").read_text()
+          header = Path("/tmp/ksun/kernel/selinux/selinux.h").read_text()
+          gate = "if (!ksu_module_rc_shared_cred_is_valid()) {"
+          def accepts_pre_latch_contract(src):
+              try:
+                  predicate = src.split("static bool ksu_module_rc_shared_cred_is_valid(void)", 1)[1].split(
+                      "static void load_module_rc_once(void)", 1)[0]
+                  loader = src.split("static void load_module_rc_once(void)", 1)[1].split(
+                      "static void free_module_rc(void)", 1)[0]
+                  hook = src.split("static void ksu_install_rc_hook(struct file *file)", 1)[1].split(
+                      "void ksu_handle_sys_read(", 1)[0]
+              except IndexError:
+                  return False
+              return all((
+                  "return ksu_cred && is_task_ksu_domain(ksu_cred);" in predicate,
+                  loader.count(gate) == 1,
+                  hook.count(gate) == 1,
+                  loader.index(gate) < loader.index("loaded = true;"),
+                  loader.index("loaded = true;") < loader.index("override_creds(ksu_cred);"),
+                  hook.index(gate) < hook.index("rc_hooked = true;"),
+                  hook.index("rc_hooked = true;") < hook.index(
+                      "static_branch_disable(&ksu_is_init_rc_hook_enabled);"),
+                  "return;" in loader.split(gate, 1)[1].split("loaded = true;", 1)[0],
+                  "return;" in hook.split(gate, 1)[1].split("rc_hooked = true;", 1)[0],
+                  "if (setup_ksu_cred())" in src,
+                  "bool is_task_ksu_domain(const struct cred *cred);" in header,
+              ))
+          assert accepts_pre_latch_contract(source), "G4 pre-latch source structure invalid"
+          alterations = [
+              ("skip loaded check", source.replace(gate, "if (false) {", 1)),
+              ("skip hook check", source.replace(gate, "if (false) {", 1).replace(
+                  "if (false) {", gate, 1).replace(gate, "if (false) {", 1)),
+              ("skip SELinux credential check", source.replace(
+                  "return ksu_cred && is_task_ksu_domain(ksu_cred);",
+                  "return ksu_cred != NULL;", 1)),
+              ("consume loaded flag too early", source.replace(
+                  "    loaded = true;", "    loaded = true;\n    /* shifted */", 1).replace(
+                  gate, "loaded = true;\n    " + gate, 1)),
+              ("consume hook flag too early", source.replace(
+                  "    rc_hooked = true;", "    rc_hooked = true;\n    /* shifted */", 1).replace(
+                  gate, "rc_hooked = true;\n    " + gate, 1)),
+          ]
+          for label, mutated in alterations:
+              assert mutated != source, label + ": no mutation"
+              assert not accepts_pre_latch_contract(mutated), label + ": unsafe mutation passed"
+              print("PASS: deny source mutation — " + label)
+          print("PASS: partial G4 candidate guards both one-shot latches in pinned KSUN")
+          print("BLOCK: no synchronized READY publication, object ownership or init.rc retry proof")
+          print("BLOCK: still no G2/G5 safe initialization unwind, device compile or release")
+          PY
+          echo "BLOCK: G4 is only a reversible, source-only pre-latch candidate"
