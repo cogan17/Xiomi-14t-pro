@@ -33,6 +33,7 @@ on:
       - patches/rothko-ksun-g2-second-stage-one-shot-candidate.patch
       - patches/rothko-ksun-g2-policy-locked-snapshot-candidate.patch
       - patches/rothko-ksun-lateload-sulog-local-lifecycle-candidate.patch
+      - patches/rothko-ksun-lateload-sulog-single-attempt-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -70,6 +71,7 @@ on:
       - patches/rothko-ksun-g2-second-stage-one-shot-candidate.patch
       - patches/rothko-ksun-g2-policy-locked-snapshot-candidate.patch
       - patches/rothko-ksun-lateload-sulog-local-lifecycle-candidate.patch
+      - patches/rothko-ksun-lateload-sulog-single-attempt-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -1350,3 +1352,78 @@ jobs:
           print("BLOCK: no general G2/G5 unwind, ABI verification or device build/release")
           PY
           echo "BLOCK: sulog lifecycle candidate stays source-only and nondeployable"
+
+      - name: Check sulog single-attempt lifecycle denies reinitialization (source-only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-lateload-sulog-single-attempt-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("/tmp/ksun/kernel/feature/sulog.c").read_text()
+          header = Path("/tmp/ksun/kernel/feature/sulog.h").read_text()
+          pinned_core = Path("/tmp/ksun/kernel/core/init.c").read_text()
+          gate = (
+              "if (atomic_cmpxchg(&sulog_init_attempted, 0, 1) != 0)\n"
+              "        return -EALREADY;"
+          )
+          def valid(src, hdr):
+              try:
+                  init = src.split("int __init ksu_sulog_init(void)\n{", 1)[1].split(
+                      "\nvoid __exit ksu_sulog_exit(void)", 1
+                  )[0]
+                  exitbody = src.split("void __exit ksu_sulog_exit(void)\n{", 1)[1]
+                  return all((
+                      src.count("#include <linux/atomic.h>") == 1,
+                      src.count("static atomic_t sulog_init_attempted = ATOMIC_INIT(0);") == 1,
+                      src.count("static bool sulog_initialized;") == 1,
+                      hdr.count("int __init ksu_sulog_init(void);") == 1,
+                      init.count(gate) == 1,
+                      init.count("atomic_set(&sulog_init_attempted") == 0,
+                      init.count("sulog_init_attempted =") == 0,
+                      init.index(gate) < init.index("ksu_sulog_enabled = false;")
+                          < init.index("sulog_initialized = false;")
+                          < init.index("ret = ksu_register_feature_handler(&sulog_handler);"),
+                      init.count("return ret;") == 2,
+                      init.count("sulog_initialized = true;") == 1,
+                      init.index("ksu_sulog_fd_init();") < init.index("sulog_initialized = true;"),
+                      "if (!sulog_initialized)\n        return;" in exitbody,
+                      exitbody.index("sulog_initialized = false;") <
+                          exitbody.index("ksu_sulog_fd_exit();") <
+                          exitbody.index("ksu_sulog_events_exit();"),
+                  ))
+              except (ValueError, IndexError):
+                  return False
+          assert valid(source, header), "sulog single-attempt lifecycle contract invalid"
+          cases = (
+              ("missing single-attempt barrier", source.replace(gate, "", 1)),
+              ("always bypass atomic", source.replace(
+                  "atomic_cmpxchg(&sulog_init_attempted, 0, 1) != 0", "false", 1)),
+              ("ignore duplicate attempt", source.replace(
+                  "return -EALREADY;", "return 0;", 1)),
+              ("gate after handler registration", source.replace(
+                  gate + "\n\n    ksu_sulog_enabled = false;", 
+                  "ksu_sulog_enabled = false;", 1).replace(
+                  "    ret = ksu_register_feature_handler(&sulog_handler);",
+                  "    ret = ksu_register_feature_handler(&sulog_handler);\n    " + gate, 1)),
+              ("remove sticky attempted state", source.replace(
+                  gate, gate + "\n    atomic_set(&sulog_init_attempted, 0);", 1)),
+              ("forget atomic declaration", source.replace(
+                  "static atomic_t sulog_init_attempted = ATOMIC_INIT(0);",
+                  "static int sulog_init_attempted;", 1)),
+          )
+          for label, altered in cases:
+              assert altered != source, label + ": mutation not applied"
+              assert not valid(altered, header), label + ": unsafe mutation passed"
+              print("PASS: reject sulog reinit mutation — " + label)
+          assert "ksu_sulog_init();" in pinned_core
+          print("PASS: local sulog setup cannot be re-run after success or partial failure")
+          print("BLOCK: pinned core ignores return; first-failure cleanup for all KSUN components unproven")
+          print("BLOCK: SUSFS startup calls susfs_init before prepare_creds and hook registration")
+          print("BLOCK: no complete late-load unwind, G5 ownership, ABI or device compile")
+          PY
+          echo "BLOCK: sulog reinit guard is source-only, not ready to build or flash"
