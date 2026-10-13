@@ -1,0 +1,15 @@
+diff --git a/arch/arm64/include/asm/thread_info.h b/arch/arm64/include/asm/thread_info.h
+--- a/arch/arm64/include/asm/thread_info.h
++++ b/arch/arm64/include/asm/thread_info.h
+@@ -85,4 +85,11 @@
+ #define TIF_SME			27	/* SME in use */
+ #define TIF_SME_VL_INHERIT	28	/* Inherit SME vl_onexec across exec */
+ 
++#ifdef CONFIG_KSU_SUSFS
++/* SUSFS per-task exclusion; verify bit ownership against vendor source. */
++#ifndef TIF_PROC_NO_SU
++#define TIF_PROC_NO_SU 34
++#endif
++#endif
++
+ #define _TIF_SIGPENDING		(1 << TIF_SIGPENDING)
