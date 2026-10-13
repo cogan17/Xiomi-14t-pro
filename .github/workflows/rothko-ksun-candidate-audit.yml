@@ -27,6 +27,7 @@ on:
       - patches/rothko-ksun-shared-cred-stage-guard-candidate.patch
       - patches/rothko-ksun-shared-cred-rc-prelatch-candidate.patch
       - patches/rothko-ksun-g2-policy-backup-preflight-candidate.patch
+      - patches/rothko-ksun-g2-policy-error-status-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -58,6 +59,7 @@ on:
       - patches/rothko-ksun-shared-cred-stage-guard-candidate.patch
       - patches/rothko-ksun-shared-cred-rc-prelatch-candidate.patch
       - patches/rothko-ksun-g2-policy-backup-preflight-candidate.patch
+      - patches/rothko-ksun-g2-policy-error-status-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -874,3 +876,46 @@ jobs:
           print("BLOCK: repeated policy application, backup ownership, and G2/G5 unwind are unproven")
           PY
           echo "BLOCK: G2 policy backup candidate is source-only, not deployable"
+
+
+      - name: Verify G2 SELinux policy error status candidate (source-only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-g2-policy-error-status-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          rules = Path("/tmp/ksun/kernel/selinux/rules.c").read_text()
+          header = Path("/tmp/ksun/kernel/selinux/selinux.h").read_text()
+          begin = "int apply_kernelsu_rules(void)\n{"
+          assert rules.count(begin) == 1
+          assert header.count("int apply_kernelsu_rules(void);") == 1
+          segment = rules.split(begin, 1)[1].split(
+              "#define KSU_SEPOLICY_MAX_BATCH_SIZE", 1
+          )[0]
+          required = (
+              "int ret = 0;",
+              "ret = PTR_ERR(backup_sepolicy);",
+              "ret = -ENOMEM;",
+              "ret = err;",
+              "ret = PTR_ERR(pol);",
+              "if (!backup_sepolicy) {",
+              "goto out_unlock;",
+              "out_unlock:\n    mutex_unlock(&selinux_state.policy_mutex);\n    return ret;",
+          )
+          for item in required:
+              assert item in segment, f"missing G2 status condition: {item}"
+          assert segment.index("if (!backup_sepolicy) {") < segment.index(
+              "pol = ksu_dup_sepolicy(rcu_dereference_protected("
+          )
+          assert segment.count("return ret;") == 1
+          assert "return 0;" not in segment
+          print("PASS: G2 backup/clone failure codes propagate through an int API")
+          print("BLOCK: all callers still ignore status; no transactional rollback or G5 ownership")
+          print("BLOCK: later rule helper failures, SELinux races, kernel ABI and runtime remain unverified")
+          PY
+          echo "BLOCK: non-deployable source-only candidate; no device build or release"
