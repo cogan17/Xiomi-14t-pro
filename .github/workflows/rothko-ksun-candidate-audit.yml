@@ -30,6 +30,7 @@ on:
       - patches/rothko-ksun-g2-policy-error-status-candidate.patch
       - patches/rothko-ksun-g2-second-stage-status-guard-candidate.patch
       - patches/rothko-ksun-g2-single-attempt-policy-candidate.patch
+      - patches/rothko-ksun-g2-second-stage-one-shot-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -64,6 +65,7 @@ on:
       - patches/rothko-ksun-g2-policy-error-status-candidate.patch
       - patches/rothko-ksun-g2-second-stage-status-guard-candidate.patch
       - patches/rothko-ksun-g2-single-attempt-policy-candidate.patch
+      - patches/rothko-ksun-g2-second-stage-one-shot-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -1089,3 +1091,93 @@ jobs:
           PY
           echo "BLOCK: G2 single-attempt candidate remains non-deployable; no image/release"
 
+      - name: Verify G2 second-stage single-flight callback (source-only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-g2-second-stage-one-shot-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("/tmp/ksun/kernel/runtime/ksud_integration.c").read_text()
+          atomic = "atomic_cmpxchg(&ksu_second_stage_attempted, 0, 1) != 0"
+          marker = "static atomic_t ksu_second_stage_attempted = ATOMIC_INIT(0);"
+          argv = 'if (check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {'
+          message = 'pr_warn("KernelSU second_stage already attempted; refusing replay\\n");'
+
+          def accepts(src):
+              try:
+                  sus = src.split("int ksu_handle_execveat_ksud(int *fd", 1)[1].split(
+                      "#else\nvoid ksu_handle_execveat_ksud", 1
+                  )[0]
+                  non = src.split("#else\nvoid ksu_handle_execveat_ksud", 1)[1].split(
+                      "\n#endif", 1
+                  )[0]
+                  if src.count("#include <linux/atomic.h>") != 1:
+                      return False
+                  if src.count(marker) != 1 or src.count(atomic) != 2:
+                      return False
+                  for region, ret in ((sus, "return 0;"), (non, "return;")):
+                      stage = region.split(
+                          "if (static_branch_unlikely(&is_init_second_stage_not_executed))", 1
+                      )[1].split("if (static_branch_unlikely(&is_first_zygote))", 1)[0]
+                      exact = (
+                          f"if ({atomic}) {{\n"
+                          f"                    {message}\n"
+                          f"                    {ret}\n"
+                          "                }"
+                      )
+                      if stage.count(exact) != 1 or stage.count(atomic) != 1:
+                          return False
+                      if "atomic_set(&ksu_second_stage_attempted" in stage:
+                          return False
+                      if not (
+                          stage.index(argv)
+                          < stage.index(exact)
+                          < stage.index("ksu_selinux_hide_handle_second_stage();")
+                          < stage.index("if (apply_kernelsu_rules()) {")
+                          < stage.index("cache_sid();")
+                          < stage.index("if (setup_ksu_cred())")
+                          < stage.index("static_branch_disable(&is_init_second_stage_not_executed);")
+                      ):
+                          return False
+                  return True
+              except (ValueError, IndexError):
+                  return False
+
+          assert accepts(source), "G2 startup atomic one-shot source contract invalid"
+          sus_block = (
+              f"if ({atomic}) {{\n"
+              f"                    {message}\n"
+              "                    return 0;\n"
+              "                }"
+          )
+          non_block = sus_block.replace("return 0;", "return;")
+          mutations = (
+              ("bypass SUSFS atomic gate", source.replace(sus_block, "if (false) {}", 1)),
+              ("bypass non-SUSFS atomic gate", source.replace(non_block, "if (false) {}", 1)),
+              ("wrong SUSFS return", source.replace(sus_block, non_block, 1)),
+              ("wrong non-SUSFS return", source.replace(non_block, sus_block, 1)),
+              ("drop shared atomic identity", source.replace(
+                  marker, "static int ksu_second_stage_attempted;", 1)),
+              ("repeatable callback by reset", source.replace(
+                  sus_block, sus_block + "\n                atomic_set(&ksu_second_stage_attempted, 0);", 1)),
+              ("move guard after SELinux status side effect", source.replace(
+                  sus_block + "\n                pr_info(",
+                  "pr_info(", 1).replace(
+                  "                ksu_selinux_hide_handle_second_stage();",
+                  "                ksu_selinux_hide_handle_second_stage();\n                "
+                  + sus_block, 1)),
+          )
+          for label, altered in mutations:
+              assert altered != source, label + ": mutation did not change source"
+              assert not accepts(altered), label + ": unsafe mutation accepted"
+              print("PASS: rejected G2 startup replay regression — " + label)
+          print("PASS: both CONFIG variants lock out repeat second-stage side effects before SELinux fake-status setup")
+          print("BLOCK: fail-stop can disable KSUN startup after the first error; no recovery policy has been proven")
+          print("BLOCK: late-load unwind, G5 cred lifetime, zygote/rc one-shot, compile and runtime still NO-GO")
+          PY
+          echo "BLOCK: atomic second-stage guard is source-only and not flashable"
