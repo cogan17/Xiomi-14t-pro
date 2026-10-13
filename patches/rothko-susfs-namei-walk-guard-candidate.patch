@@ -1,0 +1,29 @@
+diff --git a/fs/namei.c b/fs/namei.c
+--- a/fs/namei.c
++++ b/fs/namei.c
+@@ -42,5 +42,12 @@
+ #include <linux/uaccess.h>
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++#include <linux/susfs_def.h>
++#endif
+ 
+ #include "internal.h"
+ #include "mount.h"
+ 
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++extern bool susfs_is_inode_sus_path(struct inode *inode);
++#endif
++
+@@ -2259,4 +2266,12 @@
+ 		int type;
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++		struct dentry *dentry = nd->path.dentry;
++
++		/* Reject descent below a SUSFS-hidden path, without dput(). */
++		if (dentry && d_inode(dentry) &&
++		    susfs_is_inode_sus_path(d_inode(dentry)))
++			return -ENOENT;
++#endif
+ 
+ 		mnt_userns = mnt_user_ns(nd->path.mnt);
+ 		err = may_lookup(mnt_userns, nd);
