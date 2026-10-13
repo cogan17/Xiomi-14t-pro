@@ -12,6 +12,7 @@ on:
       - patches/rothko-susfs-task-mmu-pagemap-candidate.patch
       - patches/rothko-susfs-proc-map-files-candidate.patch
       - patches/rothko-susfs-proc-readlink-redirect-candidate.patch
+      - patches/rothko-susfs-namei-walk-guard-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   pull_request:
     paths:
@@ -23,6 +24,7 @@ on:
       - patches/rothko-susfs-task-mmu-pagemap-candidate.patch
       - patches/rothko-susfs-proc-map-files-candidate.patch
       - patches/rothko-susfs-proc-readlink-redirect-candidate.patch
+      - patches/rothko-susfs-namei-walk-guard-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   workflow_dispatch:
 permissions:
@@ -46,6 +48,7 @@ jobs:
             patches/rothko-susfs-task-mmu-pagemap-candidate.patch
             patches/rothko-susfs-proc-map-files-candidate.patch
             patches/rothko-susfs-proc-readlink-redirect-candidate.patch
+            patches/rothko-susfs-namei-walk-guard-candidate.patch
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -58,6 +61,7 @@ jobs:
             mm/memory.c
             fs/proc/task_mmu.c
             fs/proc/base.c
+            fs/namei.c
       - name: Verify exact pinned SUSFS header prerequisite
         shell: bash
         run: |
@@ -73,6 +77,8 @@ jobs:
           grep -Fq 'SUSFS_IS_INODE_OPEN_REDIRECT' susfs/kernel_patches/include/linux/susfs_def.h
           grep -Fq 'susfs_open_redirect_spoof_do_proc_readlink' susfs/kernel_patches/fs/susfs.c
           grep -Fq 'susfs_open_redirect_spoof_do_proc_readlink' susfs/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch
+          grep -Fq 'susfs_is_inode_sus_path' susfs/kernel_patches/fs/susfs.c
+          grep -Fq 'susfs_is_inode_sus_path' susfs/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch
       - name: Validate memory candidate in disposable BSP checkout
         shell: bash
         run: |
@@ -323,4 +329,49 @@ jobs:
             echo "- Helper name checked against exact pinned upstream SUSFS source and patch"
             echo "- Initialized temporary kernel buffer, length limits, error handling, fallback/cleanup anchors checked"
             echo "- This is NOT a complete semantic proof, compiled source tree, or permission to ship/flash"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Validate source-only namei SUS_PATH traversal guard
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-namei-walk-guard-candidate.patch"
+          test -s "$patch"
+          git -C bsp apply --check "$patch"
+          git -C bsp apply "$patch"
+          git -C bsp diff --check
+          test "$(git -C bsp diff --name-only)" = "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("bsp/fs/namei.c").read_text()
+          include = "#ifdef CONFIG_KSU_SUSFS_SUS_PATH\n#include <linux/susfs_def.h>\n#endif"
+          assert include in source, "feature-gated official SUSFS header not present"
+          assert "#ifdef CONFIG_KSU_SUSFS_SUS_PATH\nextern bool susfs_is_inode_sus_path(struct inode *inode);\n#endif" in source, "upstream helper declaration absent"
+          start = source.index("static int link_path_walk(")
+          end = source.index("\n}\n", start)
+          body = source[start:end]
+          enter = body.index("for(;;) {")
+          declaration = body.index("struct dentry *dentry = nd->path.dentry;", enter)
+          feature = body.rfind("#ifdef CONFIG_KSU_SUSFS_SUS_PATH", enter, declaration)
+          inode = body.index("d_inode(dentry)", declaration)
+          call = body.index("susfs_is_inode_sus_path(d_inode(dentry))", inode)
+          reject = body.index("return -ENOENT;", call)
+          close = body.index("#endif", reject)
+          permission = body.index("err = may_lookup(mnt_userns, nd);", close)
+          assert enter < feature < declaration < inode < call < reject < close < permission
+          assert "if (dentry && d_inode(dentry) &&" in body[declaration:call], "null checks missing"
+          assert "dput(dentry)" not in body[feature:close], "must not drop path-owned dentry"
+          assert "if (IS_ERR(name))" in body[:enter], "error name early check must remain"
+          assert "if (!*name)" in body[:enter], "root/empty path early exit must remain"
+          assert "hash_len = hash_name(nd->path.dentry, name);" in body[permission:], "normal name hashing lost"
+          assert "return -ENOENT;" in body[call:close], "hidden-path rejection missing"
+          print("PASS: isolated namei SUS_PATH candidate applies on pinned pristine Rothko BSP")
+          print("PASS: traversal guard is feature-gated, precedes may_lookup, and preserves owned dentry")
+          print("BLOCK: lookup_fast, slow lookup, openat and full-name resolution semantics remain unported")
+          PY
+          {
+            echo "### Source-only namei SUS_PATH traversal candidate"
+            echo "- Seventh independently removable patch candidate; previous six source-only checks retained"
+            echo "- Guard added before may_lookup inside link_path_walk only; no dentry dput"
+            echo "- Source and helper symbol verified against exact pinned official SUSFS upstream"
+            echo "- No full namei patch, no kernel compile, security clearance, ABI/KMI approval or flash"
           } >> "$GITHUB_STEP_SUMMARY"
