@@ -19,6 +19,11 @@ jobs:
   provenance:
     # Read-only provenance audit resumed after exact pinned GitLab fetch succeeded.
     # This is not permission to build, integrate, release, or flash.
+    # Save CI minutes: cancel only obsolete revisions of this failing release gate.
+    # Latest commit still MUST execute this job; its failure is never suppressed.
+    concurrency:
+      group: rothko-provenance-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
