@@ -13,7 +13,7 @@ diff --git a/kernel/selinux/selinux.h b/kernel/selinux/selinux.h
 diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
 --- a/kernel/selinux/selinux.c
 +++ b/kernel/selinux/selinux.c
-@@ -148,13 +148,14 @@
+@@ -148,12 +148,13 @@
      return is_sid_match(cred, cached_init_sid, INIT_CONTEXT);
  }
  
@@ -33,7 +33,7 @@ diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
 diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
 --- a/kernel/policy/app_profile.c
 +++ b/kernel/policy/app_profile.c
-@@ -205,9 +205,12 @@
+@@ -205,7 +205,9 @@
      memcpy(&cred->cap_bset, &profile->capabilities.effective, sizeof(cred->cap_bset));
  
      setup_groups(profile, cred);
@@ -44,12 +44,20 @@ diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
  
      commit_creds(cred);
  
-@@ -241,8 +244,12 @@
+@@ -235,6 +235,7 @@
+ int escape_to_root_for_init(void)
+ {
+     struct cred *cred = prepare_creds();
++    int ret;
+     if (!cred) {
+         pr_err("Failed to prepare init's creds!\\n");
+         return -EINVAL;
+@@ -241,7 +242,11 @@
          return -EINVAL;
      }
  
 -    setup_selinux(KERNEL_SU_CONTEXT, cred);
-+    int ret = setup_selinux(KERNEL_SU_CONTEXT, cred);
++    ret = setup_selinux(KERNEL_SU_CONTEXT, cred);
 +    if (ret) {
 +        abort_creds(cred);
 +        return ret;
