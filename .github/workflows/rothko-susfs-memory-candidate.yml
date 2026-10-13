@@ -17,6 +17,7 @@ on:
       - patches/rothko-susfs-proc-base-integrated-candidate.patch
       - patches/rothko-susfs-namei-walk-guard-candidate.patch
       - patches/rothko-susfs-namei-vfs-readlink-candidate.patch
+      - patches/rothko-susfs-namei-integrated-candidate.patch
       - patches/rothko-susfs-exec-include-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   pull_request:
@@ -34,6 +35,7 @@ on:
       - patches/rothko-susfs-proc-base-integrated-candidate.patch
       - patches/rothko-susfs-namei-walk-guard-candidate.patch
       - patches/rothko-susfs-namei-vfs-readlink-candidate.patch
+      - patches/rothko-susfs-namei-integrated-candidate.patch
       - patches/rothko-susfs-exec-include-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   workflow_dispatch:
@@ -63,6 +65,7 @@ jobs:
             patches/rothko-susfs-proc-base-integrated-candidate.patch
             patches/rothko-susfs-namei-walk-guard-candidate.patch
             patches/rothko-susfs-namei-vfs-readlink-candidate.patch
+            patches/rothko-susfs-namei-integrated-candidate.patch
             patches/rothko-susfs-exec-include-candidate.patch
       - uses: actions/checkout@v4
         with:
@@ -704,3 +707,35 @@ jobs:
                "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
           echo "PASS: integrated proc/base patch reverses to pristine BSP; earlier candidates retained"
           echo "BLOCK: structural port equivalence is not compile, runtime, helper semantics or device validation"
+
+      - name: Verify combined namei patch equals two prior protected candidates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base=b2d8b54a0d8bb002d32dda24e58d2b5d0423546b
+          test "$(git -C bsp rev-parse HEAD)" = "$base"
+          patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-namei-integrated-candidate.patch"
+          test -s "$patch"
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          git -C "$tmp" init -q
+          mkdir -p "$tmp/fs"
+          git -C bsp show "$base:fs/namei.c" > "$tmp/fs/namei.c"
+          pristine="$(sha256sum "$tmp/fs/namei.c" | cut -d' ' -f1)"
+          previous="$(sha256sum bsp/fs/namei.c | cut -d' ' -f1)"
+          # Original SUS_PATH traversal and OPEN_REDIRECT vfs_readlink candidates
+          # were applied earlier in this disposable checkout and remain intact.
+          git -C "$tmp" apply --check --verbose "$patch"
+          git -C "$tmp" apply "$patch"
+          git -C "$tmp" apply --reverse --check "$patch"
+          cmp "$tmp/fs/namei.c" bsp/fs/namei.c
+          test "$(sha256sum "$tmp/fs/namei.c" | cut -d' ' -f1)" = "$previous"
+          echo "PASS: consolidated namei source identical to both prior candidate patches"
+          git -C "$tmp" apply --reverse "$patch"
+          test "$(sha256sum "$tmp/fs/namei.c" | cut -d' ' -f1)" = "$pristine"
+          test "$(sha256sum bsp/fs/namei.c | cut -d' ' -f1)" = "$previous"
+          git -C bsp diff --check
+          test "$(git -C bsp diff --name-only)" = \
+               "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
+          echo "PASS: consolidated namei patch reverses to original; old candidate states preserved"
+          echo "BLOCK: no full namei port, compile, module teardown or runtime VFS/SRCU proof"
