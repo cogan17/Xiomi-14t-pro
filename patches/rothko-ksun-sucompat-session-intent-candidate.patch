@@ -1,0 +1,85 @@
+diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
+--- a/kernel/feature/sucompat.c
++++ b/kernel/feature/sucompat.c
+@@ -232,26 +232,26 @@
+     int ret;
+ 
+     if (unlikely(!filename_ptr))
+-        return 0;
++        return 1;
+ 
+     filename = *filename_ptr;
+     if (IS_ERR(filename))
+-        return 0;
++        return 1;
+ 
+     if (!ksu_handle_execveat_init(filename, (struct user_arg_ptr*)argv_user, (struct user_arg_ptr*)envp_user))
+-        return 0;
++        return 1;
+ 
+     if (likely(memcmp(filename->name, su_path, sizeof(su_path))))
+-        return 0;
++        return 1;
+ 
+     if (current_chrooted())
+     {
+         pr_err("ksu_handle_execveat_sucompat: su found but NOT allowed! Because current process is running in chrooted environment\n");
+-        return 0;
++        return 1;
+     }
+ 
+     if (!ksu_is_allow_uid_for_current(current_uid().val))
+-        return 0;
++        return 1;
+ 
+     ksu_compat_sulog('x');
+     pr_info("ksu_handle_execveat_sucompat: su found\n");
+@@ -264,7 +264,7 @@
+     replacement = getname_kernel(ksud_path);
+     if (IS_ERR(replacement)) {
+         ksu_sulog_emit_pending(pending_sucompat, PTR_ERR(replacement), GFP_KERNEL);
+-        return 0;
++        return 1;
+     }
+ 
+     ret = escape_with_root_profile();
+@@ -273,7 +273,7 @@
+         putname(replacement);
+         /* Do not redirect to ksud if privilege escalation was denied. */
+         ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
+-        return 0;
++        return 1;
+     }
+ 
+     /* A zero return may be an early no-op; require actual KSU credentials. */
+@@ -282,7 +282,7 @@
+         pr_err("sucompat: no authorized KSU credential/domain after escape\\n");
+         putname(replacement);
+         ksu_sulog_emit_pending(pending_sucompat, -EPERM, GFP_KERNEL);
+-        return 0;
++        return 1;
+     }
+ 
+     /* Transfer the allocated filename only after authorization. */
+@@ -301,10 +301,10 @@
+     struct ksu_sulog_pending_event *pending_root_execve = NULL;
+ 
+     if (unlikely(!filename_ptr))
+-        return 0;
++        return 1;
+ 
+     if (IS_ERR(*filename_ptr))
+-        return 0;
++        return 1;
+ 
+     if (current_euid().val == 0) {
+         struct user_arg_ptr *argv_ptr = (struct user_arg_ptr *)argv;
+@@ -316,7 +316,7 @@
+ 
+     if (static_branch_unlikely(&is_first_zygote)) {
+         if (ksu_handle_execveat_ksud(fd, filename_ptr, argv, envp, flags))
+-            return 0;
++            return 1;
+     }
+ 
+     return ksu_handle_execveat_sucompat(fd, filename_ptr, argv, envp,
