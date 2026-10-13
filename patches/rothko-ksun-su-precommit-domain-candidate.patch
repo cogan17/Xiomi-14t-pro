@@ -1,0 +1,101 @@
+diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
+--- a/kernel/feature/sucompat.c
++++ b/kernel/feature/sucompat.c
+@@ -267,7 +267,7 @@
+         return 1;
+     }
+ 
+-    ret = escape_with_root_profile();
++    ret = escape_with_root_profile_for_su();
+     if (ret) {
+         pr_err("escape_with_root_profile() failed: %d\n", ret);
+         putname(replacement);
+diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
+--- a/kernel/policy/app_profile.c
++++ b/kernel/policy/app_profile.c
+@@ -132,7 +132,7 @@
+     kfree(fake);
+ }
+ 
+-int escape_with_root_profile(void)
++static int escape_with_root_profile_common(bool require_su_domain)
+ {
+     int ret = 0;
+     struct cred *cred;
+@@ -228,11 +228,23 @@
+     ret = setup_groups(profile, cred);
+     if (ret)
+         goto out_abort_creds;
+-    ret = setup_selinux(profile->selinux_domain, cred);
+-    if (ret)
+-        goto out_abort_creds;
+-
+-    commit_creds(cred);
++    ret = setup_selinux(profile->selinux_domain, cred);
++    if (ret)
++        goto out_abort_creds;
++
++#ifdef CONFIG_KSU_SUSFS
++    /* SU-only: validate prepared credentials before publishing root. */
++    if (require_su_domain &&
++        (!uid_eq(cred->euid, GLOBAL_ROOT_UID) ||
++         !is_task_ksu_domain(cred))) {
++        ret = -EACCES;
++        goto out_abort_creds;
++    }
++#else
++    (void)require_su_domain;
++#endif
++
++    commit_creds(cred);
+ 
+     if (seccomp_scratch && likely(test_thread_flag(TIF_SECCOMP)))
+         disable_seccomp_with_scratch(seccomp_scratch);
+@@ -255,12 +267,26 @@
+ out_abort_creds:
+     if (profile)
+         ksu_put_root_profile(profile);
+-    abort_creds(cred);
+-    kfree(seccomp_scratch);
+-    return ret;
+-}
+-
+-int escape_to_root_for_init(void)
++    abort_creds(cred);
++    kfree(seccomp_scratch);
++    return ret;
++}
++
++/* All existing non-su callers keep their original profile policy. */
++int escape_with_root_profile(void)
++{
++    return escape_with_root_profile_common(false);
++}
++
++#ifdef CONFIG_KSU_SUSFS
++/* Only the su redirection path requires the stronger pre-commit domain. */
++int escape_with_root_profile_for_su(void)
++{
++    return escape_with_root_profile_common(true);
++}
++#endif
++
++int escape_to_root_for_init(void)
+ {
+     struct cred *cred = prepare_creds();
+     if (!cred) {
+diff --git a/kernel/policy/app_profile.h b/kernel/policy/app_profile.h
+--- a/kernel/policy/app_profile.h
++++ b/kernel/policy/app_profile.h
+@@ -7,7 +7,10 @@
+ #define TIF_KSU_DISABLE_ESCAPE_WITH_ROOT 63
+ 
+ // Escalate current process to root with the appropriate profile
+-int escape_with_root_profile(void);
++int escape_with_root_profile(void);
++#ifdef CONFIG_KSU_SUSFS
++int escape_with_root_profile_for_su(void);
++#endif
+ 
+ int escape_to_root_for_init(void);
+ 
