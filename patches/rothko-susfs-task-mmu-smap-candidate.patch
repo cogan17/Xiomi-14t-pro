@@ -1,7 +1,7 @@
 diff --git a/fs/proc/task_mmu.c b/fs/proc/task_mmu.c
 --- a/fs/proc/task_mmu.c
 +++ b/fs/proc/task_mmu.c
-@@ -20,7 +20,11 @@
+@@ -20,6 +20,10 @@
  #include <linux/uaccess.h>
  #include <linux/pkeys.h>
  #include <trace/hooks/mm.h>
@@ -12,7 +12,7 @@ diff --git a/fs/proc/task_mmu.c b/fs/proc/task_mmu.c
  
  #include <asm/elf.h>
  #include <asm/tlb.h>
-@@ -876,6 +880,13 @@
+@@ -876,6 +880,12 @@
  	struct vm_area_struct *vma = v;
  	struct mem_size_stats mss;
  
