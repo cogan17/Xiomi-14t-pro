@@ -36,6 +36,7 @@ on:
       - patches/rothko-ksun-lateload-sulog-single-attempt-candidate.patch
       - patches/rothko-ksun-lateload-feature-registration-no-overwrite-candidate.patch
       - patches/rothko-ksun-lateload-adb-root-owned-handler-candidate.patch
+      - patches/rothko-ksun-lateload-sucompat-owned-handler-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -76,6 +77,7 @@ on:
       - patches/rothko-ksun-lateload-sulog-single-attempt-candidate.patch
       - patches/rothko-ksun-lateload-feature-registration-no-overwrite-candidate.patch
       - patches/rothko-ksun-lateload-adb-root-owned-handler-candidate.patch
+      - patches/rothko-ksun-lateload-sucompat-owned-handler-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -1590,3 +1592,94 @@ jobs:
           print("BLOCK: activation static key, SUSFS init teardown and shared G5 creds not validated")
           PY
           echo "BLOCK: no device build, merge, or release"
+
+      - name: Verify sucompat handler ownership and guarded cleanup (source-only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-lateload-sucompat-owned-handler-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          src = Path("/tmp/ksun/kernel/feature/sucompat.c").read_text()
+          hdr = Path("/tmp/ksun/kernel/feature/sucompat.h").read_text()
+          core = Path("/tmp/ksun/kernel/core/init.c").read_text()
+          registry = Path("/tmp/ksun/kernel/policy/feature.c").read_text()
+
+          signature = "int __init ksu_sucompat_init(void)\n{"
+          cleanup_sig = "void __exit ksu_sucompat_exit(void)\n{"
+          register = "ret = ksu_register_feature_handler(&su_compat_handler);"
+          failed = (
+              "if (ret) {\n"
+              '\t\tpr_err("Failed to register su_compat feature handler: %d\\n", ret);\n'
+              "\t\treturn ret;\n"
+              "\t}"
+          )
+          duplicate = "if (sucompat_handler_owned)\n\t\treturn -EALREADY;"
+          destructor = (
+              "if (!sucompat_handler_owned)\n"
+              "\t\treturn;\n\n"
+              "\tsucompat_handler_owned = false;\n"
+              "\tksu_unregister_feature_handler(KSU_FEATURE_SU_COMPAT);"
+          )
+
+          def accepts(source, header):
+              try:
+                  init = source.split(signature, 1)[1].split(cleanup_sig, 1)[0]
+                  cleanup = source.split(cleanup_sig, 1)[1]
+                  return all((
+                      source.count("#include <linux/errno.h>") == 1,
+                      source.count("static bool sucompat_handler_owned;") == 1,
+                      source.count(signature) == 1,
+                      source.count(cleanup_sig) == 1,
+                      header.count("int ksu_sucompat_init(void);") == 1,
+                      "void ksu_sucompat_init(void);" not in header,
+                      init.count(duplicate) == 1,
+                      init.count(register) == 1,
+                      init.count(failed) == 1,
+                      init.count("sucompat_handler_owned = true;") == 1,
+                      init.count("return 0;") == 1,
+                      init.index(duplicate) < init.index(register)
+                          < init.index(failed)
+                          < init.index("sucompat_handler_owned = true;")
+                          < init.index("return 0;"),
+                      cleanup.count(destructor) == 1,
+                      cleanup.count("ksu_unregister_feature_handler(KSU_FEATURE_SU_COMPAT);") == 1,
+                  ))
+              except (ValueError, IndexError):
+                  return False
+
+          assert accepts(src, hdr), "sucompat must own its handler before unregister"
+          mutations = (
+              ("ignore registry failure", src.replace(
+                  'pr_err("Failed to register su_compat feature handler: %d\\n", ret);\n\t\treturn ret;',
+                  'pr_err("Failed to register su_compat feature handler: %d\\n", ret);\n\t\treturn 0;', 1), hdr),
+              ("accept double registration", src.replace(
+                  duplicate, "if (false)\n\t\treturn -EALREADY;", 1), hdr),
+              ("claim ownership before register", src.replace(
+                  register, "sucompat_handler_owned = true;\n\t" + register, 1), hdr),
+              ("remove error propagation", src.replace(failed, "if (ret) {\n\t\treturn 0;\n\t}", 1), hdr),
+              ("tear down foreign handler", src.replace(
+                  "if (!sucompat_handler_owned)\n\t\treturn;",
+                  "if (false)\n\t\treturn;", 1), hdr),
+              ("retain ownership after cleanup", src.replace(
+                  "\tsucompat_handler_owned = false;\n", "", 1), hdr),
+              ("change init signature back to void", src, hdr.replace(
+                  "int ksu_sucompat_init(void);", "void ksu_sucompat_init(void);", 1)),
+          )
+          for label, mutated, changed_header in mutations:
+              assert mutated != src or changed_header != hdr, label + ": mutation ineffective"
+              assert not accepts(mutated, changed_header), label + ": unsafe mutation accepted"
+              print("PASS: reject sucompat handler ownership mutation — " + label)
+
+          assert "#ifdef CONFIG_KSU_SUSFS\n\tksu_sucompat_init();" in core
+          assert "return -EEXIST;" in registry
+          print("PASS: sucompat reports registration failure and unregisters only an owned handler")
+          print("BLOCK: kernelsu_init still discards sucompat init status; no integrated unwind")
+          print("BLOCK: static-key state and sucompat/SUSFS hook lifetime need independent proof")
+          print("BLOCK: full SUSFS integration, G5 credentials and device boot remain NO-GO")
+          PY
+          echo "BLOCK: source-only candidate; no merge, kernel build or release"
