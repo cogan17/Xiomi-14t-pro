@@ -34,6 +34,7 @@ on:
       - patches/rothko-ksun-g2-policy-locked-snapshot-candidate.patch
       - patches/rothko-ksun-lateload-sulog-local-lifecycle-candidate.patch
       - patches/rothko-ksun-lateload-sulog-single-attempt-candidate.patch
+      - patches/rothko-ksun-lateload-feature-registration-no-overwrite-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -72,6 +73,7 @@ on:
       - patches/rothko-ksun-g2-policy-locked-snapshot-candidate.patch
       - patches/rothko-ksun-lateload-sulog-local-lifecycle-candidate.patch
       - patches/rothko-ksun-lateload-sulog-single-attempt-candidate.patch
+      - patches/rothko-ksun-lateload-feature-registration-no-overwrite-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -1427,3 +1429,76 @@ jobs:
           print("BLOCK: no complete late-load unwind, G5 ownership, ABI or device compile")
           PY
           echo "BLOCK: sulog reinit guard is source-only, not ready to build or flash"
+
+      - name: Verify KSUN feature registry refuses duplicate handler overwrite (source-only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-lateload-feature-registration-no-overwrite-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          src = Path("/tmp/ksun/kernel/policy/feature.c").read_text()
+          guard = (
+              "if (feature_handlers[handler->feature_id]) {\n"
+              "		pr_err(\"feature: handler for %u already registered, refusing overwrite\\n\",\n"
+              "			handler->feature_id);\n"
+              "		mutex_unlock(&feature_mutex);\n"
+              "		return -EEXIST;\n"
+              "	}"
+          )
+          store = "feature_handlers[handler->feature_id] = handler;"
+          acquire = "mutex_lock(&feature_mutex);"
+          def accepts(text):
+              try:
+                  scope = text.split("int __init ksu_register_feature_handler(", 1)[1].split(
+                      "\nint ksu_unregister_feature_handler(", 1
+                  )[0]
+                  return all((
+                      text.count("#include <linux/errno.h>") == 1,
+                      scope.count(acquire) == 1,
+                      scope.count(guard) == 1,
+                      scope.count(store) == 1,
+                      scope.index(acquire) < scope.index(guard)
+                          < scope.index(store),
+                      scope.index(store) < scope.rindex("mutex_unlock(&feature_mutex);"),
+                      scope.rindex("mutex_unlock(&feature_mutex);") <
+                          scope.rindex("return 0;"),
+                      scope.count("return -EEXIST;") == 1,
+                      "overwriting\\n" not in scope,
+                  ))
+              except (ValueError, IndexError):
+                  return False
+          assert accepts(src), "feature registration may clobber an owned handler"
+          mutations = (
+              ("ignore duplicate error", src.replace("return -EEXIST;", "return 0;", 1)),
+              ("skip mutex unlock on collision", src.replace(
+                  "		mutex_unlock(&feature_mutex);\n		return -EEXIST;",
+                  "		return -EEXIST;", 1)),
+              ("accept duplicates unconditionally", src.replace(
+                  "if (feature_handlers[handler->feature_id]) {", "if (false) {", 1)),
+              ("overwrite despite collision", src.replace(
+                  "		return -EEXIST;", "		;", 1)),
+              ("mutate registration before collision check", src.replace(
+                  "\tif (feature_handlers[handler->feature_id]) {",
+                  "\tfeature_handlers[handler->feature_id] = handler;\n"
+                  "\tif (feature_handlers[handler->feature_id]) {", 1)),
+              ("no explicit errno include", src.replace(
+                  "#include <linux/errno.h>\n", "", 1)),
+              ("assign handler outside mutex", src.replace(
+                  "\tfeature_handlers[handler->feature_id] = handler;",
+                  "\tmutex_unlock(&feature_mutex);\n"
+                  "\tfeature_handlers[handler->feature_id] = handler;", 1)),
+          )
+          for label, changed in mutations:
+              assert changed != src, label + ": no mutation applied"
+              assert not accepts(changed), label + ": unsafe change was accepted"
+              print("PASS: reject feature-handler ownership regression — " + label)
+          print("PASS: duplicate registration cannot replace the existing handler and returns -EEXIST")
+          print("BLOCK: callers must explicitly handle registration errors; no transactional late-load unwind")
+          print("BLOCK: SUSFS ownership, RCU/hook quiescence, shared G5 creds and device runtime unproven")
+          PY
+          echo "BLOCK: non-deployable KSUN source-only feature registry candidate"
