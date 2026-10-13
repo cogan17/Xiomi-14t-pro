@@ -1,0 +1,14 @@
+diff --git a/mm/memory.c b/mm/memory.c
+--- a/mm/memory.c
++++ b/mm/memory.c
+@@ -79,6 +79,10 @@
+ #include <linux/sched/sysctl.h>
+ #include <linux/set_memory.h>
+ 
++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++#include <linux/susfs_def.h>
++#endif
++
+ #include <trace/events/kmem.h>
+ 
+ #include <asm/io.h>
