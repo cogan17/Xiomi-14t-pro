@@ -1,7 +1,7 @@
 diff --git a/fs/proc/task_mmu.c b/fs/proc/task_mmu.c
 --- a/fs/proc/task_mmu.c
 +++ b/fs/proc/task_mmu.c
-@@ -20,6 +20,10 @@
+@@ -20,7 +20,11 @@
  #include <linux/uaccess.h>
  #include <linux/pkeys.h>
  #include <trace/hooks/mm.h>
