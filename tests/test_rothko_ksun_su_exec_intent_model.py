@@ -134,7 +134,10 @@ class SuRequestContractTests(unittest.TestCase):
         self.assertTrue(self.ledger.has_unresolved_credential_hazard(self.owner))
         self.ledger.cancel(self.owner)
         self.assertTrue(self.ledger.has_unresolved_credential_hazard(self.owner))
-        self.assertFalse(self.begin())
+        # A FRESH request must be denied by the hazard, not by replay rules.
+        self.assertFalse(self.ledger.begin(
+            self.owner, RequestIdentity(), su_intent=True, allowlisted=True,
+            chrooted=False, fd_profile_eligible=True, precommit_checks_ok=True))
 
     def test_selinux_failure_after_commit_latches_hazard(self):
         self.assertTrue(self.begin())
@@ -172,7 +175,10 @@ class SuRequestContractTests(unittest.TestCase):
         self.assertTrue(self.ledger.has_unresolved_credential_hazard(self.owner))
         self.ledger.task_exit(self.owner)
         self.assertFalse(self.ledger.has_unresolved_credential_hazard(self.owner))
-        self.assertFalse(self.begin())
+        # Retired owner may not resume, even using a never-before-seen token.
+        self.assertFalse(self.ledger.begin(
+            self.owner, RequestIdentity(), su_intent=True, allowlisted=True,
+            chrooted=False, fd_profile_eligible=True, precommit_checks_ok=True))
 
     def test_other_task_cannot_complete_or_consume_request(self):
         self.assertTrue(self.begin())
