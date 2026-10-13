@@ -780,8 +780,8 @@ jobs:
               ("set init.rc hooked before check", source.rsplit(gate, 1)[0] +
                   "rc_hooked = true;\\n    " + gate + source.rsplit(gate, 1)[1]),
               ("ignore module rc deferred return", source.replace(
-                  'pr_err("module rc: shared credential unavailable; keep load pending\\n");\\n        return;',
-                  'pr_err("module rc: shared credential unavailable; keep load pending\\n");\\n        ;', 1)),
+                  "        return;\n    }\n    loaded = true;",
+                  "        ;\n    }\n    loaded = true;", 1)),
           ]
           for label, mutated in alterations:
               assert mutated != source, label + ": no mutation"
