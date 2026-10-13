@@ -12,8 +12,10 @@ def check(text: str) -> list[str]:
     additions = [line[1:] for line in text.splitlines() if line.startswith('+') and not line.startswith('+++')]
     if any('get_cred(ksu_cred)' in line for line in additions):
         problems.append('G5 borrows global ksu_cred without proven publication/lifetime guard')
-    if not any('put_cred(borrowed_cred)' in line for line in additions):
-        problems.append('G5 candidate does not show borrowed reference release')
+    borrows = sum('get_cred(ksu_cred)' in line for line in additions)
+    releases = sum('put_cred(borrowed_cred)' in line for line in additions)
+    if borrows and releases < borrows:
+        problems.append('G5 candidate has fewer borrowed reference releases than acquisitions')
     return problems
 
 
