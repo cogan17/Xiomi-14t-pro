@@ -1,0 +1,59 @@
+diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration.c
+--- a/kernel/runtime/ksud_integration.c
++++ b/kernel/runtime/ksud_integration.c
+@@ -278,6 +278,15 @@
+ }
+ 
+-static void load_module_rc_once(void)
+-{
++/*
++ * Partial G4 readiness check only, not a credential lifetime lock.
++ * Never consume the module rc/one-shot init hook before its KSU SID exists.
++ */
++static bool ksu_module_rc_shared_cred_is_valid(void)
++{
++    return ksu_cred && is_task_ksu_domain(ksu_cred);
++}
++
++static void load_module_rc_once(void)
++{
+     static bool loaded = false;
+     struct file *f;
+@@ -288,8 +297,12 @@
+     const struct cred *old_cred;
+ 
+-    if (loaded)
+-        return;
+-    loaded = true;
+-    if (ksu_no_custom_rc) {
++    if (loaded)
++        return;
++    if (!ksu_module_rc_shared_cred_is_valid()) {
++        pr_err("module rc: shared credential unavailable; keep load pending\n");
++        return;
++    }
++    loaded = true;
++    if (ksu_no_custom_rc) {
+         pr_info("custom rc is disabled\n");
+         return;
+@@ -497,10 +510,14 @@
+     // we only process the first read
+     static bool rc_hooked = false;
+-    if (rc_hooked) {
+-        // we don't need these hooks, unregister it!
+-
+-        return;
+-    }
+-    rc_hooked = true;
++    if (rc_hooked) {
++        // we don't need these hooks, unregister it!
++
++        return;
++    }
++    if (!ksu_module_rc_shared_cred_is_valid()) {
++        pr_err("init.rc: shared credential unavailable; keep hook pending\n");
++        return;
++    }
++    rc_hooked = true;
+ #ifdef CONFIG_KSU_SUSFS
+     if (static_key_enabled(&ksu_is_init_rc_hook_enabled)) {
