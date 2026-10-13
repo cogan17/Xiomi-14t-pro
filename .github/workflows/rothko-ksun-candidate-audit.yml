@@ -35,6 +35,7 @@ on:
       - patches/rothko-ksun-lateload-sulog-local-lifecycle-candidate.patch
       - patches/rothko-ksun-lateload-sulog-single-attempt-candidate.patch
       - patches/rothko-ksun-lateload-feature-registration-no-overwrite-candidate.patch
+      - patches/rothko-ksun-lateload-adb-root-owned-handler-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -74,6 +75,7 @@ on:
       - patches/rothko-ksun-lateload-sulog-local-lifecycle-candidate.patch
       - patches/rothko-ksun-lateload-sulog-single-attempt-candidate.patch
       - patches/rothko-ksun-lateload-feature-registration-no-overwrite-candidate.patch
+      - patches/rothko-ksun-lateload-adb-root-owned-handler-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -1503,3 +1505,87 @@ jobs:
           print("BLOCK: SUSFS ownership, RCU/hook quiescence, shared G5 creds and device runtime unproven")
           PY
           echo "BLOCK: non-deployable KSUN source-only feature registry candidate"
+
+      - name: Verify adb_root handler ownership and error propagation (source-only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-lateload-adb-root-owned-handler-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("/tmp/ksun/kernel/feature/adb_root.c").read_text()
+          header = Path("/tmp/ksun/kernel/feature/adb_root.h").read_text()
+          core = Path("/tmp/ksun/kernel/core/init.c").read_text()
+          registry = Path("/tmp/ksun/kernel/policy/feature.c").read_text()
+          owned = "adb_root_handler_owned"
+          register = "ret = ksu_register_feature_handler(&ksu_adb_root_handler);"
+          gate = "if (!adb_root_handler_owned)\n        return;"
+          def valid(src, hdr):
+              try:
+                  init = src.split("int __init ksu_adb_root_init(void)\n{", 1)[1].split(
+                      "\nvoid __exit ksu_adb_root_exit(void)", 1
+                  )[0]
+                  cleanup = src.split("void __exit ksu_adb_root_exit(void)\n{", 1)[1]
+                  register_fail = (
+                      "if (ret) {\n"
+                      '        pr_err("Failed to register adb_root feature handler: %d\\n", ret);\n'
+                      "        return ret;\n"
+                      "    }"
+                  )
+                  return all((
+                      src.count("#include <linux/errno.h>") == 1,
+                      src.count("static bool adb_root_handler_owned;") == 1,
+                      src.count("int __init ksu_adb_root_init(void)") == 1,
+                      hdr.count("int ksu_adb_root_init(void);") == 1,
+                      "void ksu_adb_root_init(void);" not in hdr,
+                      init.count("if (adb_root_handler_owned)\n        return -EALREADY;") == 1,
+                      init.count(register) == 1,
+                      init.count(register_fail) == 1,
+                      init.count("adb_root_handler_owned = true;") == 1,
+                      init.count("return 0;") == 1,
+                      init.index("if (adb_root_handler_owned)") < init.index(register) <
+                      init.index(register_fail) < init.index("adb_root_handler_owned = true;") <
+                      init.index("return 0;"),
+                      cleanup.count(gate) == 1,
+                      cleanup.count("adb_root_handler_owned = false;") == 1,
+                      cleanup.count("ksu_unregister_feature_handler(KSU_FEATURE_ADB_ROOT);") == 1,
+                      cleanup.index(gate) < cleanup.index("adb_root_handler_owned = false;") <
+                      cleanup.index("ksu_unregister_feature_handler(KSU_FEATURE_ADB_ROOT);"),
+                  ))
+              except (ValueError, IndexError):
+                  return False
+          assert valid(source, header), "adb_root handler ownership guard invalid"
+          cases = (
+              ("ignore feature registry error", source.replace(
+                  "        return ret;", "        return 0;", 1), header),
+              ("allow duplicate init", source.replace(
+                  "if (adb_root_handler_owned)\n        return -EALREADY;",
+                  "if (false)\n        return -EALREADY;", 1), header),
+              ("claim ownership before registration", source.replace(
+                  register, "adb_root_handler_owned = true;\n    " + register, 1), header),
+              ("publish success when registration failed", source.replace(
+                  "return ret;\n    }\n\n    adb_root_handler_owned = true;",
+                  "return 0;\n    }\n\n    adb_root_handler_owned = true;", 1), header),
+              ("unregister an unowned handler", source.replace(
+                  gate, "if (false)\n        return;", 1), header),
+              ("omit ownership release", source.replace(
+                  "    adb_root_handler_owned = false;\n", "", 1), header),
+              ("wrong init declaration", source,
+                  header.replace("int ksu_adb_root_init(void);",
+                                 "void ksu_adb_root_init(void);")),
+          )
+          for label, changed, hdr in cases:
+              assert changed != source or hdr != header, label + ": mutation did not apply"
+              assert not valid(changed, hdr), label + ": unsafe mutation accepted"
+              print("PASS: reject adb_root ownership mutation — " + label)
+          assert core.count("ksu_adb_root_init();") == 1
+          assert "return -EEXIST;" in registry
+          print("PASS: adb_root init returns registration errors; exit only unregisters owned handler")
+          print("BLOCK: caller still discards the error; partial KSUN late-load unwind unproven")
+          print("BLOCK: activation static key, SUSFS init teardown and shared G5 creds not validated")
+          PY
+          echo "BLOCK: no device build, merge, or release"
