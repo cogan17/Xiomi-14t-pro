@@ -44,11 +44,17 @@ jobs:
           set -Eeuo pipefail
           patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-memory-include-candidate.patch"
           echo "Pristine BSP: $(git -C bsp rev-parse HEAD)"
+          # Stage the exact upstream header only in the disposable BSP tree.
+          # This tests dependency availability, not complete SUSFS integration.
+          mkdir -p bsp/include/linux
+          cp susfs/kernel_patches/include/linux/susfs_def.h bsp/include/linux/susfs_def.h
+          test -s bsp/include/linux/susfs_def.h
           git -C bsp apply --check "$patch"
           git -C bsp apply "$patch"
           git -C bsp diff --check
           git -C bsp diff -- mm/memory.c
           test "$(git -C bsp diff --name-only)" = "mm/memory.c"
+          test -f bsp/include/linux/susfs_def.h
           grep -q '^#include <linux/susfs_def.h>$' bsp/mm/memory.c
           echo "PASS: isolated include candidate applies cleanly; no compile or semantic approval"
           {
