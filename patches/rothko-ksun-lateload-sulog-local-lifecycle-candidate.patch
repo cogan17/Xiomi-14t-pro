@@ -1,0 +1,62 @@
+diff --git a/kernel/feature/sulog.c b/kernel/feature/sulog.c
+--- a/kernel/feature/sulog.c
++++ b/kernel/feature/sulog.c
+@@ -36,30 +36,42 @@
+     return ksu_sulog_enabled;
+ }
+ 
+-void __init ksu_sulog_init(void)
++/*
++ * Local init/exit transaction for sulog only. This flag is published after
++ * its last void initializer; it does not prove overall KSUN readiness.
++ */
++static bool sulog_initialized;
++
++int __init ksu_sulog_init(void)
+ {
+     int ret;
+ 
+     ksu_sulog_enabled = false;
++    sulog_initialized = false;
+ 
+     ret = ksu_register_feature_handler(&sulog_handler);
+     if (ret) {
+         pr_err("Failed to register sulog feature handler\n");
+-        return;
++        return ret;
+     }
+ 
+     ret = ksu_sulog_events_init();
+     if (ret) {
+         pr_err("Failed to initialize sulog events: %d\n", ret);
+         ksu_unregister_feature_handler(KSU_FEATURE_SULOG);
+-        return;
++        return ret;
+     }
+ 
+     ksu_sulog_fd_init();
++    sulog_initialized = true;
++    return 0;
+ }
+ 
+ void __exit ksu_sulog_exit(void)
+ {
++    if (!sulog_initialized)
++        return;
++    sulog_initialized = false;
+     ksu_sulog_fd_exit();
+     ksu_sulog_events_exit();
+     ksu_unregister_feature_handler(KSU_FEATURE_SULOG);
+
+diff --git a/kernel/feature/sulog.h b/kernel/feature/sulog.h
+--- a/kernel/feature/sulog.h
++++ b/kernel/feature/sulog.h
+@@ -5,7 +5,7 @@
+ #include <linux/init.h>
+ 
+ bool ksu_sulog_is_enabled(void);
+-void __init ksu_sulog_init(void);
++int __init ksu_sulog_init(void);
+ void __exit ksu_sulog_exit(void);
+ 
+ #endif
