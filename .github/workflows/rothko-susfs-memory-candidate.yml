@@ -6,11 +6,13 @@ on:
     paths:
       - patches/rothko-susfs-memory-include-candidate.patch
       - patches/rothko-susfs-memory-vma-candidate.patch
+      - patches/rothko-susfs-memory-integrated-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   pull_request:
     paths:
       - patches/rothko-susfs-memory-include-candidate.patch
       - patches/rothko-susfs-memory-vma-candidate.patch
+      - patches/rothko-susfs-memory-integrated-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   workflow_dispatch:
 permissions:
@@ -49,10 +51,9 @@ jobs:
           mkdir -p bsp/include/linux
           cp susfs/kernel_patches/include/linux/susfs_def.h bsp/include/linux/susfs_def.h
           test -s bsp/include/linux/susfs_def.h
-          for patch in rothko-susfs-memory-include-candidate.patch rothko-susfs-memory-vma-candidate.patch; do
-            git -C bsp apply --check "$patch_dir/$patch"
-            git -C bsp apply "$patch_dir/$patch"
-          done
+          patch="$patch_dir/rothko-susfs-memory-integrated-candidate.patch"
+          git -C bsp apply --check "$patch"
+          git -C bsp apply "$patch"
           git -C bsp diff --check
           test "$(git -C bsp diff --name-only)" = "mm/memory.c"
           grep -Fq '#include <linux/susfs_def.h>' bsp/mm/memory.c
@@ -76,10 +77,10 @@ jobs:
           assert "mmap_read_unlock(mm)" in body[gup:], "mmap unlock must remain"
           print("PASS: structural guard ordering and feature gate (not semantic clearance)")
           PY
-          echo "PASS: two patches apply in isolated BSP; not a compile, behavior or security approval"
+          echo "PASS: integrated candidate apply in isolated BSP; not a compile, behavior or security approval"
           {
             echo "### Isolated memory candidates"
-            echo "- Two patches applied to temporary BSP checkout"
+            echo "- One integrated patch applied to temporary BSP checkout"
             echo "- Only tracked change: mm/memory.c"
             echo "- Pinned SUSFS header staged as untracked dependency"
             echo "- No build, release, merge, flash or semantic clearance"
