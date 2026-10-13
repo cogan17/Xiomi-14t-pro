@@ -5,10 +5,8 @@ import os
 from pathlib import Path
 
 ROOTS = {
-    "KernelSU": ["KernelSU"],
     "KernelSU-Next": ["KernelSU-Next"],
     "BakaSU": ["BakaSU"],
-    "All (KSU + KSUN + BakaSU)": ["KernelSU", "KernelSU-Next", "BakaSU"],
 }
 FEATURES = (
     ("susfs", "SUSFS"),
@@ -25,6 +23,8 @@ FEATURES = (
 def select(root, inputs, ref):
     if ref != "refs/heads/dev/rothko":
         raise ValueError("This no-build workflow is restricted to dev/rothko")
+    if root in ("KernelSU", "All (KSU + KSUN + BakaSU)"):
+        raise ValueError("KSU/Mama archived; only KSUN and BakaSU are active")
     if root not in ROOTS:
         raise ValueError("Unsupported root selection: " + repr(root))
     if set(inputs) != {name for name, _ in FEATURES}:
