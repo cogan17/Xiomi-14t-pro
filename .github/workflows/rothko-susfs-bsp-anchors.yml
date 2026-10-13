@@ -29,7 +29,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-          ref: dev/rothko
+          # Apply-check targets this exact original BSP snapshot, not moving dev/rothko.
+          ref: b2d8b54a0d8bb002d32dda24e58d2b5d0423546b
           path: bsp
       - name: Validate Python syntax
         run: python3 -m py_compile mapper/scripts/rothko_susfs_bsp_anchor_map.py
