@@ -117,3 +117,32 @@ Confirmed in `runtime/ksud_integration.c`:
 Audit pass means all **currently observed** source relationships are unchanged, **not that any G2/G4 prerequisite is satisfied**. A code change that alters these relationships must force reviewer reevaluation rather than silently relabel a changed risk as safe.
 
 **Gate: G2 BLOCKED · G4 BLOCKED · G5 BLOCKED · G6 BLOCKED**. G1/G3 source checks and the unresolved authenticated post-`execve` FD flow remain separate; no merge, build, release or flashing.
+
+
+---
+
+## Decision checkpoint — post-exec FD / shared credential (2026-10-13)
+
+**Decision: fail closed; defer integration, not the eight source-only SUSFS candidates.** This checkpoint is deliberately a finite go/no-go contract rather than another round of open-ended source audits. The kernel sources, security checks and CI gates are not changed by this note.
+
+### Verified facts at pinned KernelSU-Next source
+
+- Source: `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161`. In `kernel/supercall/supercall.c`, `ksu_install_fd` reserves an FD with `get_unused_fd_flags(O_CLOEXEC)`, opens an anonymous inode with `O_RDWR | O_CLOEXEC`, then calls `fd_install`. This FD is **not** evidence of an authenticated session surviving a successful `execve`.
+- The SUSFS-conditional reboot request and the alternate magic request enqueue task work with `task_work_add(current, ..., TWA_RESUME)`. Scheduling task work does not, on its own, establish a verified post-exec registration/authorization contract.
+- The inspected pinned `kernel/feature/sucompat.c` and `kernel/hook/syscall_event_bridge.c` do not implement `ksu_handle_post_execveat_sucompat`. The presence of an anonymous FD ioctl endpoint is **not equivalent** to this missing integration.
+- `runtime/ksud_integration.c` uses a shared credential in `load_module_rc_once`; the original source sets one-shot state before validating readiness. The already recorded G1/G2/G3/G4 findings remain open, not waived by later source-only CI successes.
+
+### Bounded go/no-go decisions
+
+| Condition | Current decision | Exit evidence needed |
+| --- | --- | --- |
+| Shared credential READY state and ownership | **NO-GO** | Checked SELinux state on the exact credential, verified reference/synchronization, and consumers prevented from using PREPARED/FAILED credentials |
+| Startup and late-load failure handling | **NO-GO** | Complete initialization/cleanup and one-shot semantics for all relevant `CONFIG_KSU_SUSFS` variants; no repeated side effects after a failed attempt |
+| Post-`execve` session FD | **NO-GO** | Documented authorized issuer and recipient, lifecycle after exec and exit, safe failure/cleanup behavior, and per-command permission verification; developer-reviewed API contract |
+| Device kernel compilation and flashing | **ON HOLD** | Owner release of issue #12, Rothko source/KMI/ABI/toolchain match and independently proven security controls, followed by non-flash compile and device test plan |
+
+**Safe fallback while blocked:** retain original KSUN permission decisions and lifecycle; do not turn off `O_CLOEXEC`, create an unconditional post-exec FD, re-use task work as proof of authorization, add blanket root access or silently mark module init successful. Missing readiness/contract must block integration, not relax privileges.
+
+**Next actionable dependency:** capture one precise upstream-maintainer answer on *when and under whose authorization a fresh post-exec FD may be issued*, including ownership and revocation, then review it against existing KSUN hook and init-credential invariants. Existing issue #11 remains the request tracker: do not send duplicate requests. Do not add more hiding patches or start a device build in the meantime. This checkpoint does not claim upstream approval.
+
+**PR #9 remains Draft**; eight SUSFS candidates remain reversible source-only patches, not a complete enabled kernel. No `dev/rothko` mutation, merge, deployable image, release or flash.
