@@ -1,0 +1,15 @@
+diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
+--- a/kernel/feature/sucompat.c
++++ b/kernel/feature/sucompat.c
+@@ -612,7 +612,9 @@
+ 	if (!sucompat_handler_owned)
+ 		return;
+ 
+-	sucompat_handler_owned = false;
+-	ksu_unregister_feature_handler(KSU_FEATURE_SU_COMPAT);
++	sucompat_handler_owned = false;
++	/* Handler deregistration serializes with feature toggles before key shutdown. */
++	ksu_unregister_feature_handler(KSU_FEATURE_SU_COMPAT);
++	static_branch_disable(&ksu_su_compat_enabled);
+ }
+ 
