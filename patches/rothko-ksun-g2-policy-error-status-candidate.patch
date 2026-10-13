@@ -1,0 +1,78 @@
+diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
+--- a/kernel/selinux/rules.c
++++ b/kernel/selinux/rules.c
+@@ -42,10 +42,11 @@
+     selinux_xfrm_notify_policyload();
+ }
+ 
+-void apply_kernelsu_rules()
++int apply_kernelsu_rules(void)
+ {
+     struct selinux_policy *pol, *old_pol = selinux_state.policy;
+     struct policydb *db;
++    int ret = 0;
+ 
+     if (!getenforce()) {
+         pr_info("SELinux permissive or disabled, apply rules!\n");
+@@ -55,18 +56,21 @@
+     backup_sepolicy =
+         ksu_dup_sepolicy(rcu_dereference_protected(old_pol, lockdep_is_held(&selinux_state.policy_mutex)));
+     if (IS_ERR(backup_sepolicy)) {
++        ret = PTR_ERR(backup_sepolicy);
+         pr_err("failed to create backup sepolicy: %ld\n", PTR_ERR(backup_sepolicy));
+         backup_sepolicy = NULL;
+     } else {
+         backup_sepolicy->sidtab = kzalloc(sizeof(*backup_sepolicy->sidtab), GFP_KERNEL);
+         if (!backup_sepolicy->sidtab) {
+             pr_err("failed to alloc backup sidtab\n");
++            ret = -ENOMEM;
+             ksu_destroy_sepolicy(backup_sepolicy);
+             backup_sepolicy = NULL;
+         } else {
+-            int ret = policydb_load_isids(&backup_sepolicy->policydb, backup_sepolicy->sidtab);
+-            if (ret) {
+-                pr_err("failed to load isids for backup sepolicy: %d!\n", ret);
++            int err = policydb_load_isids(&backup_sepolicy->policydb, backup_sepolicy->sidtab);
++            if (err) {
++                ret = err;
++                pr_err("failed to load isids for backup sepolicy: %d!\n", err);
+                 kfree(backup_sepolicy->sidtab);
+                 ksu_destroy_sepolicy(backup_sepolicy);
+                 backup_sepolicy = NULL;
+@@ -83,12 +87,15 @@
+      */
+     if (!backup_sepolicy) {
+         pr_err("KSUN: refusing policy update without rollback backup\n");
++        if (!ret)
++            ret = -ENOMEM;
+         goto out_unlock;
+     }
+     pol = ksu_dup_sepolicy(rcu_dereference_protected(
+         old_pol, lockdep_is_held(&selinux_state.policy_mutex)));
+     if (IS_ERR(pol)) {
+         pr_err("failed to dup selinux_policy: %ld\n", PTR_ERR(pol));
++        ret = PTR_ERR(pol);
+         goto out_unlock;
+     }
+ 
+@@ -195,6 +202,7 @@
+ 
+ out_unlock:
+     mutex_unlock(&selinux_state.policy_mutex);
++    return ret;
+ }
+ 
+ #define KSU_SEPOLICY_MAX_BATCH_SIZE (8U * 1024U * 1024U)
+
+diff --git a/kernel/selinux/selinux.h b/kernel/selinux/selinux.h
+--- a/kernel/selinux/selinux.h
++++ b/kernel/selinux/selinux.h
+@@ -29,7 +29,7 @@
+ 
+ bool is_init(const struct cred *cred);
+ 
+-void apply_kernelsu_rules();
++int apply_kernelsu_rules(void);
+ 
+ int handle_sepolicy(void __user *user_data, u64 data_len);
+ 
