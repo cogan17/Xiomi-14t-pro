@@ -15,6 +15,7 @@ on:
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
       - patches/rothko-ksun-susfs-sid0-fail-closed-candidate.patch
+      - patches/rothko-ksun-susfs-current-domain-sid0-guard-candidate.patch
       - .github/workflows/rothko-ksun-candidate-audit.yml
       - scripts/rothko_ksun_security_contract.py
       - tests/test_rothko_ksun_security_contract.py
@@ -63,6 +64,7 @@ on:
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
       - patches/rothko-ksun-susfs-sid0-fail-closed-candidate.patch
+      - patches/rothko-ksun-susfs-current-domain-sid0-guard-candidate.patch
       - .github/workflows/rothko-ksun-candidate-audit.yml
       - scripts/rothko_ksun_security_contract.py
       - tests/test_rothko_ksun_security_contract.py
@@ -2230,3 +2232,85 @@ jobs:
           test "$(sha256sum "$file" | cut -d' ' -f1)" = "$original"
           git -C "$tmp" diff --check
           echo "PASS: isolated SID guard reversible; no kernel build, integration or release"
+
+      - name: Verify SUSFS current-domain SID predicates reject uninitialized cache
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pinned=3438d6aa431f96a23f9e625bec3d53ce1fb14161
+          test "$(git -C /tmp/ksun rev-parse HEAD)" = "$pinned"
+          prior="$GITHUB_WORKSPACE/patches/rothko-ksun-susfs-sid0-fail-closed-candidate.patch"
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-susfs-current-domain-sid0-guard-candidate.patch"
+          test -s "$prior" && test -s "$patch"
+          temp="$(mktemp -d)"
+          trap 'rm -rf "$temp"' EXIT
+          mkdir -p "$temp/kernel/selinux"
+          git -C "$temp" init -q
+          git -C /tmp/ksun show "$pinned:kernel/selinux/selinux.c" > "$temp/kernel/selinux/selinux.c"
+          file="$temp/kernel/selinux/selinux.c"
+          basehash="$(sha256sum "$file" | cut -d' ' -f1)"
+          git -C "$temp" apply --check "$prior"
+          git -C "$temp" apply "$prior"
+          prevhash="$(sha256sum "$file" | cut -d' ' -f1)"
+          git -C "$temp" apply --check --verbose "$patch"
+          git -C "$temp" apply "$patch"
+          git -C "$temp" apply --reverse --check "$patch"
+          git -C "$temp" diff --check
+          python3 - "$file" "$temp/test.c" <<'PY'
+          from pathlib import Path
+          import re,sys
+          src=Path(sys.argv[1]).read_text()
+          original=re.sub(
+              r"(?m)^    return unlikely\((susfs_(?:zygote|zygote_next|ksu|init)_sid) != 0 && current_sid\(\) == \1\);$",
+              r"    return unlikely(current_sid() == \1);",src)
+          names=("zygote","zygote_next","ksu","init")
+          functions=[]
+          for n in names:
+              head=f"bool susfs_is_current_{n}_domain(void) {{"
+              m=re.search(re.escape(head)+r"\n.*?\n}",src,re.S)
+              assert m,head
+              part=m.group()
+              assert part==(
+                  head+"\n    return unlikely(susfs_"+n+"_sid != 0 && current_sid() == susfs_"+n+"_sid);\n}"
+              ),n
+              assert part.replace("susfs_"+n+"_sid != 0 && ","",1) in original
+              functions.append(part)
+          unmodified=src
+          for n in names:
+              original_line=f"return unlikely(susfs_{n}_sid != 0 && current_sid() == susfs_{n}_sid);"
+              unmodified=unmodified.replace(original_line,
+                  f"return unlikely(current_sid() == susfs_{n}_sid);",1)
+          assert unmodified==original, "only four domain guards may change"
+          assert "if (!cred || !sid2)" in src, "earlier SID guard must remain"
+          harness=(
+              "#include <stdbool.h>\n"
+              "typedef unsigned int u32;\n"
+              "#define unlikely(x) (x)\n"
+              "static u32 running;\n"
+              "static u32 current_sid(void) { return running; }\n"
+          )
+          for n in names:
+              harness+=f"static u32 susfs_{n}_sid;\n"
+          harness+="\n".join(functions)+"\nint main(void) {\n"
+          for i,n in enumerate(names):
+              # One check per independent current-domain API, rather than
+              # repeating the preceding cred-to-SID contract.
+              test=f"susfs_is_current_{n}_domain()"
+              for other in names:
+                  harness+=f"    susfs_{other}_sid=0;\n"
+              harness+=f"    running=0; if ({test}) return {i*4+1};\n"
+              harness+=f"    susfs_{n}_sid=42; running=42; if (!{test}) return {i*4+2};\n"
+              harness+=f"    running=41; if ({test}) return {i*4+3};\n"
+              harness+=f"    susfs_{n}_sid=0; running=42; if ({test}) return {i*4+4};\n"
+          harness+="    return 0;\n}\n"
+          Path(sys.argv[2]).write_text(harness)
+          print("PASS: each current-domain predicate rejects uninitialized SID without changing other code")
+          PY
+          cc -std=gnu11 -Wall -Wextra -Werror "$temp/test.c" -o "$temp/sid-test"
+          "$temp/sid-test"
+          echo "PASS: current-domain SID=0, valid match, mismatch and cache reset cases"
+          git -C "$temp" apply --reverse "$patch"
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = "$prevhash"
+          git -C "$temp" apply --reverse "$prior"
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = "$basehash"
+          echo "PASS: two independent SID guards stack and reverse without changing pinned source"

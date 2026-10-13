@@ -1,0 +1,23 @@
+diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
+--- a/kernel/selinux/selinux.c
++++ b/kernel/selinux/selinux.c
+@@ -303,15 +303,15 @@
+ bool susfs_is_current_zygote_domain(void) {
+-    return unlikely(current_sid() == susfs_zygote_sid);
++    return unlikely(susfs_zygote_sid != 0 && current_sid() == susfs_zygote_sid);
+ }
+ 
+ bool susfs_is_current_zygote_next_domain(void) {
+-    return unlikely(current_sid() == susfs_zygote_next_sid);
++    return unlikely(susfs_zygote_next_sid != 0 && current_sid() == susfs_zygote_next_sid);
+ }
+ 
+ bool susfs_is_current_ksu_domain(void) {
+-    return unlikely(current_sid() == susfs_ksu_sid);
++    return unlikely(susfs_ksu_sid != 0 && current_sid() == susfs_ksu_sid);
+ }
+ 
+ bool susfs_is_current_init_domain(void) {
+-    return unlikely(current_sid() == susfs_init_sid);
++    return unlikely(susfs_init_sid != 0 && current_sid() == susfs_init_sid);
+ }
