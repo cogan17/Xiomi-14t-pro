@@ -3,6 +3,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -45,6 +46,18 @@ class RootDriverIntegrationTests(unittest.TestCase):
         self.assertIn('source "drivers/kernelsu/Kconfig"\nendmenu', kconfig)
         with self.assertRaisesRegex(ValueError, "already present"):
             install(self.tree, self.driver)
+
+    def test_symlink_failure_rolls_back_both_build_files(self):
+        makefile = self.tree / "drivers/Makefile"
+        kconfig = self.tree / "drivers/Kconfig"
+        original_make = makefile.read_bytes()
+        original_config = kconfig.read_bytes()
+        with patch.object(Path, "symlink_to", side_effect=OSError("simulated link failure")):
+            with self.assertRaisesRegex(OSError, "simulated link failure"):
+                install(self.tree, self.driver)
+        self.assertEqual(makefile.read_bytes(), original_make)
+        self.assertEqual(kconfig.read_bytes(), original_config)
+        self.assertFalse((self.tree / "drivers/kernelsu").exists())
 
     def test_refuse_unrecognized_kernel_baseline(self):
         (self.tree / "Makefile").write_text("VERSION = 6\nPATCHLEVEL = 1\nSUBLEVEL = 177\n")
