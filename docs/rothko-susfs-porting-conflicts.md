@@ -107,3 +107,10 @@ The official pinned 6.1 patch still fails `git apply --check`, including `fs/nam
 - This is an existing **root-enabled diagnostic path**, but **not** a KSUN+SUSFS build path and not a Rothko device-boot proof. The source audit PR pins a different KSUN (`pershoot@3438d6aa`); do not reuse the older KSUN installer matrix as evidence for that pin.
 - No need for a new root-enabled workflow: the next meaningful step is to resolve the intended KSUN provenance and existing SUSFS/security blockers before changing any root-enabled CI. Keep generic smoke root-free and BakaSU experimental flow unchanged.
 - Source-only documentation checkpoint; no CI dispatch, compile, integration, merge, or release. PR #9 Draft / BUILD HOLD.
+
+## Origin of the two KSUN pins — 2026-10-14
+
+- Branch-scoped GitHub file history identifies commit `5c438f9563c744963a98f5cdada09e1ce0c0ed17` (2026-10-12), `feat(rothko): integrate pinned KSU KSUN BakaSU with ARM64 compile verification`, as the introducing commit for `scripts/rothko_install_root_driver.py`.
+- The same commit introduces an isolated three-flavor integration workflow with `KernelSU-Next/KernelSU-Next@02a9e1c5fb2c4fd8117429fe004136332788c1b6`. This pin belongs to the **experimental root-driver integration** path, not to the independent KSUN+SUSFS audit.
+- The independent candidate workflow explicitly fetches `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161`. Their different provenance is intentional at the workflow boundary; no evidence yet proves interchangeable code or an approved migration.
+- **Disposition:** preserve both pins and existing guards. Do not rewrite the installer, add a second integration path, run CI, or assert compatibility. Next technical gate is a targeted source/API compatibility comparison only if it can resolve a concrete integration decision. PR #9 remains Draft / BUILD HOLD.
