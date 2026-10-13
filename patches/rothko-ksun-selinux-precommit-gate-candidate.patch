@@ -1,0 +1,59 @@
+diff --git a/kernel/selinux/selinux.h b/kernel/selinux/selinux.h
+--- a/kernel/selinux/selinux.h
++++ b/kernel/selinux/selinux.h
+@@ -13,7 +13,7 @@
+ #define ZYGOTE_CONTEXT "u:r:zygote:s0"
+ #define INIT_CONTEXT "u:r:init:s0"
+ 
+-void setup_selinux(const char *, struct cred *);
++int setup_selinux(const char *, struct cred *);
+ 
+ void setenforce(bool);
+ 
+diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
+--- a/kernel/selinux/selinux.c
++++ b/kernel/selinux/selinux.c
+@@ -148,13 +148,14 @@
+     return is_sid_match(cred, cached_init_sid, INIT_CONTEXT);
+ }
+ 
+-void setup_selinux(const char *domain, struct cred *cred)
++int setup_selinux(const char *domain, struct cred *cred)
+ {
+-    if (transive_to_domain(domain, cred, false)) {
++    int ret = transive_to_domain(domain, cred, false);
++    if (ret) {
+         pr_err("transive domain failed.\n");
+-        return;
+     }
++    return ret;
+ }
+ 
+ void setup_ksu_cred(void)
+diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
+--- a/kernel/policy/app_profile.c
++++ b/kernel/policy/app_profile.c
+@@ -205,9 +205,12 @@
+     memcpy(&cred->cap_bset, &profile->capabilities.effective, sizeof(cred->cap_bset));
+ 
+     setup_groups(profile, cred);
+-    setup_selinux(profile->selinux_domain, cred);
++    ret = setup_selinux(profile->selinux_domain, cred);
++    if (ret)
++        goto out_abort_creds;
+ 
+     commit_creds(cred);
+ 
+@@ -241,8 +244,12 @@
+         return -EINVAL;
+     }
+ 
+-    setup_selinux(KERNEL_SU_CONTEXT, cred);
++    int ret = setup_selinux(KERNEL_SU_CONTEXT, cred);
++    if (ret) {
++        abort_creds(cred);
++        return ret;
++    }
+     commit_creds(cred);
+ 
+     return 0;
