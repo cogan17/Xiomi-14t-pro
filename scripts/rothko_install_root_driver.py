@@ -11,7 +11,6 @@ import re
 import subprocess
 
 ROOT_REVISIONS = {
-    "KernelSU": ("tiann/KernelSU", "f895b80a3aad79948ba8074f53cf8f65a314d576"),
     "KernelSU-Next": ("KernelSU-Next/KernelSU-Next", "02a9e1c5fb2c4fd8117429fe004136332788c1b6"),
     "BakaSU": ("Baka-SU/BakaSU", "f6cb7e70c10ebde149f3121ae68b945514fd0801"),
 }
