@@ -8,6 +8,7 @@ on:
       - patches/rothko-ksun-sucompat-session-intent-candidate.patch
       - patches/rothko-ksun-su-precommit-domain-candidate.patch
       - patches/rothko-ksun-su-profile-precommit-compat-candidate.patch
+      - patches/rothko-ksun-su-session-precommit-eligibility-candidate.patch
       - patches/rothko-ksun-groups-fail-closed-candidate.patch
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
@@ -32,6 +33,7 @@ on:
       - patches/rothko-ksun-sucompat-session-intent-candidate.patch
       - patches/rothko-ksun-su-precommit-domain-candidate.patch
       - patches/rothko-ksun-su-profile-precommit-compat-candidate.patch
+      - patches/rothko-ksun-su-session-precommit-eligibility-candidate.patch
       - patches/rothko-ksun-groups-fail-closed-candidate.patch
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
@@ -427,3 +429,83 @@ jobs:
           print("BLOCK: no SU_SESSION FD ownership, runtime, compile or KMI authorization")
           PY
           echo "BLOCK: source-only compatibility refinement; not an SU_SESSION implementation"
+
+      - name: Verify precommit session eligibility without granting FD (source only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-su-session-precommit-eligibility-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path("/tmp/ksun/kernel")
+          policy = (root / "policy/app_profile.c").read_text()
+          su = (root / "feature/sucompat.c").read_text()
+          allow = (root / "policy/allowlist.c").read_text()
+          generic = "return escape_with_root_profile_common(false);"
+          guarded = "return escape_with_root_profile_common(true);"
+          session_guard = (
+              "if (profile->uid != 0 ||\n"
+              "            strcmp(profile->selinux_domain, KERNEL_SU_CONTEXT) != 0 ||\n"
+              "            !is_task_ksu_domain(cred)) {\n"
+              "            ret = -EOPNOTSUPP;\n"
+              "            goto out_abort_creds;\n"
+              "        }"
+          )
+          def profile_session_precommit_safe(source):
+              try:
+                  body = source.split("static int escape_with_root_profile_common(bool require_su_profile)", 1)[1].split(
+                      "int escape_with_root_profile(void)", 1)[0]
+                  assert body.count("commit_creds(cred);") == 1
+                  before, after = body.split("commit_creds(cred);", 1)
+              except (IndexError, AssertionError, ValueError):
+                  return False
+              return (
+                  before.count(session_guard) == 1
+                  and before.count("if (require_su_profile) {") == 1
+                  and before.find("ret = setup_selinux(profile->selinux_domain, cred);") >= 0
+                  and before.find("ret = setup_selinux(profile->selinux_domain, cred);") < before.find(session_guard)
+                  and "out_abort_creds:" in after
+                  and "abort_creds(cred);" in after
+                  and generic in source and guarded in source
+                  and "#include <linux/string.h>" in source
+              )
+          assert profile_session_precommit_safe(policy), "SU eligibility not fail-closed before commit"
+          assert "ret = escape_with_root_profile_for_su();" in su
+          assert "if (!ksu_is_allow_uid_for_current(" in su
+          assert "ksu_get_root_profile(cred->uid.val)" in policy
+          assert "profile_valid(struct app_profile *profile)" in allow
+          mutations = [
+              ("ignore custom UID", policy.replace("profile->uid != 0", "false", 1)),
+              ("ignore custom domain", policy.replace(
+                  "strcmp(profile->selinux_domain, KERNEL_SU_CONTEXT) != 0", "false", 1)),
+              ("ignore prepared SID", policy.replace("!is_task_ksu_domain(cred)", "false", 1)),
+              ("accept failed eligibility", policy.replace(
+                  "ret = -EOPNOTSUPP;\n            goto out_abort_creds;",
+                  "ret = -EOPNOTSUPP;\n            return 0;", 1)),
+              ("commit before eligibility", policy.replace(session_guard, "", 1).replace(
+                  "    commit_creds(cred);", "    commit_creds(cred);\n        " + session_guard, 1)),
+              ("switch generic root callers", policy.replace(generic, guarded, 1)),
+          ]
+          for reason, mutation in mutations:
+              assert mutation != policy, reason + ": mutation did not apply"
+              assert not profile_session_precommit_safe(mutation), reason + ": unsafe behavior accepted"
+              print("PASS: denied source mutation — " + reason)
+          # Host-only truth table for current conservative SU session candidate.
+          def session_eligible(uid, domain_is_ksu, prepared_sid_is_ksu):
+              return uid == 0 and domain_is_ksu and prepared_sid_is_ksu
+          for case, uid, domain_ok, sid_ok, allowed in [
+              ("default SU profile", 0, True, True, True),
+              ("custom UID", 2000, True, True, False),
+              ("custom domain", 0, False, True, False),
+              ("failed prepared SID", 0, True, False, False),
+          ]:
+              assert session_eligible(uid, domain_ok, sid_ok) is allowed, case
+          print("PASS: SU-session ineligible profiles denied before credential publication")
+          print("BLOCK: custom SU redirection remains unsupported; generic root helper stays unchanged")
+          print("BLOCK: no post-exec FD issuer, lifecycle, runtime kernel or ABI/KMI proof")
+          PY
+          echo "BLOCK: session eligibility candidate is not integrated, deployed or flashable"
