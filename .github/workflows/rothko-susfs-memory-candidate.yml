@@ -1,4 +1,4 @@
-name: Rothko SUSFS memory candidate patch check (isolated)
+name: Rothko SUSFS memory + smaps candidate checks (isolated)
 on:
   push:
     branches:
@@ -7,12 +7,14 @@ on:
       - patches/rothko-susfs-memory-include-candidate.patch
       - patches/rothko-susfs-memory-vma-candidate.patch
       - patches/rothko-susfs-memory-integrated-candidate.patch
+      - patches/rothko-susfs-task-mmu-smap-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   pull_request:
     paths:
       - patches/rothko-susfs-memory-include-candidate.patch
       - patches/rothko-susfs-memory-vma-candidate.patch
       - patches/rothko-susfs-memory-integrated-candidate.patch
+      - patches/rothko-susfs-task-mmu-smap-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   workflow_dispatch:
 permissions:
@@ -47,6 +49,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          test "$(git -C bsp rev-parse HEAD)" = b2d8b54a0d8bb002d32dda24e58d2b5d0423546b
           patch_dir="$GITHUB_WORKSPACE/candidate/patches"
           mkdir -p bsp/include/linux
           cp susfs/kernel_patches/include/linux/susfs_def.h bsp/include/linux/susfs_def.h
@@ -84,4 +87,41 @@ jobs:
             echo "- Only tracked change: mm/memory.c"
             echo "- Pinned SUSFS header staged as untracked dependency"
             echo "- No build, release, merge, flash or semantic clearance"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Validate smaps candidate in the same disposable BSP checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-task-mmu-smap-candidate.patch"
+          test -s "$patch"
+          git -C bsp apply --check "$patch"
+          git -C bsp apply "$patch"
+          git -C bsp diff --check
+          changed="$(git -C bsp diff --name-only)"
+          test "$changed" = "$(printf 'fs/proc/task_mmu.c\nmm/memory.c')"
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("bsp/fs/proc/task_mmu.c").read_text()
+          start = source.index("static int show_smap(")
+          end = source.index("static int show_smaps_rollup(", start)
+          body = source[start:end]
+          guard = body.index("#ifdef CONFIG_KSU_SUSFS_SUS_MAP")
+          cond = body.index("SUSFS_IS_INODE_SUS_MAP(", guard)
+          early_return = body.index("return 0;", cond)
+          accounting = body.index("smap_gather_stats(")
+          mapping = body.index("show_map_vma(")
+          assert guard < cond < early_return < accounting < mapping
+          assert "vma->vm_file &&" in body[guard:cond]
+          assert "#endif" in body[cond:accounting]
+          assert "trace_android_vh_show_smap(" in source, "vendor show_smap hook lost"
+          assert "static int show_smaps_rollup(" in source, "rollup entry lost"
+          print("PASS: isolated smaps candidate applies and guard precedes accounting")
+          print("NOTE: not a behavioral, semantic, ABI, or runtime safety approval")
+          PY
+          {
+            echo "### Isolated proc smaps candidate"
+            echo "- task_mmu.c applied only in disposable checkout (alongside memory.c)"
+            echo "- SUSFS official header prerequisite verified by pinned source SHA and tree"
+            echo "- Both patches are isolated candidates; behavioral equivalence unproven"
+            echo "- Release gate remains blocked: execve/FD/SELinux/TIF, ABI/KMI and build"
           } >> "$GITHUB_STEP_SUMMARY"
