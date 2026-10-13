@@ -91,6 +91,66 @@ jobs:
           git -C /tmp/ksun -c http.version=HTTP/1.1 fetch --quiet --depth=1 origin "$pin"
           git -C /tmp/ksun checkout --quiet --detach FETCH_HEAD
           test "$(git -C /tmp/ksun rev-parse HEAD)" = "$pin"
+          # Compile-path ownership must be unique in the pinned KSUN tree.
+          # This checks source selection only; it does not build/load kernel code.
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root = Path("/tmp/ksun/kernel")
+          kbuild = (root / "Kbuild").read_text()
+          sucompat = (root / "feature/sucompat.c").read_text()
+          header = (root / "feature/sucompat.h").read_text()
+
+          def active_directives(source, symbol):
+              stack = []
+              for line in source.splitlines():
+                  stripped = line.strip()
+                  if re.match(r"^#(?:if|ifdef|ifndef)\\b", stripped):
+                      stack.append(stripped)
+                  elif stripped.startswith("#else"):
+                      assert stack
+                      stack[-1] = "#else of " + stack[-1]
+                  elif stripped.startswith("#endif"):
+                      assert stack
+                      stack.pop()
+                  if symbol in line and not stripped.startswith("#"):
+                      return stack.copy()
+              raise AssertionError("Missing function: " + symbol)
+
+          def path_contract(build, source, header_src):
+              # Hooks compiled only for the KPROBES + non-SUSFS alternative.
+              bridge_block = (
+                  "ifneq ($(strip $(CONFIG_KSU_SUSFS)),y)\\n"
+                  "ifeq ($(strip $(CONFIG_KPROBES)),y)\\n"
+                  "kernelsu-objs += hook/syscall_event_bridge.o"
+              )
+              if bridge_block not in build:
+                  return False
+              try:
+                  susfs = active_directives(source, "int ksu_handle_execveat(int *fd")
+                  regs = active_directives(source, "static long ksu_handle_execve_sucompat_common(")
+              except (AssertionError, ValueError):
+                  return False
+              return (
+                  "#ifdef CONFIG_KSU_SUSFS" in susfs
+                  and "#if defined(CONFIG_KPROBES) && !defined(CONFIG_KSU_SUSFS)" in regs
+                  and "#ifdef CONFIG_KSU_SUSFS" in header_src
+                  and "long ksu_handle_execve_sucompat(" in header_src
+              )
+
+          assert path_contract(kbuild, sucompat, header), "KSUN SU dispatch source branches are not mutually exclusive"
+          unsafe_bridge = kbuild.replace(
+              "ifneq ($(strip $(CONFIG_KSU_SUSFS)),y)",
+              "ifeq ($(strip $(CONFIG_KSU_SUSFS)),y)", 1)
+          unsafe_regs = sucompat.replace(
+              "#if defined(CONFIG_KPROBES) && !defined(CONFIG_KSU_SUSFS)",
+              "#if defined(CONFIG_KPROBES) && defined(CONFIG_KSU_SUSFS)", 1)
+          assert not path_contract(unsafe_bridge, sucompat, header), "double-hook bridge mutation not rejected"
+          assert not path_contract(kbuild, unsafe_regs, header), "double-hook pt_regs mutation not rejected"
+          print("PASS: CONFIG_KSU_SUSFS selects fd/filename, excludes pt_regs/syscall bridge")
+          print("PASS: both deliberate double-hook configuration mutations rejected")
+          print("BLOCK: post-exec SU_SESSION FD authority, ABI/KMI and device build remain unverified")
+          PY
           # Check and apply sequentially: both candidates touch app_profile.c.
           # Independent checks against pristine source miss cross-patch overlap.
           git -C /tmp/ksun apply --check --verbose "$GITHUB_WORKSPACE/patches/rothko-ksun-groups-fail-closed-candidate.patch"
