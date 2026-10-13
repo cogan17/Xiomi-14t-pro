@@ -1,0 +1,60 @@
+diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
+--- a/kernel/feature/sucompat.c
++++ b/kernel/feature/sucompat.c
+@@ -2,6 +2,7 @@
+ #include "linux/fcntl.h"
+ #include "linux/namei.h"
+ #include <linux/compiler_types.h>
++#include <linux/errno.h>
+ #include <linux/preempt.h>
+ #include <linux/printk.h>
+ #include <linux/mm.h>
+@@ -586,14 +587,31 @@
+ #endif
+ 
+ // sucompat: permitted process can execute 'su' to gain root access.
+-void __init ksu_sucompat_init()
++/* Only release the feature handler registered by this initializer. */
++static bool sucompat_handler_owned;
++
++int __init ksu_sucompat_init(void)
+ {
+-	if (ksu_register_feature_handler(&su_compat_handler)) {
+-		pr_err("Failed to register su_compat feature handler\n");
++	int ret;
++
++	if (sucompat_handler_owned)
++		return -EALREADY;
++
++	ret = ksu_register_feature_handler(&su_compat_handler);
++	if (ret) {
++		pr_err("Failed to register su_compat feature handler: %d\n", ret);
++		return ret;
+ 	}
++
++	sucompat_handler_owned = true;
++	return 0;
+ }
+ 
+-void __exit ksu_sucompat_exit()
++void __exit ksu_sucompat_exit(void)
+ {
++	if (!sucompat_handler_owned)
++		return;
++
++	sucompat_handler_owned = false;
+ 	ksu_unregister_feature_handler(KSU_FEATURE_SU_COMPAT);
+ }
+
+diff --git a/kernel/feature/sucompat.h b/kernel/feature/sucompat.h
+--- a/kernel/feature/sucompat.h
++++ b/kernel/feature/sucompat.h
+@@ -8,7 +8,7 @@
+ 
+ extern struct static_key_true ksu_su_compat_enabled;
+ 
+-void ksu_sucompat_init(void);
++int ksu_sucompat_init(void);
+ void ksu_sucompat_exit(void);
+ 
+ // Handler functions exported for hook_manager
