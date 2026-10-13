@@ -266,28 +266,71 @@ jobs:
           policy = (root / "policy/app_profile.c").read_text()
           header = (root / "policy/app_profile.h").read_text()
           su = (root / "feature/sucompat.c").read_text()
+          # This is a pinned-source structural check, not a kernel/runtime proof.
           fn = "static int escape_with_root_profile_common(bool require_su_domain)"
-          assert policy.count(fn) == 1
-          body = policy.split(fn, 1)[1].split("int escape_with_root_profile(void)", 1)[0]
-          before_commit, after_commit = body.split("commit_creds(cred);", 1)
-          assert before_commit.count("is_task_ksu_domain(cred)") == 1
-          assert before_commit.count("uid_eq(cred->euid, GLOBAL_ROOT_UID)") == 1
-          assert before_commit.count("if (require_su_domain &&") == 1
-          assert "ret = -EACCES;" in before_commit
-          assert "goto out_abort_creds;" in before_commit.split("if (require_su_domain &&", 1)[1]
-          assert "abort_creds(cred);" in after_commit
-          assert "return escape_with_root_profile_common(false);" in policy
-          assert "return escape_with_root_profile_common(true);" in policy
-          assert "int escape_with_root_profile_for_su(void);" in header
-          pre = su.split("int ksu_handle_execveat_sucompat(int *fd", 1)[1].split("extern struct static_key_true is_first_zygote;", 1)[0]
-          assert "ret = escape_with_root_profile_for_su();" in pre
-          assert "ret = escape_with_root_profile();" not in pre
-          # Negative fixture: moving the prepared-cred check below publication
-          # must fail the same source contract.
-          mutated_precommit = before_commit.replace("is_task_ksu_domain(cred)", "false", 1)
-          assert "is_task_ksu_domain(cred)" not in mutated_precommit
-          print("PASS: SU-specific prepared UID/domain guard precedes credential commit")
-          print("PASS: other root callers retain the existing helper; no FD added")
+          guard = (
+              "    if (require_su_domain &&\n"
+              "        (!uid_eq(cred->euid, GLOBAL_ROOT_UID) ||\n"
+              "         !is_task_ksu_domain(cred))) {\n"
+              "        ret = -EACCES;\n"
+              "        goto out_abort_creds;\n"
+              "    }"
+          )
+          def precommit_contract_is_valid(policy_src, header_src, su_src):
+              if policy_src.count(fn) != 1:
+                  return False
+              try:
+                  body = policy_src.split(fn, 1)[1].split("int escape_with_root_profile(void)", 1)[0]
+                  if body.count("commit_creds(cred);") != 1:
+                      return False
+                  before, after = body.split("commit_creds(cred);", 1)
+                  su_path = su_src.split("int ksu_handle_execveat_sucompat(int *fd", 1)[1].split(
+                      "extern struct static_key_true is_first_zygote;", 1)[0]
+              except (IndexError, ValueError):
+                  return False
+              # Check the complete authorization branch BEFORE publication;
+              # matching independent words somewhere in the file is insufficient.
+              if before.count(guard) != 1:
+                  return False
+              if not 0 <= before.find("ret = setup_selinux(profile->selinux_domain, cred);") < before.find(guard):
+                  return False
+              if "out_abort_creds:" not in after or "abort_creds(cred);" not in after:
+                  return False
+              if "return escape_with_root_profile_common(false);" not in policy_src:
+                  return False
+              if "return escape_with_root_profile_common(true);" not in policy_src:
+                  return False
+              if "int escape_with_root_profile_for_su(void);" not in header_src:
+                  return False
+              if "ret = escape_with_root_profile_for_su();" not in su_path:
+                  return False
+              if "ret = escape_with_root_profile();" in su_path:
+                  return False
+              return True
+
+          assert precommit_contract_is_valid(policy, header, su), "SU-only precommit contract missing"
+
+          # Every unsafe mutation MUST fail the SAME predicate as the positive
+          # candidate; do not replace text and merely assert that text changed.
+          mutations = [
+              ("skip prepared domain", policy.replace("!is_task_ksu_domain(cred)", "false", 1), header, su),
+              ("skip root UID", policy.replace("!uid_eq(cred->euid, GLOBAL_ROOT_UID)", "false", 1), header, su),
+              ("omit credential abort", policy.replace("ret = -EACCES;\n        goto out_abort_creds;",
+                                                      "ret = -EACCES;\n        return 0;", 1), header, su),
+              ("validate after commit", policy.replace(guard, "", 1).replace(
+                  "    commit_creds(cred);", "    commit_creds(cred);\n" + guard, 1), header, su),
+              ("use generic escape for su", policy, header, su.replace(
+                  "ret = escape_with_root_profile_for_su();", "ret = escape_with_root_profile();", 1)),
+              ("alter other root callers", policy.replace(
+                  "return escape_with_root_profile_common(false);",
+                  "return escape_with_root_profile_common(true);", 1), header, su),
+          ]
+          for name, changed_policy, changed_header, changed_su in mutations:
+              assert (changed_policy, changed_header, changed_su) != (policy, header, su), name + ": mutation did not apply"
+              assert not precommit_contract_is_valid(changed_policy, changed_header, changed_su), name + ": unsafe mutation was accepted"
+              print("PASS: denied unsafe mutation — " + name)
+          print("PASS: SU-only prepared UID/domain guard precedes credential publication")
+          print("PASS: other root callers retain generic helper; no FD added")
           print("BLOCK: compiler, runtime, credential ownership, post-exec FD and KMI unverified")
           PY
           echo "BLOCK: isolated candidate is NOT an integrated SU session implementation"
