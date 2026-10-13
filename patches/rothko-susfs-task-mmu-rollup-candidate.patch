@@ -1,0 +1,24 @@
+diff --git a/fs/proc/task_mmu.c b/fs/proc/task_mmu.c
+--- a/fs/proc/task_mmu.c
++++ b/fs/proc/task_mmu.c
+@@ -936,4 +936,8 @@
+ 	vma_start = vma->vm_start;
+ 	do {
++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++		if (!vma->vm_file ||
++		    !SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
++#endif
+ 		smap_gather_stats(vma, &mss, 0);
+ 		last_vma_end = vma->vm_end;
+@@ -999,4 +1003,9 @@
+ 			/* Case 4 above */
+-			if (vma->vm_end > last_vma_end)
+-				smap_gather_stats(vma, &mss, last_vma_end);
++			if (vma->vm_end > last_vma_end) {
++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++				if (!vma->vm_file ||
++				    !SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
++#endif
++					smap_gather_stats(vma, &mss, last_vma_end);
++			}
+ 		}
