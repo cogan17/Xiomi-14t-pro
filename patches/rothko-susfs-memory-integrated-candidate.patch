@@ -12,9 +12,6 @@ diff --git a/mm/memory.c b/mm/memory.c
  #include <trace/events/kmem.h>
  
  #include <asm/io.h>
-diff --git a/mm/memory.c b/mm/memory.c
---- a/mm/memory.c
-+++ b/mm/memory.c
 @@ -5851,8 +5851,19 @@
  	/* ignore errors, just check how much was successfully transferred */
  	while (len) {
