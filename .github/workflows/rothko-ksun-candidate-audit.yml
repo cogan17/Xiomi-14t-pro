@@ -96,42 +96,8 @@ on:
 permissions:
   contents: read
 jobs:
-  gitlab_probe:
-    name: GitLab SUSFS read-only connectivity (non-gating)
-    runs-on: ubuntu-latest
-    timeout-minutes: 4
-    continue-on-error: true
-    steps:
-      - name: Verify pinned SUSFS GitLab fetch without modifying kernel
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          getent ahostsv4 gitlab.com
-          curl --fail --location --silent --show-error --connect-timeout 10 --max-time 25 --output /dev/null https://gitlab.com/simonpunk/susfs4ksu
-          pin=5192aa2d33b381b58c1051532f9e1dfa5de6e8d3
-          git init -q /tmp/susfs-connectivity
-          git -C /tmp/susfs-connectivity remote add origin https://gitlab.com/simonpunk/susfs4ksu.git
-          timeout 90 git -C /tmp/susfs-connectivity -c http.version=HTTP/1.1 fetch --quiet --depth=1 origin "$pin"
-          test "$(git -C /tmp/susfs-connectivity rev-parse FETCH_HEAD)" = "$pin"
-          echo "PASS: pinned SUSFS GitLab source reachable from GitHub Actions"
-          git -C /tmp/susfs-connectivity show "$pin:kernel_patches/fs/susfs.c" > /tmp/susfs-pinned.c
-          python3 - <<'PY'
-          import re
-          from pathlib import Path
-          src = Path("/tmp/susfs-pinned.c").read_text()
-          init = re.search(r"(?m)^\s*(?:void|int)\s+susfs_init\s*\([^)]*\)\s*\{", src)
-          exitfn = re.search(r"(?m)^\s*(?:void|int)\s+(?:__exit\s+)?susfs_exit\s*\([^)]*\)\s*\{", src)
-          if init:
-              excerpt = src[init.start():init.start() + 420]
-              print("PINNED SUSFS init evidence:\n" + excerpt)
-          else:
-              print("BLOCK: no recognized susfs_init definition at pinned tree; do not assume reset behavior")
-          if exitfn:
-              print("REVIEW: active susfs_exit exists, validate all resources and references before proposing unwind")
-          else:
-              print("BLOCK: no active susfs_exit definition found in pinned fs/susfs.c")
-          print("BLOCK: this is evidence only; startup/teardown safety and full integration remain NO-GO")
-          PY
+  # Upstream GitLab transport already verified at immutable SUSFS pin.
+  # Retire repeated non-gating probe here; keep separate full SUSFS integration gate.
   candidate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
