@@ -1,4 +1,4 @@
-name: Rothko SUSFS memory + smaps candidate checks (isolated)
+name: Rothko SUSFS memory + smaps + pagemap candidates (isolated)
 on:
   push:
     branches:
@@ -9,6 +9,7 @@ on:
       - patches/rothko-susfs-memory-integrated-candidate.patch
       - patches/rothko-susfs-task-mmu-smap-candidate.patch
       - patches/rothko-susfs-task-mmu-rollup-candidate.patch
+      - patches/rothko-susfs-task-mmu-pagemap-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   pull_request:
     paths:
@@ -17,6 +18,7 @@ on:
       - patches/rothko-susfs-memory-integrated-candidate.patch
       - patches/rothko-susfs-task-mmu-smap-candidate.patch
       - patches/rothko-susfs-task-mmu-rollup-candidate.patch
+      - patches/rothko-susfs-task-mmu-pagemap-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   workflow_dispatch:
 permissions:
@@ -37,6 +39,7 @@ jobs:
             patches/rothko-susfs-memory-integrated-candidate.patch
             patches/rothko-susfs-task-mmu-smap-candidate.patch
             patches/rothko-susfs-task-mmu-rollup-candidate.patch
+            patches/rothko-susfs-task-mmu-pagemap-candidate.patch
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -60,7 +63,7 @@ jobs:
           test -s susfs/kernel_patches/include/linux/susfs_def.h
           # The candidate guard must resolve against the pinned upstream definition.
           grep -Fq 'SUSFS_IS_INODE_SUS_MAP' susfs/kernel_patches/include/linux/susfs_def.h
-      - name: Check and apply both patches in disposable checkout
+      - name: Validate memory candidate in disposable BSP checkout
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -177,4 +180,50 @@ jobs:
             echo "- Normal VMA accounting and post-relock case-4 accounting checked"
             echo "- No source kernel checkout committed, no device build, no flash artifact"
             echo "- Security and ABI release gates remain blocked"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Validate pagemap candidate with lock and progress checks
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-task-mmu-pagemap-candidate.patch"
+          test -s "$patch"
+          git -C bsp apply --check "$patch"
+          git -C bsp apply "$patch"
+          git -C bsp diff --check
+          test "$(git -C bsp diff --name-only)" = "$(printf 'fs/proc/task_mmu.c\nmm/memory.c')"
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("bsp/fs/proc/task_mmu.c").read_text()
+          start = source.index("static ssize_t pagemap_read(")
+          end = source.index("static int pagemap_open(", start)
+          body = source[start:end]
+          assert body.count("SUSFS_IS_INODE_SUS_MAP(") == 1, "expected one pagemap guard"
+          loop = body.index("while (count && (start_vaddr < end_vaddr))")
+          reset = body.index("pm.pos = 0;", loop)
+          lock = body.index("ret = mmap_read_lock_killable(mm);", loop)
+          fail = body.index("goto out_free;", lock)
+          lookup = body.index("vma = vma_lookup(mm, start_vaddr);", fail)
+          guard = body.index("SUSFS_IS_INODE_SUS_MAP(", lookup)
+          bypass = body.index("goto bypass_orig_flow;", guard)
+          walk = body.index("ret = walk_page_range(mm, start_vaddr, end, &pagemap_ops, &pm);", bypass)
+          label = body.index("bypass_orig_flow:", walk)
+          unlock = body.index("mmap_read_unlock(mm);", label)
+          progress = body.index("start_vaddr = end;", unlock)
+          output = body.index("len = min(count, PM_ENTRY_BYTES * pm.pos);", progress)
+          assert loop < reset < lock < fail < lookup < guard < bypass < walk < label < unlock < progress < output
+          assert "vma && vma->vm_file &&" in body[lookup:bypass], "null file guard lost"
+          assert "#ifdef CONFIG_KSU_SUSFS_SUS_MAP" in body[fail:lookup], "feature gate missing"
+          assert "#ifdef CONFIG_KSU_SUSFS_SUS_MAP" in body[walk:label], "bypass label should be guarded"
+          assert "copy_to_user(buf, pm.buffer, len)" in body[output:], "copy path lost"
+          assert "count -= len;" in body[output:], "copy accounting lost"
+          print("PASS: pinned-style pagemap VMA guard applies in disposable checkout")
+          print("PASS: bypass path still unlocks mmap and advances address; output accounting remains")
+          print("BLOCK: page-range coverage and zero-byte/EOF semantics not runtime-verified")
+          PY
+          {
+            echo "### Isolated pagemap candidate"
+            echo "- Pinned-style source candidate applied with prior three patches in disposable BSP only"
+            echo "- Read-lock, bypass-unlock, address progress, and copy accounting anchors checked"
+            echo "- Remaining behavioral risks: mixed-visibility range, partial reads, zero-length/EOF behavior"
+            echo "- No device kernel build, ABI/KMI approval, release, or flash"
           } >> "$GITHUB_STEP_SUMMARY"
