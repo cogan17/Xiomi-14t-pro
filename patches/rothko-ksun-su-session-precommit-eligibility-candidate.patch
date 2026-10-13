@@ -1,0 +1,40 @@
+diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
+--- a/kernel/policy/app_profile.c
++++ b/kernel/policy/app_profile.c
+@@ -238,14 +238,28 @@
+      * by KSUN's allowlist. setup_selinux(profile->selinux_domain, cred)
+      * succeeded above. This does not authorize an SU_SESSION FD.
+      */
+-    if (require_su_profile &&
+-        (cred->uid.val != profile->uid ||
+-         cred->euid.val != profile->uid ||
+-         cred->gid.val != profile->gid ||
+-         cred->egid.val != profile->gid)) {
+-        ret = -EACCES;
+-        goto out_abort_creds;
+-    }
++    if (require_su_profile) {
++        if (cred->uid.val != profile->uid ||
++            cred->euid.val != profile->uid ||
++            cred->gid.val != profile->gid ||
++            cred->egid.val != profile->gid) {
++            ret = -EACCES;
++            goto out_abort_creds;
++        }
++
++        /*
++         * SU_SESSION eligibility is not implied by a valid custom root
++         * profile. Until a separately authorized per-request FD contract
++         * exists, reject non-KSU/nonzero-UID profiles BEFORE commit_creds.
++         * Generic root grants keep their original profile semantics.
++         */
++        if (profile->uid != 0 ||
++            strcmp(profile->selinux_domain, KERNEL_SU_CONTEXT) != 0 ||
++            !is_task_ksu_domain(cred)) {
++            ret = -EOPNOTSUPP;
++            goto out_abort_creds;
++        }
++    }
+ #else
+     (void)require_su_profile;
+ #endif
