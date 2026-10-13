@@ -579,3 +579,10 @@ bukan menghapus jejak kejadian.
 - Menggunakan kembali `.github/workflows/rothko-bsp-compile-smoke.yml` dan `scripts/rothko_bsp_compile_smoke.sh` yang sudah tersedia. Workflow kini **manual `workflow_dispatch` saja** pada `dev/rothko`, default hanya `config`; tahap `image` memerlukan konfirmasi `DIAGNOSTIC`. Tidak ada trigger PR, upload artefak, AK3, boot.img, release, atau flashing.
 - Branch modul vendor official dipin; jika commit upstream berubah, workflow berhenti untuk meminta tinjauan sumber. Compiler CI masih versi Ubuntu (bukan clang Android r487747c), sehingga hasil compile-only tidak membuktikan ABI atau kompatibilitas runtime perangkat.
 - Semua perubahan baru hanya ada pada **Draft PR #9 branch eksperimen**, belum ada merge ke `dev/rothko` dan **tidak ada kompilasi yang dijalankan** dalam pekerjaan ini. Perubahan manual workflow baru efektif pada branch terpilih setelah review dan integrasi terpisah.
+
+## 2026-10-14 — SUSFS core layout evidence (PR #9)
+
+- **Tujuan:** memetakan lokasi sumber `susfs.c`, header, dan referensi konfigurasi dari upstream Simonpunk yang terpin sebelum integrasi.
+- **Perubahan:** menambahkan job `susfs-core-layout` read-only pada workflow audit yang sudah ada. Mengambil commit/tree SUSFS yang tepat, mencatat kandidat berkas dan referensi `CONFIG_KSU_SUSFS` / `susfs.o` dari patch resmi.
+- **Bukti perubahan:** commit `151e256f4d358c1b177f135960b5331ed8ddf4a2` pada Draft PR #9; hasil CI masih harus diperiksa.
+- **Batas:** inspeksi lokasi file tidak membuktikan port Kconfig, compile/link, keamanan runtime, ABI/KMI, atau kelayakan flash. Semua release blocker tetap aktif; tidak ada build, merge, atau flashing.
