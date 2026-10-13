@@ -202,7 +202,7 @@ jobs:
             echo "- No source kernel checkout committed, no device build, no flash artifact"
             echo "- Security and ABI release gates remain blocked"
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Validate pagemap candidate with lock and progress checks
+      - name: Validate pagemap per-VMA masking and stable entry count
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -214,39 +214,76 @@ jobs:
           test "$(git -C bsp diff --name-only)" = "$(printf 'fs/proc/task_mmu.c\nmm/memory.c')"
           python3 - <<'PY'
           from pathlib import Path
-          source = Path("bsp/fs/proc/task_mmu.c").read_text()
-          start = source.index("static ssize_t pagemap_read(")
-          end = source.index("static int pagemap_open(", start)
-          body = source[start:end]
-          assert body.count("SUSFS_IS_INODE_SUS_MAP(") == 1, "expected one pagemap guard"
+          src = Path("bsp/fs/proc/task_mmu.c").read_text()
+          start = src.index("static ssize_t pagemap_read(")
+          end = src.index("static int pagemap_open(", start)
+          body = src[start:end]
           loop = body.index("while (count && (start_vaddr < end_vaddr))")
           reset = body.index("pm.pos = 0;", loop)
-          lock = body.index("ret = mmap_read_lock_killable(mm);", loop)
-          fail = body.index("goto out_free;", lock)
-          lookup = body.index("vma = vma_lookup(mm, start_vaddr);", fail)
-          guard = body.index("SUSFS_IS_INODE_SUS_MAP(", lookup)
-          bypass = body.index("goto bypass_orig_flow;", guard)
-          walk = body.index("ret = walk_page_range(mm, start_vaddr, end, &pagemap_ops, &pm);", bypass)
-          label = body.index("bypass_orig_flow:", walk)
-          unlock = body.index("mmap_read_unlock(mm);", label)
-          progress = body.index("start_vaddr = end;", unlock)
-          output = body.index("len = min(count, PM_ENTRY_BYTES * pm.pos);", progress)
-          assert loop < reset < lock < fail < lookup < guard < bypass < walk < label < unlock < progress < output
-          assert "vma && vma->vm_file &&" in body[lookup:bypass], "null file guard lost"
-          assert "#ifdef CONFIG_KSU_SUSFS_SUS_MAP" in body[fail:lookup], "feature gate missing"
-          assert "#ifdef CONFIG_KSU_SUSFS_SUS_MAP" in body[walk:label], "bypass label should be guarded"
-          assert "copy_to_user(buf, pm.buffer, len)" in body[output:], "copy path lost"
-          assert "count -= len;" in body[output:], "copy accounting lost"
-          print("PASS: pinned-style pagemap VMA guard applies in disposable checkout")
-          print("PASS: bypass path still unlocks mmap and advances address; output accounting remains")
-          print("BLOCK: page-range coverage and zero-byte/EOF semantics not runtime-verified")
+          lock = body.index("ret = mmap_read_lock_killable(mm);", reset)
+          walk = body.index("ret = walk_page_range(mm, start_vaddr, end, &pagemap_ops, &pm);", lock)
+          feature = body.index("#ifdef CONFIG_KSU_SUSFS_SUS_MAP", walk)
+          covered = body.index("start_vaddr + ((unsigned long)pm.pos << PAGE_SHIFT)", feature)
+          scan = body.index("while (scan < covered_end)", covered)
+          find = body.index("find_vma(mm, scan)", scan)
+          flag = body.index("SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file))", find)
+          redact = body.index("memset(&pm.buffer[", flag)
+          progress = body.index("scan = mask_end;", redact)
+          unlock = body.index("mmap_read_unlock(mm);", progress)
+          advance = body.index("start_vaddr = end;", unlock)
+          size = body.index("len = min(count, PM_ENTRY_BYTES * pm.pos);", advance)
+          copy = body.index("copy_to_user(buf, pm.buffer, len)", size)
+          assert loop < reset < lock < walk < feature < covered < scan < find < flag < redact < progress < unlock < advance < size < copy
+          assert "if (pm.pos)" in body[feature:covered], "entry-count guard missing"
+          assert "mask_start = max(scan, vma->vm_start);" in body[find:flag], "VMA mask boundary missing"
+          assert "mask_end = min(covered_end, vma->vm_end);" in body[find:flag]
+          assert "mask_end <= mask_start" in body[find:flag], "forward-progress guard missing"
+          assert "goto bypass_orig_flow;" not in body, "old whole-chunk skip must be removed"
+          assert "pm.pos =" not in body[walk:unlock], "masking must not change pagemap output length"
+          assert "PM_ENTRY_BYTES" in body[redact:progress], "mask must use entry byte size"
+          assert "count -= len;" in body[copy:], "read position accounting must remain"
+          # A narrow host model of the exact VMA interval intersection/zeroing
+          # algorithm. Not kernel execution or a proof of mm_walk semantics.
+          def mask_window(start, entries, vmas):
+              data = entries.copy()
+              limit = start + len(data)
+              scan = start
+              while scan < limit:
+                  vma = next((v for v in vmas if v[1] > scan), None)
+                  if vma is None or vma[0] >= limit:
+                      break
+                  lo = max(scan, vma[0])
+                  hi = min(limit, vma[1])
+                  if hi <= lo:
+                      break
+                  if vma[2] and vma[3]:
+                      data[lo-start:hi-start] = [0] * (hi-lo)
+                  scan = hi
+              return data
+          cases = [
+              # start, entries, (begin,end,file_backed,sus_map), expected
+              (0, [1,2,3,4], [(0,2,True,True),(2,4,True,False)], [0,0,3,4]),
+              (0, [1,2,3,4], [(0,1,True,False),(1,3,True,True),(3,4,True,False)], [1,0,0,4]),
+              (0, [1,2,3,4], [(0,3,True,False),(3,4,True,True)], [1,2,3,0]),
+              (0, [1,2,3,4], [(0,4,False,True)], [1,2,3,4]),
+              (0, [0,0,3,4], [(2,4,True,False)], [0,0,3,4]),
+              (4, [5,6,7,8], [(1,6,True,True),(6,8,True,False)], [0,0,7,8]),
+              (0, [1,2,3,4], [], [1,2,3,4]),
+          ]
+          for i, (origin, entries, vmas, expected) in enumerate(cases, 1):
+              actual = mask_window(origin, entries, vmas)
+              assert actual == expected, f"VMA mask case {i}: {actual} != {expected}"
+              assert len(actual) == len(entries), f"entry-count regression case {i}"
+          print("PASS: source-only pagemap candidate masks individual hidden VMAs after page walk")
+          print("PASS: seven boundary/read-length host-model cases, visible entries and output count preserved")
+          print("BLOCK: host model is not real kernel execution, compilation, or runtime approval")
           PY
           {
-            echo "### Isolated pagemap candidate"
-            echo "- Pinned-style source candidate applied with prior three patches in disposable BSP only"
-            echo "- Read-lock, bypass-unlock, address progress, and copy accounting anchors checked"
-            echo "- Remaining behavioral risks: mixed-visibility range, partial reads, zero-length/EOF behavior"
-            echo "- No device kernel build, ABI/KMI approval, release, or flash"
+            echo "### Pagemap mixed-VMA behavioral regression"
+            echo "- Retired old skip-whole-chunk candidate; continue original pagemap walk"
+            echo "- Feature-gated zero masking for mapped SUSFS VMAs inside returned output window"
+            echo "- Seven exact-boundary host-model cases; entry-count and normal userspace copy anchors checked"
+            echo "- Source-only checks do NOT establish compiled kernel, security, ABI/KMI or runtime safety"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Validate proc map_files VMA candidate in isolated BSP
         shell: bash
