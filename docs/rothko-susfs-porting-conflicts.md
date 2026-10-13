@@ -73,3 +73,10 @@ The official pinned 6.1 patch still fails `git apply --check`, including `fs/nam
 - `scripts/rothko_susfs_source_probe.sh` explicitly acquires pinned external KSUN and SUSFS sources for source-only auditing. The current repository's Kconfig entrypoints do not yet establish how external KSUN Kconfig is wired into the BSP or whether the target build config satisfies `THREAD_INFO_IN_TASK`.
 - **Next non-duplicative gate:** inspect the pinned KSUN Kconfig and its intended source/include hook against the Rothko tree, and determine the effective config via the actual target build configuration before proposing a source integration. Do not add speculative `source` directives or force config values.
 - No kernel changes, new CI, or merge authorized; Draft PR #9 / BUILD HOLD.
+
+## Verified KSUN integration entrypoint — 2026-10-14
+
+- Inspected immutable `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161`, `kernel/Kconfig` and `kernel/setup.sh` (not a moving branch). `config KSU` is `tristate`, `depends on KPROBES || SUSFS`; `config KSU_SUSFS` is `bool`, `depends on KSU`, `depends on THREAD_INFO_IN_TASK`.
+- Pinned `kernel/setup.sh` injects `obj-$(CONFIG_KSU) += kernelsu/` into `drivers/Makefile` and `source "drivers/kernelsu/Kconfig"` into `drivers/Kconfig` (assuming the KSUN source has been placed at that directory).
+- Inspected PR-branch `drivers/Makefile` and `drivers/Kconfig`: neither contains the KSUN integration directives. Thus the **in-tree entrypoint is not wired in the inspected branch**. This is not evidence that a separate downstream build process cannot inject KSUN; the actual build/integration path still needs identification.
+- Next bounded task: trace any documented external source injection/build integration before creating a candidate hook. Do not blindly run setup.sh or insert duplicate hooks. No new CI or device build; PR #9 remains Draft / BUILD HOLD.
