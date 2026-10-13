@@ -9,6 +9,7 @@ on:
       - patches/rothko-ksun-su-precommit-domain-candidate.patch
       - patches/rothko-ksun-su-profile-precommit-compat-candidate.patch
       - patches/rothko-ksun-su-session-precommit-eligibility-candidate.patch
+      - patches/rothko-ksun-fd-permission-isolation-candidate.patch
       - patches/rothko-ksun-groups-fail-closed-candidate.patch
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
@@ -34,6 +35,7 @@ on:
       - patches/rothko-ksun-su-precommit-domain-candidate.patch
       - patches/rothko-ksun-su-profile-precommit-compat-candidate.patch
       - patches/rothko-ksun-su-session-precommit-eligibility-candidate.patch
+      - patches/rothko-ksun-fd-permission-isolation-candidate.patch
       - patches/rothko-ksun-groups-fail-closed-candidate.patch
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
@@ -569,3 +571,74 @@ jobs:
           print("BLOCK: no post-exec FD issuer, lifecycle, runtime kernel or ABI/KMI proof")
           PY
           echo "BLOCK: session eligibility candidate is not integrated, deployed or flashable"
+
+      - name: Validate isolated KSU FD permission context without session issuer
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-fd-permission-isolation-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path("/tmp/ksun/kernel/supercall")
+          source = (root / "supercall.c").read_text()
+          header = (root / "supercall.h").read_text()
+          internal = (root / "internal.h").read_text()
+          dispatch = (root / "dispatch.c").read_text()
+          def permission_contract(s, h, i, d):
+              try:
+                  generic = s.split("int ksu_install_fd(void)", 1)[1].split(
+                      "bool ksu_is_su_session_fd(", 1)[0]
+                  fops = s.split("static int anon_ksu_release(", 1)[1].split(
+                      "int ksu_install_fd(void)", 1)[0]
+                  invoke = d.split("long ksu_supercall_handle_ioctl(", 1)[1].split(
+                      "void __init ksu_supercall_dump_commands(", 1)[0]
+              except IndexError:
+                  return False
+              return all((
+                  "context = kzalloc(sizeof(*context), GFP_KERNEL);" in generic,
+                  "get_unused_fd_flags(O_CLOEXEC)" in generic,
+                  '"[ksu_driver]", &anon_ksu_fops, context, O_RDWR | O_CLOEXEC' in generic,
+                  generic.count("kfree(context);") == 2,
+                  "fd_install(fd, filp);" in generic,
+                  "kfree(filp->private_data);" in fops,
+                  "ksu_supercall_handle_ioctl(filp, cmd," in fops,
+                  "return context && (context->permissions & KSU_DRIVER_PERMISSION_SU_SESSION);" in s,
+                  "context->permissions =" not in s,
+                  not re.search(r"\\bint\\s+ksu_install_su_fd\\s*\\(", s),
+                  "bool allow_su_session;" in h,
+                  "long ksu_supercall_handle_ioctl(const struct file *filp," in i,
+                  "long ksu_supercall_handle_ioctl(const struct file *filp," in d,
+                  "ksu_ioctl_handlers[i].allow_su_session &&" in invoke,
+                  "ksu_is_su_session_fd(filp)" in invoke,
+                  ".allow_su_session = true" not in d,
+              ))
+
+          assert permission_contract(source, header, internal, dispatch), "FD permission isolation not fail-closed"
+          broken = [
+              ("generic context not zeroed", source.replace("kzalloc(sizeof(*context), GFP_KERNEL)", "kmalloc(sizeof(*context), GFP_KERNEL)", 1), header, internal, dispatch),
+              ("FD not close-on-exec", source.replace("get_unused_fd_flags(O_CLOEXEC)", "get_unused_fd_flags(0)", 1), header, internal, dispatch),
+              ("drop failed FD cleanup", source.replace("kfree(context);", "", 1), header, internal, dispatch),
+              ("drop release cleanup", source.replace("kfree(filp->private_data);", "", 1), header, internal, dispatch),
+              ("forge generic session permission", source.replace("fd_install(fd, filp);", "context->permissions = KSU_DRIVER_PERMISSION_SU_SESSION; fd_install(fd, filp);", 1), header, internal, dispatch),
+              ("prematurely open command bypass", source, header, internal, dispatch.replace(".perm_check = only_root", ".perm_check = only_root, .allow_su_session = true", 1)),
+          ]
+          for label, s, h, i, d in broken:
+              assert (s, h, i, d) != (source, header, internal, dispatch), label + ": fixture unchanged"
+              assert not permission_contract(s, h, i, d), label + ": unsafe mutation accepted"
+              print("PASS: reject unsafe FD permission mutation — " + label)
+          # Pure host truth table: no current command grants session bypass.
+          def allowed(normal_permission, command_allows_session, session_fd):
+              return normal_permission or (command_allows_session and session_fd)
+          for permission_ok, session in ((True, False), (False, False), (False, True)):
+              assert allowed(permission_ok, False, session) == permission_ok
+          print("PASS: generic FD has zero session permissions and retains CLOEXEC")
+          print("PASS: all ioctl entries deny session-only bypass until individually reviewed")
+          print("BLOCK: no SU_SESSION FD issuer, request owner, exec-success handshake or runtime proof")
+          PY
+          echo "BLOCK: permission-context candidate is not an authorized post-exec FD implementation"
