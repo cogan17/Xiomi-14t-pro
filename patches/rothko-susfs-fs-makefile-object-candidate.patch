@@ -1,0 +1,9 @@
+diff --git a/fs/Makefile b/fs/Makefile
+--- a/fs/Makefile
++++ b/fs/Makefile
+@@ -18,3 +18,5 @@
+ 		kernel_read_file.o remap_range.o
+ 
++obj-$(CONFIG_KSU_SUSFS) += susfs.o
++
+ ifeq ($(CONFIG_BLOCK),y)

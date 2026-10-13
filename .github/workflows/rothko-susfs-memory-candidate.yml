@@ -22,6 +22,7 @@ on:
       - patches/rothko-susfs-namei-slow-lookup-enoent-candidate.patch
       - patches/rothko-susfs-namei-fast-nonrcu-enoent-candidate.patch
       - patches/rothko-susfs-exec-include-candidate.patch
+      - patches/rothko-susfs-fs-makefile-object-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   pull_request:
     paths:
@@ -43,6 +44,7 @@ on:
       - patches/rothko-susfs-namei-slow-lookup-enoent-candidate.patch
       - patches/rothko-susfs-namei-fast-nonrcu-enoent-candidate.patch
       - patches/rothko-susfs-exec-include-candidate.patch
+      - patches/rothko-susfs-fs-makefile-object-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   workflow_dispatch:
 permissions:
@@ -76,6 +78,7 @@ jobs:
             patches/rothko-susfs-namei-slow-lookup-enoent-candidate.patch
             patches/rothko-susfs-namei-fast-nonrcu-enoent-candidate.patch
             patches/rothko-susfs-exec-include-candidate.patch
+            patches/rothko-susfs-fs-makefile-object-candidate.patch
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -90,6 +93,7 @@ jobs:
             fs/proc/base.c
             fs/namei.c
             fs/exec.c
+            fs/Makefile
       - name: Verify exact pinned SUSFS header prerequisite
         shell: bash
         run: |
@@ -931,3 +935,63 @@ jobs:
           test "$(git -C bsp diff --name-only)" = \
                "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
           echo "PASS: reversible with existing candidates preserved; no build/merge/release"
+
+      - name: Verify official SUSFS fs/Makefile object selection in disposable BSP
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C bsp rev-parse HEAD)" = b2d8b54a0d8bb002d32dda24e58d2b5d0423546b
+          test "$(git -C susfs rev-parse HEAD)" = 5192aa2d33b381b58c1051532f9e1dfa5de6e8d3
+          test "$(git -C susfs rev-parse 'HEAD^{tree}')" = b39cd4117178ce73d2973f7bcdae5c74defc8f68
+          test -s susfs/kernel_patches/fs/susfs.c
+          test -s susfs/kernel_patches/include/linux/susfs.h
+          patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-fs-makefile-object-candidate.patch"
+          test -s "$patch"
+          grep -Fq '+obj-$(CONFIG_KSU_SUSFS) += susfs.o' \
+            susfs/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch
+          file=bsp/fs/Makefile
+          original="$(sha256sum "$file" | cut -d' ' -f1)"
+          git -C bsp apply --check --verbose "$patch"
+          git -C bsp apply "$patch"
+          git -C bsp apply --reverse --check "$patch"
+          git -C bsp diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+          from subprocess import run,check_output
+          current=Path("bsp/fs/Makefile").read_text()
+          pinned=check_output(["git","-C","bsp","show","HEAD:fs/Makefile"],text=True)
+          anchor="\t\tkernel_read_file.o remap_range.o\n\nifeq ($(CONFIG_BLOCK),y)\n"
+          rule="obj-$(CONFIG_KSU_SUSFS) += susfs.o\n"
+          assert pinned.count(anchor)==1
+          assert rule not in pinned
+          expected=pinned.replace(anchor,anchor.replace("\n\nifeq","\n\n"+rule+"\nifeq"),1)
+          assert current==expected, "unexpected BSP Makefile mutation"
+          assert current.count(rule)==1
+          for config in ("y","n",""):
+              fixture="obj-y :=\nobj-n :=\n"+rule+"\nshow:\n\t@printf 'y=%s; n=%s\\n' '$(obj-y)' '$(obj-n)'\n"
+              with TemporaryDirectory() as d:
+                  mk=Path(d)/"Makefile"
+                  mk.write_text(fixture)
+                  args=["make","--no-print-directory","-s","-f",str(mk),"show",
+                        f"CONFIG_KSU_SUSFS={config}"]
+                  result=run(args,text=True,capture_output=True)
+              assert result.returncode==0,result.stderr
+              selected=result.stdout.strip()
+              expected="y=susfs.o; n=" if config=="y" else (
+                       "y=; n=susfs.o" if config=="n" else "y=; n=")
+              assert selected==expected,(config,selected,expected)
+              print(f"PASS: Makefile selection CONFIG_KSU_SUSFS={config or 'unset'} -> {selected}")
+          for label,unsafe in (
+              ("unconditional inclusion",rule.replace("obj-$(CONFIG_KSU_SUSFS)","obj-y")),
+              ("wrong Kconfig selector",rule.replace("CONFIG_KSU_SUSFS","CONFIG_KSU")),
+          ):
+              assert unsafe!=rule and unsafe not in current,label
+              print("PASS: reject incorrect Makefile selection — "+label)
+          print("BLOCK: pinned susfs.c is still external to BSP; no source integration, kernel build or ABI evidence")
+          PY
+          git -C bsp apply --reverse "$patch"
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = "$original"
+          test "$(git -C bsp diff --name-only)" = \
+               "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
+          echo "PASS: fs/Makefile source-only candidate reverted; older candidates preserved"
