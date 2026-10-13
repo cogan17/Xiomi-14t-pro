@@ -6,6 +6,7 @@ on:
     paths:
       - patches/rothko-ksun-sucompat-fail-closed-candidate.patch
       - patches/rothko-ksun-sucompat-session-intent-candidate.patch
+      - patches/rothko-ksun-su-precommit-domain-candidate.patch
       - patches/rothko-ksun-groups-fail-closed-candidate.patch
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
@@ -28,6 +29,7 @@ on:
     paths:
       - patches/rothko-ksun-sucompat-fail-closed-candidate.patch
       - patches/rothko-ksun-sucompat-session-intent-candidate.patch
+      - patches/rothko-ksun-su-precommit-domain-candidate.patch
       - patches/rothko-ksun-groups-fail-closed-candidate.patch
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
@@ -248,3 +250,44 @@ jobs:
       - name: Reject 21 G2 G4 risk inventory mutations and keep remediation denied
         shell: bash
         run: python3 "$GITHUB_WORKSPACE/tests/test_rothko_ksun_g2_g4_risk_audit.py" "/tmp/ksun/kernel" "$GITHUB_WORKSPACE/scripts/rothko_ksun_g2_g4_risk_audit.py"
+
+      - name: Verify isolated SU precommit domain guard candidate (source only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-su-precommit-domain-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path("/tmp/ksun/kernel")
+          policy = (root / "policy/app_profile.c").read_text()
+          header = (root / "policy/app_profile.h").read_text()
+          su = (root / "feature/sucompat.c").read_text()
+          fn = "static int escape_with_root_profile_common(bool require_su_domain)"
+          assert policy.count(fn) == 1
+          body = policy.split(fn, 1)[1].split("int escape_with_root_profile(void)", 1)[0]
+          before_commit, after_commit = body.split("commit_creds(cred);", 1)
+          assert before_commit.count("is_task_ksu_domain(cred)") == 1
+          assert before_commit.count("uid_eq(cred->euid, GLOBAL_ROOT_UID)") == 1
+          assert before_commit.count("if (require_su_domain &&") == 1
+          assert "ret = -EACCES;" in before_commit
+          assert "goto out_abort_creds;" in before_commit.split("if (require_su_domain &&", 1)[1]
+          assert "abort_creds(cred);" in after_commit
+          assert "return escape_with_root_profile_common(false);" in policy
+          assert "return escape_with_root_profile_common(true);" in policy
+          assert "int escape_with_root_profile_for_su(void);" in header
+          pre = su.split("int ksu_handle_execveat_sucompat(int *fd", 1)[1].split("extern struct static_key_true is_first_zygote;", 1)[0]
+          assert "ret = escape_with_root_profile_for_su();" in pre
+          assert "ret = escape_with_root_profile();" not in pre
+          # Negative fixture: moving the prepared-cred check below publication
+          # must fail the same source contract.
+          mutated_precommit = before_commit.replace("is_task_ksu_domain(cred)", "false", 1)
+          assert "is_task_ksu_domain(cred)" not in mutated_precommit
+          print("PASS: SU-specific prepared UID/domain guard precedes credential commit")
+          print("PASS: other root callers retain the existing helper; no FD added")
+          print("BLOCK: compiler, runtime, credential ownership, post-exec FD and KMI unverified")
+          PY
+          echo "BLOCK: isolated candidate is NOT an integrated SU session implementation"
