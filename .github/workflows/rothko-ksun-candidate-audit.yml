@@ -753,6 +753,10 @@ jobs:
                       "void ksu_handle_sys_read(", 1)[0]
               except IndexError:
                   return False
+              # Mutations intentionally remove a gate. Reject before .index()
+              # or .split() so a negative check reports False, not ValueError.
+              if loader.count(gate) != 1 or hook.count(gate) != 1:
+                  return False
               return all((
                   "return ksu_cred && is_task_ksu_domain(ksu_cred);" in predicate,
                   loader.count(gate) == 1,
