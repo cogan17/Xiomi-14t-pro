@@ -141,3 +141,10 @@ Compared `kernel/Kconfig` directly at the **exact two pinned commits**, not thei
 - Neither inspected file contains the identifiers `ksu_handle_post_execveat_sucompat` or `ksu_install_fd`. This is a **file-scoped negative observation**, not proof those identifiers are absent from every upstream file or that the companion patch cannot add them.
 - The existing `sucompat.c` exec interception uses `get_unused_fd_flags(O_CLOEXEC)`, `filp_open(KSUD_PATH, O_PATH, 0)`, `fd_install(tmp_fd, ksud_file)`, `escape_with_root_profile()`, then invokes the execveat syscall path. The temporary executable FD must **not** be equated with a privileged post-exec `SU_SESSION` FD.
 - Official pinned companion patch is already inspected by `.github/workflows/rothko-susfs-source-audit.yml`; no duplicate workflow or upstream fetch is needed. **HOLD** post-exec authorization, FD ownership/revocation, credential lifecycle and full KSUN/SUSFS integration until their combined contract is proven.
+
+## Pinned KSUN execveat failure-path contract — 2026-10-14
+
+- Source: `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161`, `kernel/feature/sucompat.c` lines 523–569. This is source-only inspection, not a runtime exploit or boot claim.
+- The hook reserves a temporary `O_CLOEXEC` FD, opens `KSUD_PATH` with `O_PATH` under an override of `ksu_cred`, installs the FD, rewrites execveat registers, then calls `escape_with_root_profile()`.
+- **Important control-flow observation:** a nonzero `escape_with_root_profile()` result is logged, but execution proceeds to `ksu_syscall_table[__NR_execveat](regs)` rather than immediately failing closed. On a negative execveat return, it calls `ksu_close_fd(tmp_fd)` and restores saved register arguments. No post-exec `SU_SESSION` issuance is established by this path.
+- This does not establish a runtime vulnerability or an exploit. It establishes a concrete **failure-path review gate**: any companion post-exec privilege/session mechanism must prove it cannot publish session authority after an unsuccessful credential/domain transition. Preserve existing fail-closed candidates; do not apply partial fixes, rerun CI, or release.
