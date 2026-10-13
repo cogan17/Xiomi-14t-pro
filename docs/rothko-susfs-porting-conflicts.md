@@ -93,3 +93,10 @@ The official pinned 6.1 patch still fails `git apply --check`, including `fs/nam
 - Inspected `scripts/rothko_bsp_compile_smoke.sh`: its existing smoke gate checks the generated `out/.config` for enabled `CONFIG_KSU`, `CONFIG_KSU_SUSFS` or `CONFIG_KERNELSU` variants. Reuse this guard; do not duplicate it with another CI job.
 - The installer pin mismatch (`KernelSU-Next/KernelSU-Next@02a9e1c5` versus audit `pershoot/KernelSU-Next@3438d6aa`) remains unresolved. No automatic pin replacement, source injection or Kconfig edit is justified.
 - Next checkpoint: establish which build config/fragment the Rothko target actually selects, and trace whether its generated `.config` is produced before the existing smoke guard. This remains a source-only inspection; no kernel compilation or workflow rerun.
+
+## Effective config gate: generic smoke is deliberately root-free — 2026-10-14
+
+- Verified exact `scripts/rothko_bsp_compile_smoke.sh` behavior: `config` invokes `make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 gki_defconfig`, then **rejects** enabled `CONFIG_KSU`, `CONFIG_KSU_SUSFS` and `CONFIG_KERNELSU` variants in `out/.config`. It explicitly labels the result generic GKI and **not verified for Rothko**.
+- `build.config.gki` declares `DEFCONFIG=gki_defconfig`; `build.config.aarch64` declares `ARCH=arm64`; `build.config.gki.aarch64` may source `GKI_BUILD_CONFIG_FRAGMENT`, but the smoke script does not use that build-config mechanism. Therefore a passing smoke check must **not** be promoted to KSUN/SUSFS compatibility proof.
+- Existing installer remains an isolated-checkout integration tool with a different KSUN repository/commit pin from PR #9's audit. Resolve that provenance decision before creating any root-enabled configuration candidate.
+- **Next:** inspect existing Rothko-specific workflow/build entrypoints to determine whether a separate approved root-enabled config path exists; do not alter generic smoke, launch a compile, or add redundant CI. PR #9 stays Draft / BUILD HOLD.
