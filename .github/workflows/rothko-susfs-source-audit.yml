@@ -241,19 +241,22 @@ jobs:
           files = [p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file() and ".git" not in p.parts]
           core = [p for p in files if p.endswith("/susfs.c") or p == "susfs.c"]
           headers = [p for p in files if p.endswith(("/susfs.h", "/susfs_def.h"))]
-          kconfigs = [p for p in files if p.endswith("Kconfig")]
           patch = root / "kernel_patches/50_add_susfs_in_gki-android14-6.1.patch"
           if not patch.is_file():
               raise SystemExit("BLOCK: official kernel 6.1 patch missing")
           lines = patch.read_text(errors="replace").splitlines()
+          patch_paths = [line.split()[3][2:] for line in lines if line.startswith("diff --git a/") and len(line.split()) >= 4]
+          patch_core = [p for p in patch_paths if p.endswith("/susfs.c")]
+          patch_kconfig = [p for p in patch_paths if p.endswith("Kconfig")]
           references = [line for line in lines if "CONFIG_KSU_SUSFS" in line or "susfs.o" in line or "susfs_def.h" in line]
-          print("SUSFS core source candidates:", core)
+          print("SUSFS core source in upstream tree:", core)
+          print("SUSFS core introduced by official kernel patch:", patch_core)
           print("SUSFS header candidates:", headers)
-          print("Upstream Kconfig files:", kconfigs)
-          print("Official patch references:")
+          print("Kconfig paths touched by official patch:", patch_kconfig)
+          print("Official patch linkage references:")
           for line in references[:35]:
               print(line)
-          if not core or not headers or not references:
-              raise SystemExit("BLOCK: incomplete SUSFS core/header/Kconfig linkage evidence")
-          print("PASS: pinned source layout evidence found; integration, compile, ABI and runtime remain unproven")
+          if not (core or patch_core) or not headers or not references:
+              raise SystemExit("BLOCK: incomplete SUSFS core/header/linkage evidence")
+          print("PASS: pinned layout evidence found; Kconfig dependencies and BSP port still require separate validation")
           PY
