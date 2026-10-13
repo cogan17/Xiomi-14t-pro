@@ -1,0 +1,30 @@
+diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration.c
+--- a/kernel/runtime/ksud_integration.c
++++ b/kernel/runtime/ksud_integration.c
+@@ -286,6 +286,7 @@
+     ssize_t r;
+     size_t fsize;
+     const struct cred *old_cred;
++    const struct cred *borrowed_cred;
+ 
+     if (loaded)
+         return;
+@@ -299,7 +300,9 @@
+         return;
+     }
+ 
+-    old_cred = override_creds(ksu_cred);
++    /* Partial G5: keep this borrow alive through the whole file read. */
++    borrowed_cred = get_cred(ksu_cred);
++    old_cred = override_creds(borrowed_cred);
+ 
+     f = open_module_rc(&path);
+     if (IS_ERR(f)) {
+@@ -341,6 +344,7 @@
+ 
+ out_revert_creds:
+     revert_creds(old_cred);
++    put_cred(borrowed_cred);
+ }
+ 
+ static void free_module_rc(void)

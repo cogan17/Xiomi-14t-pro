@@ -26,6 +26,7 @@ on:
       - tests/test_rothko_ksun_shared_cred_candidate.py
       - patches/rothko-ksun-shared-cred-stage-guard-candidate.patch
       - patches/rothko-ksun-shared-cred-rc-prelatch-candidate.patch
+      - patches/rothko-ksun-g5-module-rc-borrowed-cred-candidate.patch
       - patches/rothko-ksun-g2-policy-backup-preflight-candidate.patch
       - patches/rothko-ksun-g2-policy-error-status-candidate.patch
       - patches/rothko-ksun-g2-second-stage-status-guard-candidate.patch
@@ -70,6 +71,7 @@ on:
       - tests/test_rothko_ksun_shared_cred_candidate.py
       - patches/rothko-ksun-shared-cred-stage-guard-candidate.patch
       - patches/rothko-ksun-shared-cred-rc-prelatch-candidate.patch
+      - patches/rothko-ksun-g5-module-rc-borrowed-cred-candidate.patch
       - patches/rothko-ksun-g2-policy-backup-preflight-candidate.patch
       - patches/rothko-ksun-g2-policy-error-status-candidate.patch
       - patches/rothko-ksun-g2-second-stage-status-guard-candidate.patch
@@ -1941,3 +1943,75 @@ jobs:
           print("BLOCK: policy rollback is incomplete, mutable ksu_cred lifetime and consumers are not G5 safe")
           print("BLOCK: registered hooks cannot be unwound transactionally; no build, merge or release")
           PY
+
+      - name: Verify G5 partial module-rc credential borrow is balanced and reversible
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base=3438d6aa431f96a23f9e625bec3d53ce1fb14161
+          test "$(git -C /tmp/ksun rev-parse HEAD)" = "$base"
+          g4="$GITHUB_WORKSPACE/patches/rothko-ksun-shared-cred-rc-prelatch-candidate.patch"
+          g5="$GITHUB_WORKSPACE/patches/rothko-ksun-g5-module-rc-borrowed-cred-candidate.patch"
+          test -s "$g4" && test -s "$g5"
+          file=/tmp/ksun/kernel/runtime/ksud_integration.c
+          original="$(sha256sum "$file" | cut -d' ' -f1)"
+          git -C /tmp/ksun apply --check "$g4"
+          git -C /tmp/ksun apply "$g4"
+          tmp="$(mktemp)"
+          trap 'rm -f "$tmp"' EXIT
+          cp "$file" "$tmp"
+          git -C /tmp/ksun apply --check --verbose "$g5"
+          git -C /tmp/ksun apply "$g5"
+          git -C /tmp/ksun apply --reverse --check "$g5"
+          git -C /tmp/ksun diff --check
+          BEFORE="$tmp" python3 - <<'PY'
+          import os
+          from pathlib import Path
+          before = Path(os.environ["BEFORE"]).read_text()
+          after = Path("/tmp/ksun/kernel/runtime/ksud_integration.c").read_text()
+          begin = "static void load_module_rc_once(void)\n{"
+          ending = "\nstatic void free_module_rc(void)"
+          assert before.count(begin) == after.count(begin) == 1
+          old = before.split(begin,1)[1].split(ending,1)[0]
+          new = after.split(begin,1)[1].split(ending,1)[0]
+          decl = "    const struct cred *old_cred;\n"
+          acquire = "    old_cred = override_creds(ksu_cred);\n"
+          release = "out_revert_creds:\n    revert_creds(old_cred);\n"
+          assert old.count(decl) == old.count(acquire) == old.count(release) == 1
+          assert "if (!ksu_module_rc_shared_cred_is_valid())" in old
+          expected = old.replace(decl, decl + "    const struct cred *borrowed_cred;\n", 1)
+          expected = expected.replace(
+              acquire,
+              "    /* Partial G5: keep this borrow alive through the whole file read. */\n"
+              "    borrowed_cred = get_cred(ksu_cred);\n"
+              "    old_cred = override_creds(borrowed_cred);\n",
+              1,
+          )
+          expected = expected.replace(release, release + "    put_cred(borrowed_cred);\n", 1)
+          assert new == expected, "only a scoped G5 borrow is permitted"
+          assert after.replace(new, old, 1) == before, "no other functions may change"
+          assert new.index("get_cred(ksu_cred);") < new.index("override_creds(borrowed_cred);")
+          assert new.index("revert_creds(old_cred);") < new.index("put_cred(borrowed_cred);")
+          assert new.count("put_cred(borrowed_cred);") == 1
+          assert "goto out_revert_creds;" in new
+          for label, mutant in (
+              ("remove get_cred", new.replace("get_cred(ksu_cred)", "ksu_cred", 1)),
+              ("skip reference release", new.replace("    put_cred(borrowed_cred);\n", "", 1)),
+              ("release before revert", new.replace(
+                  "    revert_creds(old_cred);\n    put_cred(borrowed_cred);\n",
+                  "    put_cred(borrowed_cred);\n    revert_creds(old_cred);\n", 1)),
+              ("lose G4 availability gate", new.replace(
+                  "if (!ksu_module_rc_shared_cred_is_valid())", "if (false)", 1)),
+          ):
+              assert mutant != new and mutant != expected, label
+              print("PASS: scoped borrow contract rejects "+label)
+          print("PASS: acquired reference balanced after revert, including read-failure branch")
+          print("BLOCK: get_cred(ksu_cred) has no synchronized global pointer acquisition")
+          print("BLOCK: concurrent setup_selinux mutation, teardown and global G5 READY remain unproven")
+          PY
+          git -C /tmp/ksun apply --reverse "$g5"
+          cmp "$file" "$tmp"
+          git -C /tmp/ksun apply --reverse "$g4"
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = "$original"
+          git -C /tmp/ksun diff --check
+          echo "PASS: G4 and G5 candidate stack fully reversible; no kernel build, merge or flash"
