@@ -1,0 +1,61 @@
+diff --git a/kernel/supercall/supercall.c b/kernel/supercall/supercall.c
+--- a/kernel/supercall/supercall.c
++++ b/kernel/supercall/supercall.c
+@@ -30,9 +30,11 @@
+ 
+ /* Reserved permission bit. This candidate intentionally has no SU FD issuer. */
+ #define KSU_DRIVER_PERMISSION_SU_SESSION (1UL << 0)
+-struct ksu_driver_context {
+-    unsigned long permissions;
+-};
++struct ksu_driver_context {
++    unsigned long permissions;
++    /* NULL for normal FD; a future issuer MUST hold a get_pid() reference. */
++    struct pid *su_session_owner;
++};
+ 
+ struct ksu_install_fd_tw {
+     struct callback_head cb;
+@@ -39,9 +41,13 @@
+     int __user *outp;
+ };
+ 
+-static int anon_ksu_release(struct inode *inode, struct file *filp)
+-{
+-    kfree(filp->private_data);
++static int anon_ksu_release(struct inode *inode, struct file *filp)
++{
++    struct ksu_driver_context *context = filp->private_data;
++
++    if (context)
++        put_pid(context->su_session_owner);
++    kfree(context);
+     pr_info("ksu fd released\n");
+     return 0;
+ }
+@@ -90,12 +96,19 @@
+ }
+ 
+ /* No caller can create a session FD until a separately reviewed issuer exists. */
+-bool ksu_is_su_session_fd(const struct file *filp)
+-{
+-    const struct ksu_driver_context *context = filp->private_data;
+-
+-    return context && (context->permissions & KSU_DRIVER_PERMISSION_SU_SESSION);
+-}
++bool ksu_is_su_session_fd(const struct file *filp)
++{
++    const struct ksu_driver_context *context = filp->private_data;
++
++    /*
++     * An FD shared through fork/dup/SCM_RIGHTS does not itself authorize
++     * a different task. Only an explicitly bound post-exec owner may pass.
++     * No session issuer or owner assignment is added by this patch.
++     */
++    return context && context->su_session_owner &&
++           task_pid(current) == context->su_session_owner &&
++           (context->permissions & KSU_DRIVER_PERMISSION_SU_SESSION);
++}
+ 
+ static void ksu_install_fd_tw_func(struct callback_head *cb)
+ {
