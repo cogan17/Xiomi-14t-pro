@@ -24,7 +24,8 @@ class SuRequestContractTests(unittest.TestCase):
 
     def finish(self, **overrides):
         conditions = dict(exec_succeeded=True, credential_transition_ok=True,
-                          selinux_transition_ok=True)
+                          selinux_transition_ok=True,
+                          credentials_already_committed=True)
         conditions.update(overrides)
         return self.ledger.exec_result(self.owner, self.request, **conditions)
 
@@ -74,7 +75,8 @@ class SuRequestContractTests(unittest.TestCase):
         self.assertTrue(self.begin())
         self.assertFalse(self.ledger.exec_result(
             self.owner, RequestIdentity(), exec_succeeded=True,
-            credential_transition_ok=True, selinux_transition_ok=True))
+            credential_transition_ok=True, selinux_transition_ok=True,
+            credentials_already_committed=True))
         self.assertFalse(self.ledger.authorize_issuer_once(self.owner, self.request))
 
     def test_duplicate_success_callback_revokes_ready_permission(self):
@@ -88,7 +90,8 @@ class SuRequestContractTests(unittest.TestCase):
         self.assertTrue(self.finish())
         self.assertFalse(self.ledger.exec_result(
             self.owner, RequestIdentity(), exec_succeeded=True,
-            credential_transition_ok=True, selinux_transition_ok=True))
+            credential_transition_ok=True, selinux_transition_ok=True,
+            credentials_already_committed=True))
         self.assertFalse(self.ledger.authorize_issuer_once(self.owner, self.request))
 
     def test_failed_new_exec_after_success_revokes_ready_permission(self):
@@ -96,7 +99,8 @@ class SuRequestContractTests(unittest.TestCase):
         self.assertTrue(self.finish())
         self.assertFalse(self.ledger.exec_result(
             self.owner, RequestIdentity(), exec_succeeded=False,
-            credential_transition_ok=False, selinux_transition_ok=False))
+            credential_transition_ok=False, selinux_transition_ok=False,
+            credentials_already_committed=True))
         self.assertFalse(self.ledger.authorize_issuer_once(self.owner, self.request))
 
     def test_duplicate_begin_while_pending_revokes_old_permission(self):
@@ -124,12 +128,59 @@ class SuRequestContractTests(unittest.TestCase):
             chrooted=False, fd_profile_eligible=True, precommit_checks_ok=True))
         self.assertFalse(self.ledger.authorize_issuer_once(self.owner, self.request))
 
+    def test_exec_failure_after_published_creds_latches_hazard(self):
+        self.assertTrue(self.begin())
+        self.assertFalse(self.finish(exec_succeeded=False))
+        self.assertTrue(self.ledger.has_unresolved_credential_hazard(self.owner))
+        self.ledger.cancel(self.owner)
+        self.assertTrue(self.ledger.has_unresolved_credential_hazard(self.owner))
+        self.assertFalse(self.begin())
+
+    def test_selinux_failure_after_commit_latches_hazard(self):
+        self.assertTrue(self.begin())
+        self.assertFalse(self.finish(selinux_transition_ok=False))
+        self.assertTrue(self.ledger.has_unresolved_credential_hazard(self.owner))
+
+    def test_credential_failure_after_commit_latches_hazard(self):
+        self.assertTrue(self.begin())
+        self.assertFalse(self.finish(credential_transition_ok=False))
+        self.assertTrue(self.ledger.has_unresolved_credential_hazard(self.owner))
+
+    def test_failed_exec_before_commit_has_no_postcommit_hazard(self):
+        self.assertTrue(self.begin())
+        self.assertFalse(self.finish(exec_succeeded=False,
+                                     credentials_already_committed=False))
+        self.assertFalse(self.ledger.has_unresolved_credential_hazard(self.owner))
+        self.assertFalse(self.ledger.authorize_issuer_once(self.owner, self.request))
+        self.assertTrue(self.ledger.begin(
+            self.owner, RequestIdentity(), su_intent=True, allowlisted=True,
+            chrooted=False, fd_profile_eligible=True, precommit_checks_ok=True))
+
+    def test_successful_exec_without_commit_does_not_authorize(self):
+        self.assertTrue(self.begin())
+        self.assertFalse(self.finish(credentials_already_committed=False))
+        self.assertFalse(self.ledger.authorize_issuer_once(self.owner, self.request))
+
+    def test_mismatched_exec_after_commit_blocks_until_task_exit(self):
+        self.assertTrue(self.begin())
+        self.assertFalse(self.ledger.exec_result(
+            self.owner, RequestIdentity(), exec_succeeded=True,
+            credential_transition_ok=True, selinux_transition_ok=True,
+            credentials_already_committed=True))
+        self.assertTrue(self.ledger.has_unresolved_credential_hazard(self.owner))
+        self.ledger.cancel(self.owner)
+        self.assertTrue(self.ledger.has_unresolved_credential_hazard(self.owner))
+        self.ledger.task_exit(self.owner)
+        self.assertFalse(self.ledger.has_unresolved_credential_hazard(self.owner))
+        self.assertFalse(self.begin())
+
     def test_other_task_cannot_complete_or_consume_request(self):
         self.assertTrue(self.begin())
         other = TaskIdentity()
         self.assertFalse(self.ledger.exec_result(
             other, self.request, exec_succeeded=True,
-            credential_transition_ok=True, selinux_transition_ok=True))
+            credential_transition_ok=True, selinux_transition_ok=True,
+            credentials_already_committed=True))
         self.assertTrue(self.finish())
         self.assertFalse(self.ledger.authorize_issuer_once(other, self.request))
         self.assertTrue(self.ledger.authorize_issuer_once(self.owner, self.request))
@@ -155,7 +206,8 @@ class SuRequestContractTests(unittest.TestCase):
                       precommit_checks_ok=True))
         self.assertTrue(self.ledger.exec_result(new_task, second,
                       exec_succeeded=True, credential_transition_ok=True,
-                      selinux_transition_ok=True))
+                      selinux_transition_ok=True,
+            credentials_already_committed=True))
         self.ledger.task_exit(new_task)
         self.assertFalse(self.ledger.authorize_issuer_once(new_task, second))
 
@@ -188,7 +240,8 @@ class SuRequestContractTests(unittest.TestCase):
         self.assertFalse(self.ledger.authorize_issuer_once(self.owner, followup))
         self.assertTrue(self.ledger.exec_result(self.owner, followup,
                       exec_succeeded=True, credential_transition_ok=True,
-                      selinux_transition_ok=True))
+                      selinux_transition_ok=True,
+            credentials_already_committed=True))
         self.assertTrue(self.ledger.authorize_issuer_once(self.owner, followup))
 
     def test_invalid_identity_type_rejected(self):
