@@ -15,13 +15,12 @@ diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
 +++ b/kernel/selinux/selinux.c
 @@ -1,5 +1,6 @@
  #include "selinux.h"
--#include "linux/cred.h"
-+#include "linux/cred.h"
+ #include "linux/cred.h"
 +#include <linux/errno.h>
  #include "linux/sched.h"
  #include "objsec.h"
  #include "linux/version.h"
-@@ -157,7 +158,23 @@
+@@ -157,11 +158,22 @@
  }
  
 -void setup_ksu_cred(void)
@@ -45,5 +44,6 @@ diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
 +
 +    return 0;
  }
+ 
  void escape_to_root_for_adb_root(void)
  {
