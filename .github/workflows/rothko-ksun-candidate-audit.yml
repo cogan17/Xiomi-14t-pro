@@ -14,6 +14,7 @@ on:
       - patches/rothko-ksun-groups-fail-closed-candidate.patch
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
+      - patches/rothko-ksun-selinux-precommit-gate-candidate.patch
       - patches/rothko-ksun-susfs-sid0-fail-closed-candidate.patch
       - patches/rothko-ksun-susfs-current-domain-sid0-guard-candidate.patch
       - .github/workflows/rothko-ksun-candidate-audit.yml
@@ -63,6 +64,7 @@ on:
       - patches/rothko-ksun-groups-fail-closed-candidate.patch
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
+      - patches/rothko-ksun-selinux-precommit-gate-candidate.patch
       - patches/rothko-ksun-susfs-sid0-fail-closed-candidate.patch
       - patches/rothko-ksun-susfs-current-domain-sid0-guard-candidate.patch
       - .github/workflows/rothko-ksun-candidate-audit.yml
@@ -183,6 +185,10 @@ jobs:
           print("PASS: both deliberate double-hook configuration mutations rejected")
           print("BLOCK: post-exec SU_SESSION FD authority, ABI/KMI and device build remain unverified")
           PY
+          # Independent pristine-source gate for the new SELinux candidate.
+          # Do not apply it to the multi-candidate workspace; those patches overlap.
+          git -C /tmp/ksun apply --check --verbose "$GITHUB_WORKSPACE/patches/rothko-ksun-selinux-precommit-gate-candidate.patch"
+          echo "PASS: pinned KSUN SELinux precommit candidate applies to pristine source (NOT compiled or security-approved)"
           # Check and apply sequentially: both candidates touch app_profile.c.
           # Independent checks against pristine source miss cross-patch overlap.
           git -C /tmp/ksun apply --check --verbose "$GITHUB_WORKSPACE/patches/rothko-ksun-groups-fail-closed-candidate.patch"
