@@ -1,0 +1,43 @@
+diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration.c
+--- a/kernel/runtime/ksud_integration.c
++++ b/kernel/runtime/ksud_integration.c
+@@ -1,4 +1,5 @@
+ #include "feature/selinux_hide.h"
++#include <linux/atomic.h>
+ #include <linux/rcupdate.h>
+ #include <linux/slab.h>
+ #include <linux/mm.h>
+@@ -39,6 +40,9 @@
+ DEFINE_STATIC_KEY_TRUE(is_init_second_stage_not_executed);
+ DEFINE_STATIC_KEY_TRUE(is_first_zygote);
+ 
++/* Prevent repeat second-stage side effects after an attempted startup. */
++static atomic_t ksu_second_stage_attempted = ATOMIC_INIT(0);
++
+ // clang-format off
+ static const char KERNEL_SU_RC[] =
+     "\n"
+@@ -177,6 +181,11 @@
+         if (unlikely(!memcmp(filename->name, system_bin_init, sizeof(system_bin_init) - 1) && argv)) {
+             char buf[16];
+             if (check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
++                /* Single-flight, fail-stop: no callback replay on later exec. */
++                if (atomic_cmpxchg(&ksu_second_stage_attempted, 0, 1) != 0) {
++                    pr_warn("KernelSU second_stage already attempted; refusing replay\n");
++                    return 0;
++                }
+                 pr_info("/system/bin/init second_stage executed\n");
+                 ksu_selinux_hide_handle_second_stage();
+                 if (apply_kernelsu_rules()) {
+@@ -224,6 +233,11 @@
+         if (unlikely(!memcmp(path, system_bin_init, sizeof(system_bin_init) - 1) && argv)) {
+             char buf[16];
+             if (check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
++                /* Single-flight, fail-stop: no callback replay on later exec. */
++                if (atomic_cmpxchg(&ksu_second_stage_attempted, 0, 1) != 0) {
++                    pr_warn("KernelSU second_stage already attempted; refusing replay\n");
++                    return;
++                }
+                 pr_info("/system/bin/init second_stage executed\n");
+                 ksu_selinux_hide_handle_second_stage();
+                 if (apply_kernelsu_rules()) {
