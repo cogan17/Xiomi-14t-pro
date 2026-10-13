@@ -1,0 +1,69 @@
+diff --git a/fs/proc/base.c b/fs/proc/base.c
+--- a/fs/proc/base.c
++++ b/fs/proc/base.c
+@@ -97,6 +97,10 @@
+ #include <linux/resctrl.h>
+ #include <linux/cn_proc.h>
+ #include <linux/cpufreq_times.h>
++#if defined(CONFIG_KSU_SUSFS_SUS_MAP) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)
++#include <linux/susfs_def.h>
++#endif
++
+ #include <trace/events/oom.h>
+ #include <trace/hooks/sched.h>
+ #include "internal.h"
+@@ -1774,6 +1778,11 @@
+ 	return ERR_PTR(error);
+ }
+ 
++#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
++extern int susfs_open_redirect_spoof_do_proc_readlink(struct inode *inode,
++					      char *tmp_buf, int buflen);
++#endif
++
+ static int do_proc_readlink(const struct path *path, char __user *buffer, int buflen)
+ {
+ 	char *tmp = kmalloc(PATH_MAX, GFP_KERNEL);
+@@ -1783,6 +1792,31 @@
+ 	if (!tmp)
+ 		return -ENOMEM;
+ 
++#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
++	if (buflen > 0 && SUSFS_IS_INODE_OPEN_REDIRECT(d_inode(path->dentry))) {
++		struct inode *inode = d_inode(path->dentry);
++		const int limit = min_t(int, buflen, PATH_MAX - 1);
++		size_t spoof_len;
++
++		/*
++		 * The upstream helper receives a kernel buffer, not a user pointer.
++		 * Initialize it first and cap its capacity to the allocation.
++		 */
++		memset(tmp, 0, PATH_MAX);
++		if (!susfs_open_redirect_spoof_do_proc_readlink(inode, tmp, limit)) {
++			spoof_len = strnlen(tmp, PATH_MAX);
++			if (spoof_len == PATH_MAX) {
++				len = -EOVERFLOW;
++				goto out;
++			}
++			len = min_t(size_t, spoof_len, (size_t)buflen);
++			if (copy_to_user(buffer, tmp, len))
++				len = -EFAULT;
++			goto out;
++		}
++	}
++#endif
++
+ 	pathname = d_path(path, tmp, PATH_MAX);
+ 	len = PTR_ERR(pathname);
+ 	if (IS_ERR(pathname))
+@@ -2405,6 +2439,10 @@
+ 	for_each_vma(vmi, vma) {
+ 		if (!vma->vm_file)
+ 			continue;
++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++		if (SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
++			continue;
++#endif
+ 		if (++pos <= ctx->pos)
+ 			continue;
+ 
