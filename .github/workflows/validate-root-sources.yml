@@ -38,16 +38,32 @@ jobs:
       SOURCE_SHA: ${{ matrix.source_sha }}
 
     steps:
-      - name: Confirm pinned Git ref has not moved
+      - name: Verify pinned commit and report upstream drift
         shell: bash
         run: |
           set -euo pipefail
-          remote_sha="$(git ls-remote --exit-code "https://github.com/$SOURCE_REPO.git" "refs/heads/$SOURCE_BRANCH" | cut -f1)"
-          if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then
-            echo "::error::Upstream $ROOT_FLAVOR ($SOURCE_REPO/$SOURCE_BRANCH) changed: $remote_sha instead of audited $SOURCE_SHA. Re-audit before updating pins."
+          remote_url="https://github.com/$SOURCE_REPO.git"
+          remote_sha="$(git ls-remote --exit-code "$remote_url" "refs/heads/$SOURCE_BRANCH" | cut -f1)"
+          if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Invalid pinned SHA for $ROOT_FLAVOR"
             exit 1
           fi
-          echo "Pinned source verified: $ROOT_FLAVOR @ $SOURCE_SHA"
+          # Verify the immutable pinned commit via GitHub's commit API.
+          # A moving branch tip must never silently replace the audited source.
+          status="$(curl --location --silent --show-error --retry 3 --connect-timeout 15 --max-time 90 -o "$RUNNER_TEMP/pinned-commit.json" -w '%{http_code}' "https://api.github.com/repos/$SOURCE_REPO/commits/$SOURCE_SHA")"
+          if [[ "$status" != "200" ]]; then
+            echo "::error::Pinned commit $SOURCE_SHA for $ROOT_FLAVOR is unavailable (HTTP $status)"
+            exit 1
+          fi
+          if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then
+            echo "::warning::Upstream $ROOT_FLAVOR branch moved to $remote_sha; audited pin remains $SOURCE_SHA. Review changes separately."
+          fi
+          {
+            echo "### $ROOT_FLAVOR upstream pin"
+            echo "Pinned commit: \`$SOURCE_SHA\`"
+            echo "Current upstream branch HEAD: \`$remote_sha\`"
+            echo "Pin unchanged; no automatic upgrade."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Download exact pinned integration source (never execute scripts)
         shell: bash
