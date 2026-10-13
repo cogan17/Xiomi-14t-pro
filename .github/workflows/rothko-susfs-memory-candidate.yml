@@ -1,0 +1,49 @@
+name: Rothko SUSFS memory candidate patch check (isolated)
+on:
+  push:
+    branches:
+      - feat/rothko-ksun-susfs-compat-audit
+    paths:
+      - patches/rothko-susfs-memory-include-candidate.patch
+      - .github/workflows/rothko-susfs-memory-candidate.yml
+  pull_request:
+    paths:
+      - patches/rothko-susfs-memory-include-candidate.patch
+      - .github/workflows/rothko-susfs-memory-candidate.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          path: candidate
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: dev/rothko
+          path: bsp
+      - name: Check and apply candidate only inside disposable checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-memory-include-candidate.patch"
+          echo "Pristine BSP: $(git -C bsp rev-parse HEAD)"
+          git -C bsp apply --check "$patch"
+          git -C bsp apply "$patch"
+          git -C bsp diff --check
+          git -C bsp diff -- mm/memory.c
+          test "$(git -C bsp diff --name-only)" = "mm/memory.c"
+          grep -q '^#include <linux/susfs_def.h>$' bsp/mm/memory.c
+          echo "PASS: isolated include candidate applies cleanly; no compile or semantic approval"
+          {
+            echo "### Isolated SUSFS memory include candidate"
+            echo "- Patch applicability: PASS on disposable BSP checkout"
+            echo "- Modified file: mm/memory.c only (temporary runner workspace)"
+            echo "- Full SUSFS integration, header dependencies, VMA behavior and security: NOT CLEARED"
+            echo "- No kernel build, release, merge or flash"
+          } >> "$GITHUB_STEP_SUMMARY"
