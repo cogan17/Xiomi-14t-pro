@@ -1,0 +1,55 @@
+name: Rothko SUSFS exact hunk comparison (read-only)
+on:
+  push:
+    branches:
+      - feat/rothko-ksun-susfs-compat-audit
+    paths:
+      - scripts/rothko_susfs_hunk_compare.py
+      - .github/workflows/rothko-susfs-hunk-compare.yml
+  pull_request:
+    paths:
+      - scripts/rothko_susfs_hunk_compare.py
+      - .github/workflows/rothko-susfs-hunk-compare.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          path: candidate
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: dev/rothko
+          path: bsp
+      - name: Fetch exact pinned SUSFS patch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git init -q susfs
+          timeout 105 git -C susfs -c http.version=HTTP/1.1 fetch --quiet --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git 5192aa2d33b381b58c1051532f9e1dfa5de6e8d3
+          git -C susfs checkout -q --detach FETCH_HEAD
+          test "$(git -C susfs rev-parse HEAD)" = 5192aa2d33b381b58c1051532f9e1dfa5de6e8d3
+          test "$(git -C susfs rev-parse 'HEAD^{tree}')" = b39cd4117178ce73d2973f7bcdae5c74defc8f68
+      - name: Compare exact old hunk sequences with pristine BSP
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile candidate/scripts/rothko_susfs_hunk_compare.py
+          python3 candidate/scripts/rothko_susfs_hunk_compare.py susfs/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch bsp | tee comparison.txt
+          {
+            echo "### Source-only hunk comparison"
+            echo "- BSP: $(git -C bsp rev-parse HEAD)"
+            echo "- SUSFS: $(git -C susfs rev-parse HEAD)"
+            echo "- No source modifications, compilation, release or flash."
+            echo
+            echo '~~~~'
+            cat comparison.txt
+            echo '~~~~'
+          } >> "$GITHUB_STEP_SUMMARY"
+          test -z "$(git -C bsp status --porcelain)"
