@@ -18,6 +18,7 @@ on:
       - patches/rothko-susfs-namei-walk-guard-candidate.patch
       - patches/rothko-susfs-namei-vfs-readlink-candidate.patch
       - patches/rothko-susfs-namei-integrated-candidate.patch
+      - patches/rothko-susfs-namei-dcache-enoent-candidate.patch
       - patches/rothko-susfs-exec-include-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   pull_request:
@@ -36,6 +37,7 @@ on:
       - patches/rothko-susfs-namei-walk-guard-candidate.patch
       - patches/rothko-susfs-namei-vfs-readlink-candidate.patch
       - patches/rothko-susfs-namei-integrated-candidate.patch
+      - patches/rothko-susfs-namei-dcache-enoent-candidate.patch
       - patches/rothko-susfs-exec-include-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   workflow_dispatch:
@@ -66,6 +68,7 @@ jobs:
             patches/rothko-susfs-namei-walk-guard-candidate.patch
             patches/rothko-susfs-namei-vfs-readlink-candidate.patch
             patches/rothko-susfs-namei-integrated-candidate.patch
+            patches/rothko-susfs-namei-dcache-enoent-candidate.patch
             patches/rothko-susfs-exec-include-candidate.patch
       - uses: actions/checkout@v4
         with:
@@ -739,3 +742,54 @@ jobs:
                "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
           echo "PASS: consolidated namei patch reverses to original; old candidate states preserved"
           echo "BLOCK: no full namei port, compile, module teardown or runtime VFS/SRCU proof"
+
+      - name: Check guarded namei dcache reject preserves original owned references
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C bsp rev-parse HEAD)" = b2d8b54a0d8bb002d32dda24e58d2b5d0423546b
+          patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-namei-dcache-enoent-candidate.patch"
+          test -s "$patch"
+          before="$(sha256sum bsp/fs/namei.c | cut -d' ' -f1)"
+          git -C bsp apply --check --verbose "$patch"
+          git -C bsp apply "$patch"
+          git -C bsp apply --reverse --check "$patch"
+          git -C bsp diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          from subprocess import check_output
+          src=Path("bsp/fs/namei.c").read_text()
+          base=check_output(["git","-C","bsp","show","HEAD:fs/namei.c"],text=True)
+          begin="static struct dentry *lookup_dcache("
+          end="\n/*\n * Parent directory"
+          fn=src.split(begin,1)[1].split(end,1)[0]
+          old=base.split(begin,1)[1].split(end,1)[0]
+          guard=(
+              "#ifdef CONFIG_KSU_SUSFS_SUS_PATH\n"
+              "\t/* d_lookup() returned an owned ref: reject hidden inode without retry. */\n"
+              "\tif (dentry && d_inode(dentry) &&\n"
+              "\t    susfs_is_inode_sus_path(d_inode(dentry))) {\n"
+              "\t\tdput(dentry);\n"
+              "\t\treturn ERR_PTR(-ENOENT);\n"
+              "\t}\n"
+              "#endif\n"
+          )
+          assert fn.count(guard)==1 and fn.replace(guard,"",1)==old, "guard must be the only change to lookup_dcache"
+          assert (fn.index("d_revalidate(dentry, flags)") < fn.index(guard)
+                  < fn.index("\treturn dentry;",fn.index(guard))), "normal revalidation and fallback must remain"
+          assert "return ERR_PTR(error);" in fn.split(guard,1)[0]
+          assert "extern bool susfs_is_inode_sus_path(struct inode *inode);" in src
+          for label,mutant in (
+              ("leak dentry ref",guard.replace("\t\tdput(dentry);\n","")),
+              ("allow hidden fallback",guard.replace("return ERR_PTR(-ENOENT);","return NULL;")),
+          ):
+              assert mutant!=guard and mutant not in fn, "unacceptable mutation: "+label
+          print("PASS: hidden cached inode releases owned dentry then fails closed with -ENOENT")
+          print("PASS: normal dcache revalidation, original fallback, and previously verified ports retained")
+          print("BLOCK: requires full namei/RCU, SUSFS helper, config-enabled compile and runtime proof")
+          PY
+          git -C bsp apply --reverse "$patch"
+          test "$(sha256sum bsp/fs/namei.c | cut -d ' ' -f1)" = "$before"
+          test "$(git -C bsp diff --name-only)" = \
+               "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
+          echo "PASS: targeted namei candidate completely reversed; prior port states preserved"

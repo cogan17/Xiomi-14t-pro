@@ -1,0 +1,17 @@
+diff --git a/fs/namei.c b/fs/namei.c
+--- a/fs/namei.c
++++ b/fs/namei.c
+@@ -1577,5 +1577,13 @@
+ 			return ERR_PTR(error);
+ 		}
+ 	}
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	/* d_lookup() returned an owned ref: reject hidden inode without retry. */
++	if (dentry && d_inode(dentry) &&
++	    susfs_is_inode_sus_path(d_inode(dentry))) {
++		dput(dentry);
++		return ERR_PTR(-ENOENT);
++	}
++#endif
+ 	return dentry;
+ }
