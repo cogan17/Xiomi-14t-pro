@@ -5,10 +5,12 @@ on:
       - feat/rothko-ksun-susfs-compat-audit
     paths:
       - scripts/rothko_susfs_bsp_anchor_map.py
+      - patches/rothko-susfs-arm64-tif34-reservation-candidate.patch
       - .github/workflows/rothko-susfs-bsp-anchors.yml
   pull_request:
     paths:
       - scripts/rothko_susfs_bsp_anchor_map.py
+      - patches/rothko-susfs-arm64-tif34-reservation-candidate.patch
       - .github/workflows/rothko-susfs-bsp-anchors.yml
   workflow_dispatch:
 permissions:
@@ -48,3 +50,33 @@ jobs:
             echo '~~~~'
           } >> "$GITHUB_STEP_SUMMARY"
           test -z "$(git -C bsp status --porcelain)"
+      - name: Apply-check only conditional ARM64 SUSFS TIF bit 34 reservation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base=b2d8b54a0d8bb002d32dda24e58d2b5d0423546b
+          patch="$GITHUB_WORKSPACE/mapper/patches/rothko-susfs-arm64-tif34-reservation-candidate.patch"
+          test "$(git -C bsp rev-parse HEAD)" = "$base"
+          header=bsp/arch/arm64/include/asm/thread_info.h
+          # Abort on any literal competing ARM64/include TIF bit-34 owner.
+          hits="$(git -C bsp grep -nE '^[[:space:]]*#[[:space:]]*define[[:space:]]+TIF_[A-Za-z0-9_]+[[:space:]]+34([[:space:]]|$)' -- 'arch/arm64/**' 'include/**' || true)"
+          test -z "$hits" || { printf 'BLOCK: another TIF bit-34 owner:\n%s\n' "$hits"; exit 7; }
+          grep -Eq 'unsigned[[:space:]]+long[[:space:]]+flags[[:space:]]*;' "$header"
+          git -C bsp apply --check --verbose "$patch"
+          git -C bsp apply "$patch"
+          git -C bsp apply --reverse --check "$patch"
+          python3 - "$header" <<'PY'
+          from pathlib import Path
+          import re, sys
+          source = Path(sys.argv[1]).read_text()
+          assert re.search(r"(?m)^#define TIF_PROC_NO_SU 34$", source)
+          assert source.count("#define TIF_PROC_NO_SU 34") == 1
+          assert "#ifdef CONFIG_KSU_SUSFS\n" in source
+          definitions = re.findall(r"(?m)^#define\\s+(TIF_[A-Z0-9_]+)\\s+(\\d+)", source)
+          assert [n for n, v in definitions if int(v) == 34] == ["TIF_PROC_NO_SU"]
+          print("PASS: isolated CONFIG_KSU_SUSFS bit-34 reservation, one ARM64 flag owner")
+          print("BLOCK: external vendor bit masks and BSP/ABI/KMI/FD security still need proof")
+          PY
+          git -C bsp apply --reverse "$patch"
+          test -z "$(git -C bsp status --porcelain)"
+          echo "PASS: original Rothko BSP checkout restored cleanly; no device build"
