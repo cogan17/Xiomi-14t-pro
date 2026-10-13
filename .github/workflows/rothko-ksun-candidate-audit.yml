@@ -40,6 +40,7 @@ on:
       - patches/rothko-ksun-lateload-sucompat-owned-handler-candidate.patch
       - patches/rothko-ksun-lateload-sucompat-static-key-teardown-candidate.patch
       - patches/rothko-ksun-susfs-builtin-only-mode-guard-candidate.patch
+      - patches/rothko-ksun-susfs-lsm-kbuild-exclusion-candidate.patch
       - patches/rothko-ksun-lateload-g2-cred-escape-gate-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
@@ -85,6 +86,7 @@ on:
       - patches/rothko-ksun-lateload-sucompat-owned-handler-candidate.patch
       - patches/rothko-ksun-lateload-sucompat-static-key-teardown-candidate.patch
       - patches/rothko-ksun-susfs-builtin-only-mode-guard-candidate.patch
+      - patches/rothko-ksun-susfs-lsm-kbuild-exclusion-candidate.patch
       - patches/rothko-ksun-lateload-g2-cred-escape-gate-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
@@ -1982,3 +1984,96 @@ jobs:
           test "$(sha256sum "$file" | cut -d' ' -f1)" = "$original"
           git -C /tmp/ksun diff --check
           echo "PASS: G5 reverted and pre-existing G4 candidate state preserved; no kernel build, merge or flash"
+
+      - name: Verify scoped Kbuild LSM selection excludes SUSFS without disabling normal KPROBES
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C /tmp/ksun rev-parse HEAD)" = 3438d6aa431f96a23f9e625bec3d53ce1fb14161
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-susfs-lsm-kbuild-exclusion-candidate.patch"
+          test -s "$patch"
+          file=/tmp/ksun/kernel/Kbuild
+          before="$(sha256sum "$file" | cut -d' ' -f1)"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          from subprocess import run, check_output
+          from tempfile import TemporaryDirectory
+          src=Path("/tmp/ksun/kernel/Kbuild").read_text()
+          pinned=check_output(["git","-C","/tmp/ksun","show","HEAD:kernel/Kbuild"],text=True)
+          core=Path("/tmp/ksun/kernel/core/init.c").read_text()
+          old=(
+              "# Core utilities ('selinux hide'/hooks)\n"
+              "ifeq ($(strip $(CONFIG_KPROBES)),y)\n"
+              "kernelsu-objs += hook/lsm_hook.o\n"
+              "ifdef KSU_ARCH\n"
+              "kernelsu-objs += hook/$(KSU_ARCH)/patch_memory.o\n"
+              "endif\n"
+              "endif"
+          )
+          new=old.replace(
+              "kernelsu-objs += hook/lsm_hook.o\n",
+              "ifneq ($(strip $(CONFIG_KSU_SUSFS)),y)\n"
+              "kernelsu-objs += hook/lsm_hook.o\n"
+              "endif\n",1
+          )
+          assert pinned.count(old)==1
+          assert src==pinned.replace(old,new,1), "unexpected Kbuild change"
+          assert core.count("ksu_lsm_hook_init();")==1
+          assert core.count("ksu_lsm_hook_exit();")==1
+          assert "#ifndef CONFIG_KSU_SUSFS" in core
+          def paths(build, probes, susfs):
+              block=build.split("# Core utilities ('selinux hide'/hooks)\n",1)[1].split(
+                  "\n# Hooks (excluded for SuSFS)",1)[0]
+              fixture="KSU_ARCH := arm64\nkernelsu-objs :=\n"+block+"\nshow:\n\t@echo $(kernelsu-objs)\n"
+              with TemporaryDirectory() as td:
+                  mk=Path(td)/"Makefile"
+                  mk.write_text(fixture)
+                  proc=run(["make","-s","--no-print-directory","-f",str(mk),"show",
+                            f"CONFIG_KPROBES={probes}",f"CONFIG_KSU_SUSFS={susfs}"],
+                           text=True,capture_output=True)
+              assert proc.returncode==0,proc.stderr
+              return proc.stdout.strip().split()
+          def contract(build):
+              if build.count("kernelsu-objs += hook/lsm_hook.o")!=1:
+                  return False
+              try:
+                  for p in ("n","y"):
+                      for s in ("n","y"):
+                          selected=paths(build,p,s)
+                          if ("hook/lsm_hook.o" in selected)!=(p=="y" and s=="n"):
+                              return False
+                          if ("hook/arm64/patch_memory.o" in selected)!=(p=="y"):
+                              return False
+              except (AssertionError,IndexError):
+                  return False
+              return True
+          assert contract(src), "Kbuild matrix breaks SUSFS selection or KPROBES"
+          assert not contract(pinned), "unsafe baseline accepted"
+          bad=[
+              ("invert SUSFS gate",src.replace(
+                   "ifneq ($(strip $(CONFIG_KSU_SUSFS)),y)",
+                   "ifeq ($(strip $(CONFIG_KSU_SUSFS)),y)",1)),
+              ("remove LSM conditional",src.replace(
+                   "ifneq ($(strip $(CONFIG_KSU_SUSFS)),y)\n",
+                   "",1)),
+              ("hide patch_memory from SUSFS",src.replace(
+                   "kernelsu-objs += hook/$(KSU_ARCH)/patch_memory.o\n",
+                   "ifneq ($(strip $(CONFIG_KSU_SUSFS)),y)\n"
+                   "kernelsu-objs += hook/$(KSU_ARCH)/patch_memory.o\n"
+                   "endif\n",1)),
+          ]
+          for label,mutant in bad:
+              assert mutant!=src and not contract(mutant), label
+              print("PASS: rejected unsafe Kbuild mutation — "+label)
+          print("PASS: SUSFS excludes duplicate LSM object; KPROBES normal path retained")
+          print("PASS: arm64 patch_memory selection unchanged")
+          print("BLOCK: source-only companion fragment, not full KSUN-SUSFS compiled integration")
+          PY
+          git -C /tmp/ksun apply --reverse "$patch"
+          test "$(sha256sum "$file" | cut -d' ' -f1)" = "$before"
+          git -C /tmp/ksun diff --check
+          echo "PASS: one Kbuild candidate reversible with existing KSUN patches retained"

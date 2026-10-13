@@ -1,0 +1,13 @@
+diff --git a/kernel/Kbuild b/kernel/Kbuild
+--- a/kernel/Kbuild
++++ b/kernel/Kbuild
+@@ -13,7 +13,9 @@
+ # Core utilities ('selinux hide'/hooks)
+ ifeq ($(strip $(CONFIG_KPROBES)),y)
++ifneq ($(strip $(CONFIG_KSU_SUSFS)),y)
+ kernelsu-objs += hook/lsm_hook.o
++endif
+ ifdef KSU_ARCH
+ kernelsu-objs += hook/$(KSU_ARCH)/patch_memory.o
+ endif
+ endif
