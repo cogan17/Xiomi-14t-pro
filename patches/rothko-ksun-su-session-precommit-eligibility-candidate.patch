@@ -1,7 +1,7 @@
 diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
 --- a/kernel/policy/app_profile.c
 +++ b/kernel/policy/app_profile.c
-@@ -9,6 +9,7 @@
+@@ -9,5 +9,6 @@
  #include <linux/seccomp.h>
  #include <linux/slab.h>
 +#include <linux/string.h>
