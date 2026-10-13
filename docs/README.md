@@ -5,6 +5,8 @@
 > Cabang kerja: [dev/rothko](https://github.com/cogan17/Xiomi-14t-pro/tree/dev/rothko) ·
 > Source dasar: [bsp-rothko-u-oss](https://github.com/cogan17/Xiomi-14t-pro/tree/bsp-rothko-u-oss).
 
+**Root manager aktif hanya KSUN dan BakaSU.** KSU/Mama ditutup dan [disimpan dalam arsip internal](archive/ksu-mama/README.md); bila ingin melanjutkan silakan fork.
+
 **Mulai dari [STATUS PROYEK](PROJECT_STATUS.md).** Status kompatibilitas
 image/ABI untuk pengembangan source BSP **belum disetujui**. Dokumen
 tidak pernah menjadi izin otomatis untuk flashing.
@@ -24,7 +26,7 @@ tidak pernah menjadi izin otomatis untuk flashing.
 
 | Dokumen | Cakupan |
 |---|---|
-| [ROTHKO_ROOT_SOURCE_AUDIT.md](ROTHKO_ROOT_SOURCE_AUDIT.md) | Source KSU, KSUN, BakaSU; opsi All; syarat integrasi |
+| [ROTHKO_ROOT_SOURCE_AUDIT.md](ROTHKO_ROOT_SOURCE_AUDIT.md) | Referensi historis tiga pilihan root; syarat integrasi |
 | [ROTHKO_LINEAGE.json](ROTHKO_LINEAGE.json) | Identitas terstruktur Xiaomi BSP vs Google GKI |
 | [ROTHKO_STOCK_FIRMWARE_AUDIT.md](ROTHKO_STOCK_FIRMWARE_AUDIT.md) | Perbandingan firmware WNNIDXM Rothko dan WNEIDXM Degas |
 | [ROTHKO_VENDOR_ABI_AUDIT.md](ROTHKO_VENDOR_ABI_AUDIT.md) | KMI, metadata modul, Kernel Flasher Slot A, BakaSU/SUSFS |
@@ -37,7 +39,7 @@ tidak pernah menjadi izin otomatis untuk flashing.
 ## Workflow pengembangan
 
 - [Root selection preview](../.github/workflows/Patch%20Kernel%20Features.yml):
-  **KSU, KSUN, BakaSU, All**; bukan build kernel.
+  **KSUN atau BakaSU saja**. KSU/Mama dan opsi All tidak aktif; bukan build kernel.
 - [Root source check](../.github/workflows/validate-root-sources.yml):
   pemeriksaan statis source yang dikunci.
 - [Rothko source inventory](../.github/workflows/audit-rothko-compatibility.yml):
