@@ -1068,8 +1068,8 @@ jobs:
                   "ret = -EALREADY;\n        ;", 1)),
               ("allow guard after policy backup", rules.replace(
                   gate, "", 1).replace(
-                  "    backup_sepolicy =",
-                  "    backup_sepolicy = " if False else gate + "\n    backup_sepolicy =", 1)),
+                  "    if (IS_ERR(backup_sepolicy)) {",
+                  gate + "\n    if (IS_ERR(backup_sepolicy)) {", 1)),
               ("drop static lifetime", rules.replace(
                   "static bool policy_attempted;", "bool policy_attempted;", 1)),
               ("move guard before mutex", rules.replace(
