@@ -8,6 +8,11 @@ on:
       - fix/rothko-root-source-pin-audit
     paths:
       - '.github/workflows/validate-root-sources.yml'
+  pull_request:
+    branches:
+      - dev/rothko
+    paths:
+      - '.github/workflows/validate-root-sources.yml'
   workflow_dispatch:
 
 permissions:
@@ -16,7 +21,7 @@ permissions:
 jobs:
   source-audit:
     name: Audit ${{ matrix.flavor }} (no build)
-    if: github.ref == 'refs/heads/dev/rothko' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/rothko-root-source-pin-audit') || (github.event_name == 'push' && github.ref == 'refs/heads/fix/rothko-root-source-pin-audit')
+    if: github.ref == 'refs/heads/dev/rothko' || (github.event_name == 'pull_request' && github.head_ref == 'fix/rothko-root-source-pin-audit') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/rothko-root-source-pin-audit') || (github.event_name == 'push' && github.ref == 'refs/heads/fix/rothko-root-source-pin-audit')
     runs-on: ubuntu-latest
     timeout-minutes: 12
     strategy:
