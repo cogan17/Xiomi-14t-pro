@@ -10,6 +10,7 @@ on:
       - patches/rothko-ksun-su-profile-precommit-compat-candidate.patch
       - patches/rothko-ksun-su-session-precommit-eligibility-candidate.patch
       - patches/rothko-ksun-fd-permission-isolation-candidate.patch
+      - patches/rothko-ksun-fd-task-owner-candidate.patch
       - patches/rothko-ksun-groups-fail-closed-candidate.patch
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
@@ -36,6 +37,7 @@ on:
       - patches/rothko-ksun-su-profile-precommit-compat-candidate.patch
       - patches/rothko-ksun-su-session-precommit-eligibility-candidate.patch
       - patches/rothko-ksun-fd-permission-isolation-candidate.patch
+      - patches/rothko-ksun-fd-task-owner-candidate.patch
       - patches/rothko-ksun-groups-fail-closed-candidate.patch
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
@@ -642,3 +644,69 @@ jobs:
           print("BLOCK: no SU_SESSION FD issuer, request owner, exec-success handshake or runtime proof")
           PY
           echo "BLOCK: permission-context candidate is not an authorized post-exec FD implementation"
+
+      - name: Verify SU FD task ownership guard remains unissuable (source-only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-fd-task-owner-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          src = Path("/tmp/ksun/kernel/supercall/supercall.c").read_text()
+          header = Path("/tmp/ksun/kernel/supercall/supercall.h").read_text()
+          dispatch = Path("/tmp/ksun/kernel/supercall/dispatch.c").read_text()
+          owner_guard = (
+              "return context && context->su_session_owner &&\n"
+              "           task_pid(current) == context->su_session_owner &&\n"
+              "           (context->permissions & KSU_DRIVER_PERMISSION_SU_SESSION);"
+          )
+          def safe_owner_contract(code):
+              try:
+                  owner = code.split("bool ksu_is_su_session_fd(const struct file *filp)", 1)[1].split(
+                      "static void ksu_install_fd_tw_func", 1)[0]
+                  release = code.split("static int anon_ksu_release(", 1)[1].split(
+                      "static long anon_ksu_ioctl", 1)[0]
+                  generic = code.split("int ksu_install_fd(void)", 1)[1].split(
+                      "bool ksu_is_su_session_fd(", 1)[0]
+              except IndexError:
+                  return False
+              return (
+                  "struct pid *su_session_owner;" in code
+                  and "put_pid(context->su_session_owner);" in release
+                  and "kfree(context);" in release
+                  and owner.count(owner_guard) == 1
+                  and "context = kzalloc(sizeof(*context), GFP_KERNEL);" in generic
+                  and "get_unused_fd_flags(O_CLOEXEC)" in generic
+                  and "su_session_owner =" not in code
+                  and "int ksu_install_su_fd(" not in code
+              )
+          assert safe_owner_contract(src), "session permission must be owner-bound and unissuable"
+          assert "bool allow_su_session;" in header
+          assert ".allow_su_session = true" not in dispatch
+          for label, mutant in [
+              ("ignore task identity", src.replace("task_pid(current) == context->su_session_owner &&", "true &&", 1)),
+              ("ignore owner presence", src.replace("context->su_session_owner &&\n", "", 1)),
+              ("leak owner PID reference", src.replace("put_pid(context->su_session_owner);", "", 1)),
+              ("allow unconditional session owner", src.replace(
+                  "context = kzalloc(sizeof(*context), GFP_KERNEL);",
+                  "context = kzalloc(sizeof(*context), GFP_KERNEL); context->su_session_owner = task_pid(current);", 1)),
+          ]:
+              assert mutant != src, label + ": mutation missing"
+              assert not safe_owner_contract(mutant), label + ": unsafe mutation accepted"
+              print("PASS: reject unsafe SU FD owner mutation — " + label)
+          # Mocked per-task identity only. Does not execute kernel code.
+          def may_use_session(permission_bit, owner_token, current_token):
+              return bool(permission_bit and owner_token is not None and owner_token is current_token)
+          task_a, task_b = object(), object()
+          assert may_use_session(True, task_a, task_a)
+          assert not may_use_session(True, task_a, task_b)
+          assert not may_use_session(True, None, task_a)
+          assert not may_use_session(False, task_a, task_a)
+          print("PASS: future session permission requires the same task identity")
+          print("BLOCK: no owner setter, no session FD issuer, no real exec lifecycle, no runtime proof")
+          PY
+          echo "BLOCK: owner-bound candidate is source-only and cannot install session privileges"
