@@ -1,0 +1,47 @@
+diff --git a/kernel/core/init.c b/kernel/core/init.c
+--- a/kernel/core/init.c
++++ b/kernel/core/init.c
+@@ -1,4 +1,5 @@
+ #include <linux/export.h>
++#include <linux/errno.h>
+ #include <linux/fs.h>
+ #include <linux/kobject.h>
+ #include <linux/module.h>
+@@ -168,15 +169,30 @@
+ 	if (ksu_late_loaded) {
+ 		pr_info("late load mode, skipping kprobe hooks\n");
+ 
+-		apply_kernelsu_rules();
+-		cache_sid();
+-		setup_ksu_cred();
++		/*
++		 * Partial G2/G1 gate only: skip late-load root escalation
++		 * unless policy setup and shared-credential setup report
++		 * success. This does not unwind hooks or publish a G5 READY
++		 * credential, and is not approved for integrated deployment.
++		 */
++		int rules_ret;
++		int cred_ret = -EAGAIN;
+ 
+-		// Grant current process (ksud late-load) root
+-		// with KSU SELinux domain before enforcing SELinux, so it
+-		// can continue to access /data/app etc. after enforcement.
+-		escape_to_root_for_init();
++		rules_ret = apply_kernelsu_rules();
++		if (!rules_ret) {
++			cache_sid();
++			cred_ret = setup_ksu_cred();
++		}
+ 
++		// Grant current process (ksud late-load) root only after the
++		// checked prerequisites. Other subsystems remain BUILD HOLD.
++		if (!rules_ret && !cred_ret) {
++			escape_to_root_for_init();
++		} else {
++			pr_err("late-load root escalation blocked: policy=%d cred=%d\n",
++			       rules_ret, cred_ret);
++		}
++
+ 		ksu_allowlist_init();
+ 		ksu_load_allow_list();
+ 

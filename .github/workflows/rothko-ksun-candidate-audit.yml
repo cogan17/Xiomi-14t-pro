@@ -39,6 +39,7 @@ on:
       - patches/rothko-ksun-lateload-sucompat-owned-handler-candidate.patch
       - patches/rothko-ksun-lateload-sucompat-static-key-teardown-candidate.patch
       - patches/rothko-ksun-susfs-builtin-only-mode-guard-candidate.patch
+      - patches/rothko-ksun-lateload-g2-cred-escape-gate-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -82,6 +83,7 @@ on:
       - patches/rothko-ksun-lateload-sucompat-owned-handler-candidate.patch
       - patches/rothko-ksun-lateload-sucompat-static-key-teardown-candidate.patch
       - patches/rothko-ksun-susfs-builtin-only-mode-guard-candidate.patch
+      - patches/rothko-ksun-lateload-g2-cred-escape-gate-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -1872,3 +1874,70 @@ jobs:
           print("BLOCK: G2/G5 credentials, post-exec FD, SUSFS patch conflicts and device runtime remain NO-GO")
           PY
           echo "BLOCK: no device build, AK3 image, merge, release, or flash"
+
+      - name: Verify late-load root escape is gated by policy and shared-cred errors
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-lateload-g2-cred-escape-gate-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          src = Path("/tmp/ksun/kernel/core/init.c").read_text()
+          rules = "rules_ret = apply_kernelsu_rules();"
+          attempt = "cred_ret = setup_ksu_cred();"
+          guard = "if (!rules_ret && !cred_ret) {"
+          escape = "escape_to_root_for_init();"
+          failed = 'pr_err("late-load root escalation blocked: policy=%d cred=%d\\n",'
+          def valid(s):
+              try:
+                  late = s.split("if (ksu_late_loaded) {", 1)[1].split(
+                      "ksu_allowlist_init();", 1)[0]
+                  setup = late.split("if (!rules_ret) {", 1)[1].split("\n\t\t}", 1)[0]
+                  branch = late.split(guard, 1)[1].split("\n\t\t}", 1)[0]
+                  fail_branch = late.split("} else {", 1)[1].split("\n\t\t}", 1)[0]
+                  return all((
+                      s.count("#include <linux/errno.h>") == 1,
+                      late.count("int cred_ret = -EAGAIN;") == 1,
+                      late.count("int rules_ret;") == 1,
+                      late.count(rules) == 1,
+                      late.count(attempt) == 1,
+                      late.count(escape) == 1,
+                      late.count(guard) == 1,
+                      late.count(failed) == 1,
+                      rules in late and rules in late[:late.index("if (!rules_ret) {")],
+                      "cache_sid();" in setup and attempt in setup,
+                      setup.index("cache_sid();") < setup.index(attempt),
+                      escape in branch and failed in fail_branch,
+                      late.index(rules) < late.index(attempt)
+                          < late.index(guard) < late.index(escape),
+                      "return -" not in late and "goto " not in late,
+                      "#ifdef CONFIG_KSU_SUSFS" in s,
+                  ))
+              except (ValueError, IndexError):
+                  return False
+          assert valid(src), "late-load gate must not grant root on policy/cred failure"
+          mutations = (
+              ("ignore policy result", src.replace(
+                  guard, "if (!cred_ret) {", 1)),
+              ("ignore credential result", src.replace(
+                  guard, "if (!rules_ret) {", 1)),
+              ("permit partial failure", src.replace(
+                  guard, "if (!rules_ret || !cred_ret) {", 1)),
+              ("unconditional root grant", src.replace(
+                  guard, "if (true) {", 1)),
+              ("discard status return", src.replace(
+                  attempt, "setup_ksu_cred();", 1)),
+          )
+          for name, changed in mutations:
+              assert changed != src and not valid(changed), (
+                  "unsafe late-load mutation accepted: " + name
+              )
+              print("PASS: rejects unsafe late-load gate mutation — " + name)
+          print("PASS: fail-closed gate suppresses late-load escape on reported G2/G1 failure")
+          print("BLOCK: policy rollback is incomplete, mutable ksu_cred lifetime and consumers are not G5 safe")
+          print("BLOCK: registered hooks cannot be unwound transactionally; no build, merge or release")
+          PY
