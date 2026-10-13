@@ -769,18 +769,19 @@ jobs:
               ))
           assert accepts_pre_latch_contract(source), "G4 pre-latch source structure invalid"
           alterations = [
-              ("skip loaded check", source.replace(gate, "if (false) {", 1)),
-              ("skip hook check", source.replace(gate, "if (false) {", 1).replace(
-                  "if (false) {", gate, 1).replace(gate, "if (false) {", 1)),
-              ("skip SELinux credential check", source.replace(
+              ("skip module rc check", source.replace(gate, "if (false) {", 1)),
+              ("skip init.rc hook check", source.rsplit(gate, 1)[0] +
+                  "if (false) {" + source.rsplit(gate, 1)[1]),
+              ("drop SID check", source.replace(
                   "return ksu_cred && is_task_ksu_domain(ksu_cred);",
                   "return ksu_cred != NULL;", 1)),
-              ("consume loaded flag too early", source.replace(
-                  "    loaded = true;", "    loaded = true;\n    /* shifted */", 1).replace(
-                  gate, "loaded = true;\n    " + gate, 1)),
-              ("consume hook flag too early", source.replace(
-                  "    rc_hooked = true;", "    rc_hooked = true;\n    /* shifted */", 1).replace(
-                  gate, "rc_hooked = true;\n    " + gate, 1)),
+              ("set module loaded before check", source.replace(
+                  gate, "loaded = true;\\n    " + gate, 1)),
+              ("set init.rc hooked before check", source.rsplit(gate, 1)[0] +
+                  "rc_hooked = true;\\n    " + gate + source.rsplit(gate, 1)[1]),
+              ("ignore module rc deferred return", source.replace(
+                  'pr_err("module rc: shared credential unavailable; keep load pending\\n");\\n        return;',
+                  'pr_err("module rc: shared credential unavailable; keep load pending\\n");\\n        ;', 1)),
           ]
           for label, mutated in alterations:
               assert mutated != source, label + ": no mutation"
