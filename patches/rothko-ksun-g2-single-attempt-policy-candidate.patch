@@ -1,0 +1,32 @@
+diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
+--- a/kernel/selinux/rules.c
++++ b/kernel/selinux/rules.c
+@@ -43,9 +43,10 @@
+ 
+ int apply_kernelsu_rules(void)
+ {
+     struct selinux_policy *pol, *old_pol = selinux_state.policy;
+     struct policydb *db;
++    static bool policy_attempted;
+     int ret = 0;
+ 
+     if (!getenforce()) {
+@@ -53,7 +54,19 @@
+     }
+ 
+     mutex_lock(&selinux_state.policy_mutex);
++    /*
++     * Partial G2 one-shot safety barrier only: a failed setup is not
++     * retried against already published or partially initialized state.
++     * Do not reset this flag, and do not interpret it as READY/rollback.
++     * This remains non-deployable until all startup callers are reviewed.
++     */
++    if (policy_attempted) {
++        ret = -EALREADY;
++        goto out_unlock;
++    }
++    policy_attempted = true;
++
+     backup_sepolicy =
+         ksu_dup_sepolicy(rcu_dereference_protected(old_pol, lockdep_is_held(&selinux_state.policy_mutex)));
+     if (IS_ERR(backup_sepolicy)) {
