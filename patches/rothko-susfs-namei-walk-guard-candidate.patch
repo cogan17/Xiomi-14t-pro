@@ -1,7 +1,7 @@
 diff --git a/fs/namei.c b/fs/namei.c
 --- a/fs/namei.c
 +++ b/fs/namei.c
-@@ -42,5 +42,12 @@
+@@ -42,6 +42,13 @@
  #include <linux/uaccess.h>
 +#ifdef CONFIG_KSU_SUSFS_SUS_PATH
 +#include <linux/susfs_def.h>
@@ -14,6 +14,7 @@ diff --git a/fs/namei.c b/fs/namei.c
 +extern bool susfs_is_inode_sus_path(struct inode *inode);
 +#endif
 +
+ /* [Feb-1997 T. Schoebel-Theuer]
 @@ -2259,4 +2266,12 @@
  		int type;
 +#ifdef CONFIG_KSU_SUSFS_SUS_PATH
