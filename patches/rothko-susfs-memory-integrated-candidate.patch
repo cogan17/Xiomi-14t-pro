@@ -1,0 +1,37 @@
+diff --git a/mm/memory.c b/mm/memory.c
+--- a/mm/memory.c
++++ b/mm/memory.c
+@@ -79,6 +79,10 @@
+ #include <linux/sched/sysctl.h>
+ #include <linux/set_memory.h>
+ 
++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++#include <linux/susfs_def.h>
++#endif
++
+ #include <trace/events/kmem.h>
+ 
+ #include <asm/io.h>
+diff --git a/mm/memory.c b/mm/memory.c
+--- a/mm/memory.c
++++ b/mm/memory.c
+@@ -5851,8 +5851,19 @@
+ 	/* ignore errors, just check how much was successfully transferred */
+ 	while (len) {
+ 		int bytes, ret, offset;
+ 		void *maddr;
+ 		struct page *page = NULL;
+ 
++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++		/*
++		 * Candidate: check the current VMA while mmap_read_lock is held,
++		 * before GUP can pin a page that would require cleanup.
++		 */
++		vma = vma_lookup(mm, addr);
++		if (vma && vma->vm_file &&
++		    SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
++			break;
++#endif
++
+ 		ret = get_user_pages_remote(mm, addr, 1,
+ 				gup_flags, &page, &vma, NULL);
