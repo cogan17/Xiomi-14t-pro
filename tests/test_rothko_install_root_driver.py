@@ -81,6 +81,28 @@ class RootDriverIntegrationTests(unittest.TestCase):
         self.assertEqual(kconfig.read_text(), original_config)
         self.assertFalse((self.tree / "drivers/kernelsu").exists())
 
+    def test_kconfig_write_failure_restores_both_build_files(self):
+        makefile = self.tree / "drivers/Makefile"
+        kconfig = self.tree / "drivers/Kconfig"
+        original_make = makefile.read_bytes()
+        original_config = kconfig.read_bytes()
+        original_write = Path.write_text
+        failures = []
+
+        def fail_once(path, content, *args, **kwargs):
+            if path == kconfig and not failures:
+                failures.append(True)
+                raise OSError("simulated Kconfig write failure")
+            return original_write(path, content, *args, **kwargs)
+
+        with patch.object(Path, "write_text", fail_once):
+            with self.assertRaisesRegex(OSError, "simulated Kconfig write failure"):
+                install(self.tree, self.driver)
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(makefile.read_bytes(), original_make)
+        self.assertEqual(kconfig.read_bytes(), original_config)
+        self.assertFalse((self.tree / "drivers/kernelsu").exists())
+
     def test_refuse_unrecognized_kernel_baseline(self):
         (self.tree / "Makefile").write_text("VERSION = 6\nPATCHLEVEL = 1\nSUBLEVEL = 177\n")
         with self.assertRaisesRegex(ValueError, "6.1.57"):
