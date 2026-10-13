@@ -59,6 +59,29 @@ class RootDriverIntegrationTests(unittest.TestCase):
         self.assertEqual(kconfig.read_bytes(), original_config)
         self.assertFalse((self.tree / "drivers/kernelsu").exists())
 
+    def test_rollback_failure_is_explicit_and_other_files_restored(self):
+        makefile = self.tree / "drivers/Makefile"
+        kconfig = self.tree / "drivers/Kconfig"
+        original_config = kconfig.read_text()
+        original_symlink = Path.symlink_to
+        original_write = Path.write_text
+
+        def fail_symlink(path, *args, **kwargs):
+            raise OSError("simulated symlink failure")
+
+        def fail_makefile_restore(path, text, *args, **kwargs):
+            if path == makefile and text == "obj-y += base/\\n":
+                raise OSError("simulated rollback failure")
+            return original_write(path, text, *args, **kwargs)
+
+        with patch.object(Path, "symlink_to", fail_symlink), patch.object(
+            Path, "write_text", fail_makefile_restore
+        ):
+            with self.assertRaisesRegex(RuntimeError, "rollback was incomplete"):
+                install(self.tree, self.driver)
+        self.assertEqual(kconfig.read_text(), original_config)
+        self.assertFalse((self.tree / "drivers/kernelsu").exists())
+
     def test_refuse_unrecognized_kernel_baseline(self):
         (self.tree / "Makefile").write_text("VERSION = 6\nPATCHLEVEL = 1\nSUBLEVEL = 177\n")
         with self.assertRaisesRegex(ValueError, "6.1.57"):
