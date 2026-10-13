@@ -20,6 +20,7 @@ on:
       - patches/rothko-susfs-namei-integrated-candidate.patch
       - patches/rothko-susfs-namei-dcache-enoent-candidate.patch
       - patches/rothko-susfs-namei-slow-lookup-enoent-candidate.patch
+      - patches/rothko-susfs-namei-fast-nonrcu-enoent-candidate.patch
       - patches/rothko-susfs-exec-include-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   pull_request:
@@ -40,6 +41,7 @@ on:
       - patches/rothko-susfs-namei-integrated-candidate.patch
       - patches/rothko-susfs-namei-dcache-enoent-candidate.patch
       - patches/rothko-susfs-namei-slow-lookup-enoent-candidate.patch
+      - patches/rothko-susfs-namei-fast-nonrcu-enoent-candidate.patch
       - patches/rothko-susfs-exec-include-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   workflow_dispatch:
@@ -72,6 +74,7 @@ jobs:
             patches/rothko-susfs-namei-integrated-candidate.patch
             patches/rothko-susfs-namei-dcache-enoent-candidate.patch
             patches/rothko-susfs-namei-slow-lookup-enoent-candidate.patch
+            patches/rothko-susfs-namei-fast-nonrcu-enoent-candidate.patch
             patches/rothko-susfs-exec-include-candidate.patch
       - uses: actions/checkout@v4
         with:
@@ -863,3 +866,68 @@ jobs:
           test "$(git -C bsp diff --name-only)" = \
                "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
           echo "PASS: both temporary source guards fully reversed; prior candidates untouched"
+
+      - name: Prove fast lookup guard applies only to owned non-RCU dentry results
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C bsp rev-parse HEAD)" = b2d8b54a0d8bb002d32dda24e58d2b5d0423546b
+          previous="$(sha256sum bsp/fs/namei.c | cut -d' ' -f1)"
+          # Previous dcache and slow candidates each reverse at the end
+          # of their own tests; reapply solely in this disposable tree.
+          dcache="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-namei-dcache-enoent-candidate.patch"
+          slow="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-namei-slow-lookup-enoent-candidate.patch"
+          fast="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-namei-fast-nonrcu-enoent-candidate.patch"
+          for p in "$dcache" "$slow" "$fast"; do
+            test -s "$p"
+            git -C bsp apply --check --verbose "$p"
+            git -C bsp apply "$p"
+            git -C bsp apply --reverse --check "$p"
+          done
+          git -C bsp diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          from subprocess import check_output
+          src=Path("bsp/fs/namei.c").read_text()
+          base=check_output(["git","-C","bsp","show","HEAD:fs/namei.c"],text=True)
+          begin="static struct dentry *lookup_fast("
+          end="\n/* Fast lookup failed, do it the slow way */"
+          fn=src.split(begin,1)[1].split(end,1)[0]
+          pristine=base.split(begin,1)[1].split(end,1)[0]
+          guard=(
+              "#ifdef CONFIG_KSU_SUSFS_SUS_PATH\n"
+              "\t\t/* __d_lookup() owns a ref; never dput an RCU lookup result. */\n"
+              "\t\tif (likely(status > 0) && d_inode(dentry) &&\n"
+              "\t\t    susfs_is_inode_sus_path(d_inode(dentry))) {\n"
+              "\t\t\tdput(dentry);\n"
+              "\t\t\treturn ERR_PTR(-ENOENT);\n"
+              "\t\t}\n"
+              "#endif\n"
+          )
+          assert fn.count(guard)==1, "guard not unique"
+          assert fn.replace(guard,"",1)==pristine, "unexpected change to existing fast/RCU semantics"
+          start=fn.index("\t} else {\n\t\tdentry = __d_lookup(parent, &nd->last);")
+          end=fn.index("\n\t}\n\tif (unlikely(status <= 0))",start)
+          branch=fn[start:end]
+          assert guard in branch, "guard must remain inside non-RCU else branch"
+          assert branch.index("status = d_revalidate(dentry, nd->flags);") < branch.index(guard)
+          assert guard.index("likely(status > 0)") < guard.index("dput(dentry);") < guard.index("return ERR_PTR(-ENOENT);")
+          assert "__d_lookup_rcu(parent, &nd->last, &nd->next_seq);" in fn.split("\t} else {",1)[0]
+          assert "try_to_unlazy_next(nd, dentry)" in fn.split("\t} else {",1)[0]
+          for label,mutant in (
+              ("skip dput",guard.replace("\t\t\tdput(dentry);\n","")),
+              ("permit invalid revalidation",guard.replace("likely(status > 0) && ","")),
+              ("fall through on hidden result",guard.replace("return ERR_PTR(-ENOENT);","return NULL;")),
+          ):
+              assert mutant!=guard and mutant not in fn, "unsafe mutation accepted: "+label
+              print("PASS: reject unsafe non-RCU mutation — "+label)
+          print("PASS: only positive non-RCU lookup gets owned-ref rejection; RCU path unmodified")
+          print("BLOCK: no RCU, helper concurrency, feature-on compile or device runtime proof")
+          PY
+          for p in "$fast" "$slow" "$dcache"; do
+            git -C bsp apply --reverse "$p"
+          done
+          test "$(sha256sum bsp/fs/namei.c | cut -d ' ' -f1)" = "$previous"
+          test "$(git -C bsp diff --name-only)" = \
+               "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
+          echo "PASS: reversible with existing candidates preserved; no build/merge/release"
