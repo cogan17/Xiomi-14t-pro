@@ -722,7 +722,7 @@ jobs:
           # Host-only reference specification: never imports kernel modules,
           # generates boot artifacts, touches device partitions or calls ioctl.
           python3 -B "$GITHUB_WORKSPACE/tests/test_rothko_ksun_su_exec_intent_model.py"
-          echo "PASS: 26 host-only request/exec/owner/replay and stale-session invalidation cases"
+          echo "PASS: 32 host-only tests, including postcommit exec-failure hazard isolation"
           echo "BLOCK: inputs are NOT cryptographically authenticated; no kernel-owned request"
           echo "BLOCK: no post-exec callback, actual FD issuer or credential rollback proof"
           echo "BLOCK: model's unbounded token set is NOT a production kernel design"
