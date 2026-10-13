@@ -114,3 +114,16 @@ The official pinned 6.1 patch still fails `git apply --check`, including `fs/nam
 - The same commit introduces an isolated three-flavor integration workflow with `KernelSU-Next/KernelSU-Next@02a9e1c5fb2c4fd8117429fe004136332788c1b6`. This pin belongs to the **experimental root-driver integration** path, not to the independent KSUN+SUSFS audit.
 - The independent candidate workflow explicitly fetches `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161`. Their different provenance is intentional at the workflow boundary; no evidence yet proves interchangeable code or an approved migration.
 - **Disposition:** preserve both pins and existing guards. Do not rewrite the installer, add a second integration path, run CI, or assert compatibility. Next technical gate is a targeted source/API compatibility comparison only if it can resolve a concrete integration decision. PR #9 remains Draft / BUILD HOLD.
+
+## Targeted immutable KSUN Kconfig comparison — 2026-10-14
+
+Compared `kernel/Kconfig` directly at the **exact two pinned commits**, not their moving branches:
+
+| Contract | Experimental installer `KernelSU-Next/KernelSU-Next@02a9e1c5` | SUSFS audit `pershoot/KernelSU-Next@3438d6aa` |
+| --- | --- | --- |
+| `config KSU` | `tristate`, `depends on KPROBES && EXT4_FS` | `tristate`, `depends on KPROBES || SUSFS` |
+| `config KSU_SUSFS` in this file | **Absent** | `bool`, `depends on KSU`, `depends on THREAD_INFO_IN_TASK`, `default y` |
+
+- The Kconfig contracts are **not equivalent**. The installer source cannot be treated as a drop-in replacement for the audited KSUN+SUSFS source. Absence of `KSU_SUSFS` is scoped to the inspected upstream `kernel/Kconfig` file, not an assertion about all downstream patches.
+- Keep the installer matrix pinned to its original source; do not change the audited `pershoot` pin or automatically enable SUSFS. Next useful review is the relevant Kbuild/SUSFS API surface at these same immutable commits, without rebuilding or repeating the Kconfig comparison.
+- PR #9 remains Draft / BUILD HOLD; no CI rerun, source integration, or device operation.
