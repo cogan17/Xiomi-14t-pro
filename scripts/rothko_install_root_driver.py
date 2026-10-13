@@ -45,16 +45,24 @@ def install(tree: Path, driver: Path) -> None:
         + 'source "drivers/kernelsu/Kconfig"\n'
         + original_kconfig[endmenu.start():]
     )
-    # Only update files after ALL static checks above.
+    # Apply only after static checks; roll back any partial integration on failure.
     import os
-    output.symlink_to(os.path.relpath(kernel_dir, output.parent), target_is_directory=True)
-    makefile.write_text(
-        original_make.rstrip() + "\n\nobj-$(CONFIG_KSU) += kernelsu/\n",
-        encoding="utf-8",
-    )
-    kconfig.write_text(new_kconfig, encoding="utf-8")
-    if not output.joinpath("Kconfig").is_file():
-        raise ValueError("Integration symlink failed")
+    try:
+        makefile.write_text(
+            original_make.rstrip() + "\n\nobj-$(CONFIG_KSU) += kernelsu/\n",
+            encoding="utf-8",
+        )
+        kconfig.write_text(new_kconfig, encoding="utf-8")
+        output.symlink_to(os.path.relpath(kernel_dir, output.parent), target_is_directory=True)
+        if not output.joinpath("Kconfig").is_file():
+            raise ValueError("Integration symlink failed")
+    except Exception:
+        # Never remove a pre-existing driver: it was rejected above.
+        if output.is_symlink():
+            output.unlink()
+        makefile.write_text(original_make, encoding="utf-8")
+        kconfig.write_text(original_kconfig, encoding="utf-8")
+        raise
 
 
 def verify_baseline(tree: Path) -> None:
