@@ -22,10 +22,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - flavor: KSU
-            repository: tiann/KernelSU
-            source_branch: main
-            source_sha: f895b80a3aad79948ba8074f53cf8f65a314d576
           - flavor: KSUN
             repository: KernelSU-Next/KernelSU-Next
             source_branch: dev

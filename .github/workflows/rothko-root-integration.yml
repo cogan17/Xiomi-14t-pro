@@ -1,6 +1,6 @@
 name: Cogan Rothko - Real Root Driver Integration (Experimental)
 
-# All root flavors are integrated in SEPARATE CI checkouts.
+# Only maintained root choices are KSUN and BakaSU; MAMA/KSU is archived.
 # No SUSFS/NoMount patch is implied. No boot.img, AK3, APK or flashable artifacts.
 on:
   pull_request:
@@ -39,9 +39,6 @@ jobs:
           - flavor: BakaSU
             repo: Baka-SU/BakaSU
             sha: f6cb7e70c10ebde149f3121ae68b945514fd0801
-          - flavor: KernelSU
-            repo: tiann/KernelSU
-            sha: f895b80a3aad79948ba8074f53cf8f65a314d576
           - flavor: KernelSU-Next
             repo: KernelSU-Next/KernelSU-Next
             sha: 02a9e1c5fb2c4fd8117429fe004136332788c1b6

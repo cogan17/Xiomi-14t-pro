@@ -30,9 +30,10 @@ class RootDriverIntegrationTests(unittest.TestCase):
         (self.driver / "kernel/Makefile").write_text("obj-y += core_hook.o\n")
 
     def test_root_flavors_exact_and_distinct(self):
-        self.assertEqual(set(ROOT_REVISIONS), {"KernelSU", "KernelSU-Next", "BakaSU"})
-        self.assertEqual(len({repo for repo, sha in ROOT_REVISIONS.values()}), 3)
+        self.assertEqual(set(ROOT_REVISIONS), {"KernelSU-Next", "BakaSU"})
+        self.assertEqual(len({repo for repo, sha in ROOT_REVISIONS.values()}), 2)
         self.assertTrue(all(len(sha) == 40 for repo, sha in ROOT_REVISIONS.values()))
+        self.assertNotIn("KernelSU", ROOT_REVISIONS)
 
     def test_integrate_one_and_refuse_duplicate(self):
         verify_baseline(self.tree)

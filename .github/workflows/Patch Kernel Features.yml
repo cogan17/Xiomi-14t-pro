@@ -5,15 +5,13 @@ on:
   workflow_dispatch:
     inputs:
       root_flavor:
-        description: 'Root flavor; All means three separate variants'
+        description: 'Root manager: KSUN or BakaSU (KSU/Mama archived)'
         type: choice
         required: true
         default: 'BakaSU'
         options:
-          - 'KernelSU'
           - 'KernelSU-Next'
           - 'BakaSU'
-          - 'All (KSU + KSUN + BakaSU)'
       susfs:
         description: 'SUSFS (planning only)'
         type: boolean
