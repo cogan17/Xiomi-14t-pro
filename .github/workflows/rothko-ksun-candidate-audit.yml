@@ -109,7 +109,7 @@ jobs:
               region = source.split(begin, 1)[1]
               assert region.count(end) >= 1, f"missing branch boundary: {end}"
               region = region.split(end, 1)[0]
-              actual = re.findall(r"\\breturn\\s+([01]);", region)
+              actual = re.findall(r"\breturn\s+([01]);", region)
               assert actual == [str(expected)], f"unsafe return in {begin}: {actual} != {[str(expected)]}"
           denied = (
               ("if (unlikely(!filename_ptr))", "filename = *filename_ptr;"),
@@ -136,8 +136,8 @@ jobs:
           assert success[1].count("return 1;") == 0
           assert success[1].find("*filename_ptr = replacement;") < success[1].find("return 0;")
           assert "susfs_is_current_ksu_domain()" in pre
-          assert len(re.findall(r"\\breturn\\s+1;", pre)) == 9
-          assert len(re.findall(r"\\breturn\\s+1;", wrapper)) == 3
+          assert len(re.findall(r"\breturn\s+1;", pre)) == 9
+          assert len(re.findall(r"\breturn\s+1;", wrapper)) == 3
           print("PASS: 12 scoped non-SU/denied returns are nonzero; only authenticated redirect returns zero")
           print("BLOCK: post-exec session FD lifecycle, credential readiness and release unverified")
           PY
