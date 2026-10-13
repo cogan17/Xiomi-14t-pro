@@ -72,7 +72,7 @@ jobs:
           assert re.search(r"(?m)^#define TIF_PROC_NO_SU 34$", source)
           assert source.count("#define TIF_PROC_NO_SU 34") == 1
           assert "#ifdef CONFIG_KSU_SUSFS\n" in source
-          definitions = re.findall(r"(?m)^#define\\s+(TIF_[A-Z0-9_]+)\\s+(\\d+)", source)
+          definitions = re.findall(r"(?m)^#define\s+(TIF_[A-Z0-9_]+)\s+(\d+)", source)
           assert [n for n, v in definitions if int(v) == 34] == ["TIF_PROC_NO_SU"]
           print("PASS: isolated CONFIG_KSU_SUSFS bit-34 reservation, one ARM64 flag owner")
           print("BLOCK: external vendor bit masks and BSP/ABI/KMI/FD security still need proof")
