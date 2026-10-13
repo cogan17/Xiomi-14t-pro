@@ -105,7 +105,7 @@ jobs:
               stack = []
               for line in source.splitlines():
                   stripped = line.strip()
-                  if re.match(r"^#(?:if|ifdef|ifndef)\\b", stripped):
+                  if re.match(r"^#(?:if|ifdef|ifndef)\b", stripped):
                       stack.append(stripped)
                   elif stripped.startswith("#else"):
                       assert stack
@@ -120,8 +120,8 @@ jobs:
           def path_contract(build, source, header_src):
               # Hooks compiled only for the KPROBES + non-SUSFS alternative.
               bridge_block = (
-                  "ifneq ($(strip $(CONFIG_KSU_SUSFS)),y)\\n"
-                  "ifeq ($(strip $(CONFIG_KPROBES)),y)\\n"
+                  "ifneq ($(strip $(CONFIG_KSU_SUSFS)),y)\n"
+                  "ifeq ($(strip $(CONFIG_KPROBES)),y)\n"
                   "kernelsu-objs += hook/syscall_event_bridge.o"
               )
               if bridge_block not in build:
