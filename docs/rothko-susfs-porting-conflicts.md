@@ -100,3 +100,10 @@ The official pinned 6.1 patch still fails `git apply --check`, including `fs/nam
 - `build.config.gki` declares `DEFCONFIG=gki_defconfig`; `build.config.aarch64` declares `ARCH=arm64`; `build.config.gki.aarch64` may source `GKI_BUILD_CONFIG_FRAGMENT`, but the smoke script does not use that build-config mechanism. Therefore a passing smoke check must **not** be promoted to KSUN/SUSFS compatibility proof.
 - Existing installer remains an isolated-checkout integration tool with a different KSUN repository/commit pin from PR #9's audit. Resolve that provenance decision before creating any root-enabled configuration candidate.
 - **Next:** inspect existing Rothko-specific workflow/build entrypoints to determine whether a separate approved root-enabled config path exists; do not alter generic smoke, launch a compile, or add redundant CI. PR #9 stays Draft / BUILD HOLD.
+
+## Existing root-enabled CI path — 2026-10-14
+
+- Inspected `.github/workflows/rothko-root-integration.yml`: it already runs isolated source integration for separate root flavors, including KSUN `KernelSU-Next/KernelSU-Next@02a9e1c5`, and has a **BakaSU-only** experimental `compile-bakasu` job. That job uses `gki_defconfig`, enables `CONFIG_KSU` and `CONFIG_KSU_TRACEPOINT_HOOK`, **disables `CONFIG_KSU_SUSFS`**, runs `olddefconfig`, and labels the resulting Image **non-flashable**.
+- This is an existing **root-enabled diagnostic path**, but **not** a KSUN+SUSFS build path and not a Rothko device-boot proof. The source audit PR pins a different KSUN (`pershoot@3438d6aa`); do not reuse the older KSUN installer matrix as evidence for that pin.
+- No need for a new root-enabled workflow: the next meaningful step is to resolve the intended KSUN provenance and existing SUSFS/security blockers before changing any root-enabled CI. Keep generic smoke root-free and BakaSU experimental flow unchanged.
+- Source-only documentation checkpoint; no CI dispatch, compile, integration, merge, or release. PR #9 Draft / BUILD HOLD.
