@@ -11,6 +11,7 @@ on:
       - patches/rothko-susfs-task-mmu-rollup-candidate.patch
       - patches/rothko-susfs-task-mmu-pagemap-candidate.patch
       - patches/rothko-susfs-proc-map-files-candidate.patch
+      - patches/rothko-susfs-proc-readlink-redirect-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   pull_request:
     paths:
@@ -21,6 +22,7 @@ on:
       - patches/rothko-susfs-task-mmu-rollup-candidate.patch
       - patches/rothko-susfs-task-mmu-pagemap-candidate.patch
       - patches/rothko-susfs-proc-map-files-candidate.patch
+      - patches/rothko-susfs-proc-readlink-redirect-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   workflow_dispatch:
 permissions:
@@ -43,6 +45,7 @@ jobs:
             patches/rothko-susfs-task-mmu-rollup-candidate.patch
             patches/rothko-susfs-task-mmu-pagemap-candidate.patch
             patches/rothko-susfs-proc-map-files-candidate.patch
+            patches/rothko-susfs-proc-readlink-redirect-candidate.patch
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -67,6 +70,9 @@ jobs:
           test -s susfs/kernel_patches/include/linux/susfs_def.h
           # The candidate guard must resolve against the pinned upstream definition.
           grep -Fq 'SUSFS_IS_INODE_SUS_MAP' susfs/kernel_patches/include/linux/susfs_def.h
+          grep -Fq 'SUSFS_IS_INODE_OPEN_REDIRECT' susfs/kernel_patches/include/linux/susfs_def.h
+          grep -Fq 'susfs_open_redirect_spoof_do_proc_readlink' susfs/kernel_patches/fs/susfs.c
+          grep -Fq 'susfs_open_redirect_spoof_do_proc_readlink' susfs/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch
       - name: Validate memory candidate in disposable BSP checkout
         shell: bash
         run: |
@@ -271,4 +277,50 @@ jobs:
             echo "- Guard precedes visible mapping position and radix entry creation"
             echo "- mmap lock and original emission paths retained by structural assertions"
             echo "- Neither VFS behavior nor whole SUSFS integration is approved for devices"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Validate bounded proc readlink OPEN_REDIRECT candidate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-proc-readlink-redirect-candidate.patch"
+          test -s "$patch"
+          git -C bsp apply --check "$patch"
+          git -C bsp apply "$patch"
+          git -C bsp diff --check
+          test "$(git -C bsp diff --name-only)" = "$(printf 'fs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
+          python3 - <<'PY'
+          from pathlib import Path
+          src = Path("bsp/fs/proc/base.c").read_text()
+          assert "#if defined(CONFIG_KSU_SUSFS_SUS_MAP) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)\n#include <linux/susfs_def.h>\n#endif" in src
+          begin = src.index("static int do_proc_readlink(")
+          end = src.index("static int proc_pid_readlink(", begin)
+          body = src[begin:end]
+          assert "kmalloc(PATH_MAX, GFP_KERNEL)" in body
+          allocated = body.index("if (!tmp)")
+          enable = body.index("#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT", allocated)
+          limit = body.index("min_t(int, buflen, PATH_MAX - 1)", enable)
+          clear = body.index("memset(tmp, 0, PATH_MAX);", limit)
+          helper = body.index("susfs_open_redirect_spoof_do_proc_readlink(inode, tmp, limit)", clear)
+          check_len = body.index("strnlen(tmp, PATH_MAX)", helper)
+          bound = body.index("min_t(size_t, spoof_len, (size_t)buflen)", check_len)
+          usercopy = body.index("copy_to_user(buffer, tmp, len)", bound)
+          fallback = body.index("pathname = d_path(path, tmp, PATH_MAX);", usercopy)
+          release = body.index("kfree(tmp);", fallback)
+          assert allocated < enable < limit < clear < helper < check_len < bound < usercopy < fallback < release
+          assert "buflen > 0" in body[enable:limit], "zero-length guard missing"
+          assert "spoof_len == PATH_MAX" in body[helper:bound], "unterminated helper buffer not rejected"
+          assert "len = -EOVERFLOW;" in body[check_len:bound], "overflow error path missing"
+          assert "len = -EFAULT;" in body[usercopy:fallback], "user copy error path missing"
+          assert "goto out;" in body[usercopy:fallback], "success cleanup bypass missing"
+          assert "if (IS_ERR(pathname))" in body[fallback:], "ordinary readlink fallback lost"
+          print("PASS: pinned helper and bounded redirect candidate apply in disposable BSP")
+          print("PASS: capped helper length, initialized buffer, bounded usercopy, d_path fallback")
+          print("BLOCK: helper runtime return semantics, concurrent inode state, and full VFS integration unproven")
+          PY
+          {
+            echo "### Isolated proc readlink OPEN_REDIRECT candidate"
+            echo "- The sixth source-only patch layers on existing proc map_files candidate"
+            echo "- Helper name checked against exact pinned upstream SUSFS source and patch"
+            echo "- Initialized temporary kernel buffer, length limits, error handling, fallback/cleanup anchors checked"
+            echo "- This is NOT a complete semantic proof, compiled source tree, or permission to ship/flash"
           } >> "$GITHUB_STEP_SUMMARY"
