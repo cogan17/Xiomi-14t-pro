@@ -28,11 +28,23 @@ jobs:
         with:
           persist-credentials: false
           path: candidate
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            patches/rothko-susfs-memory-integrated-candidate.patch
+            patches/rothko-susfs-task-mmu-smap-candidate.patch
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
           ref: dev/rothko
           path: bsp
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            mm/memory.c
+            fs/proc/task_mmu.c
       - name: Verify exact pinned SUSFS header prerequisite
         shell: bash
         run: |
