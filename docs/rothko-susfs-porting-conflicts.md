@@ -66,3 +66,10 @@ The official pinned 6.1 patch still fails `git apply --check`, including `fs/nam
 - **Scope limit:** absence in these three files is **not** proof that KSUN is disabled; source-patch and build-time config fragments may introduce symbols. `THREAD_INFO_IN_TASK` may also be defined by architecture Kconfig outside these inspected files.
 - Do not force `CONFIG_KSU_SUSFS=y`, assume `KSU=y`, or change kernel configuration until the exact KSUN Kconfig integration and effective `.config` generation path are established. The pinned SUSFS Kconfig declaration has already been verified in run 38447497791 and must not be reaudited.
 - **Next:** inspect existing root integration workflow/scripts and any defconfig fragments for where KSUN is injected, then classify the actual configuration source. No additional CI is justified by this text inspection alone. PR Draft / BUILD HOLD.
+
+## Rothko Kconfig entrypoint inspection — 2026-10-14
+
+- Inspected the PR-branch files `Kconfig`, `drivers/Kconfig`, `fs/Kconfig`, and `arch/arm64/configs/gki_defconfig`. None contains a literal `KSU` or `SUSFS` declaration/reference; `gki_defconfig` also has no literal `THREAD_INFO_IN_TASK` entry. These are **specific file observations**, not proof the effective kernel config lacks the symbols.
+- `scripts/rothko_susfs_source_probe.sh` explicitly acquires pinned external KSUN and SUSFS sources for source-only auditing. The current repository's Kconfig entrypoints do not yet establish how external KSUN Kconfig is wired into the BSP or whether the target build config satisfies `THREAD_INFO_IN_TASK`.
+- **Next non-duplicative gate:** inspect the pinned KSUN Kconfig and its intended source/include hook against the Rothko tree, and determine the effective config via the actual target build configuration before proposing a source integration. Do not add speculative `source` directives or force config values.
+- No kernel changes, new CI, or merge authorized; Draft PR #9 / BUILD HOLD.
