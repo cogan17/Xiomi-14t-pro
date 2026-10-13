@@ -77,6 +77,53 @@ class SuRequestContractTests(unittest.TestCase):
             credential_transition_ok=True, selinux_transition_ok=True))
         self.assertFalse(self.ledger.authorize_issuer_once(self.owner, self.request))
 
+    def test_duplicate_success_callback_revokes_ready_permission(self):
+        self.assertTrue(self.begin())
+        self.assertTrue(self.finish())
+        self.assertFalse(self.finish())
+        self.assertFalse(self.ledger.authorize_issuer_once(self.owner, self.request))
+
+    def test_new_exec_after_success_revokes_ready_permission(self):
+        self.assertTrue(self.begin())
+        self.assertTrue(self.finish())
+        self.assertFalse(self.ledger.exec_result(
+            self.owner, RequestIdentity(), exec_succeeded=True,
+            credential_transition_ok=True, selinux_transition_ok=True))
+        self.assertFalse(self.ledger.authorize_issuer_once(self.owner, self.request))
+
+    def test_failed_new_exec_after_success_revokes_ready_permission(self):
+        self.assertTrue(self.begin())
+        self.assertTrue(self.finish())
+        self.assertFalse(self.ledger.exec_result(
+            self.owner, RequestIdentity(), exec_succeeded=False,
+            credential_transition_ok=False, selinux_transition_ok=False))
+        self.assertFalse(self.ledger.authorize_issuer_once(self.owner, self.request))
+
+    def test_duplicate_begin_while_pending_revokes_old_permission(self):
+        self.assertTrue(self.begin())
+        second = RequestIdentity()
+        self.assertFalse(self.ledger.begin(
+            self.owner, second, su_intent=True, allowlisted=True,
+            chrooted=False, fd_profile_eligible=True, precommit_checks_ok=True))
+        self.assertFalse(self.finish())
+        self.assertFalse(self.ledger.authorize_issuer_once(self.owner, self.request))
+
+    def test_new_begin_after_success_revokes_old_permission(self):
+        self.assertTrue(self.begin())
+        self.assertTrue(self.finish())
+        self.assertFalse(self.ledger.begin(
+            self.owner, RequestIdentity(), su_intent=True, allowlisted=True,
+            chrooted=False, fd_profile_eligible=True, precommit_checks_ok=True))
+        self.assertFalse(self.ledger.authorize_issuer_once(self.owner, self.request))
+
+    def test_denied_new_begin_after_success_revokes_old_permission(self):
+        self.assertTrue(self.begin())
+        self.assertTrue(self.finish())
+        self.assertFalse(self.ledger.begin(
+            self.owner, RequestIdentity(), su_intent=False, allowlisted=True,
+            chrooted=False, fd_profile_eligible=True, precommit_checks_ok=True))
+        self.assertFalse(self.ledger.authorize_issuer_once(self.owner, self.request))
+
     def test_other_task_cannot_complete_or_consume_request(self):
         self.assertTrue(self.begin())
         other = TaskIdentity()
