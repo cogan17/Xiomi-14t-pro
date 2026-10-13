@@ -1,0 +1,30 @@
+name: Rothko root installer unit tests (source-only)
+on:
+  push:
+    branches:
+      - feat/rothko-ksun-susfs-compat-audit
+    paths:
+      - .github/workflows/rothko-root-installer-tests.yml
+      - scripts/rothko_install_root_driver.py
+      - tests/test_rothko_install_root_driver.py
+  pull_request:
+    paths:
+      - .github/workflows/rothko-root-installer-tests.yml
+      - scripts/rothko_install_root_driver.py
+      - tests/test_rothko_install_root_driver.py
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: rothko-root-installer-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  installer-unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate installer and rollback with synthetic filesystem only
+        run: python3 -m unittest discover -s tests -p 'test_rothko_install_root_driver.py' -v
