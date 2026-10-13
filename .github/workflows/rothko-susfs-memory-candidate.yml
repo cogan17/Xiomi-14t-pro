@@ -645,12 +645,15 @@ jobs:
           mkdir -p "$tmp/fs/proc"
           git -C bsp show "$base:fs/proc/task_mmu.c" > "$tmp/fs/proc/task_mmu.c"
           original="$(sha256sum "$tmp/fs/proc/task_mmu.c" | cut -d' ' -f1)"
-          # Existing eight isolated candidates plus show_map_vma are already
-          # staged in bsp. This is a content-identity check, not a fifth mutation.
+          # Prior 8 candidate patches remain staged; the ninth show_map_vma
+          # candidate was deliberately reversed by its own source-only step.
+          showmap="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-task-mmu-show-map-vma-candidate.patch"
+          staged_before="$(sha256sum bsp/fs/proc/task_mmu.c | cut -d' ' -f1)"
+          git -C bsp apply --check --verbose "$showmap"
+          git -C bsp apply "$showmap"
           git -C "$tmp" apply --check --verbose "$patch"
           git -C "$tmp" apply "$patch"
           git -C "$tmp" apply --reverse --check "$patch"
-          git -C "$tmp" diff --check
           cmp "$tmp/fs/proc/task_mmu.c" bsp/fs/proc/task_mmu.c
           test "$(sha256sum "$tmp/fs/proc/task_mmu.c" | cut -d' ' -f1)" = \
                "$(sha256sum bsp/fs/proc/task_mmu.c | cut -d' ' -f1)"
@@ -658,6 +661,10 @@ jobs:
           git -C "$tmp" apply --reverse "$patch"
           test "$(sha256sum "$tmp/fs/proc/task_mmu.c" | cut -d' ' -f1)" = "$original"
           echo "PASS: consolidation reverses exactly to unchanged pinned Rothko BSP file"
+          git -C bsp apply --reverse "$showmap"
+          test "$(sha256sum bsp/fs/proc/task_mmu.c | cut -d' ' -f1)" = "$staged_before"
+          git -C bsp diff --check
+          echo "PASS: show_map_vma fourth patch reversed and earlier three task_mmu candidates retained"
           test "$(git -C bsp diff --name-only)" = \
                "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
           echo "PASS: existing isolated patch source remains unchanged by comparison"
