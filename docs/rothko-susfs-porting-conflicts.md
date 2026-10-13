@@ -31,3 +31,10 @@ CI run [38321629204](https://github.com/cogan17/Xiomi-14t-pro/actions/runs/38321
 The official pinned 6.1 patch still fails `git apply --check`, including `fs/namei.c`, `fs/proc/base.c`, `fs/proc/task_mmu.c`, and `mm/memory.c`. In particular the `mm/memory.c` failure at upstream context near line 79 is not proof of a missing SUSFS header alone; it is a mismatch of surrounding BSP include context. A hunk's context lines appearing somewhere in the file does not establish a safe application location.
 
 **Porting order:** first verify the SUSFS header and dependency provenance against the pinned upstream tree, then reconcile each conflicting hunk against exact Rothko BSP functions, then validate the KSUN companion patch and credential/FD, execve, and ARM64 flag contracts. Keep the candidate source-only and PR Draft. Do not bypass the release blockers, auto-fuzz patch offsets, build a flashable image, or merge on the strength of this classification report.
+
+## Checkpoint ROTHKO-ACA5010 — Kconfig evidence boundary (2026-10-14)
+
+- Existing `susfs-core-layout` job inventories upstream `susfs.c` (including patch-added paths), `susfs.h` / `susfs_def.h`, Kconfig paths touched by the official pinned kernel patch, and textual references to `CONFIG_KSU_SUSFS` / `susfs.o`.
+- **Not proven:** Kconfig symbol declaration, `depends on` / `select` semantics, kernel built-in vs module behavior, transitive header requirements, compile/link success, or compatibility with the pinned KSUN companion and Rothko BSP. An inventory PASS must not clear these gates.
+- Do not duplicate existing source audits or launch a fresh CI merely to restate these limitations. The next source-only decision should use actual job evidence and inspect exact Kconfig declaration/dependency blocks before proposing a BSP-specific candidate.
+- **Efficiency rule:** reuse validated candidates; at most two attempts for the same approach, stop after the first success. PR remains Draft; BUILD HOLD and all runtime/security blockers remain unchanged.
