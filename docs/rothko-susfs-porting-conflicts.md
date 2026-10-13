@@ -38,3 +38,10 @@ The official pinned 6.1 patch still fails `git apply --check`, including `fs/nam
 - **Not proven:** Kconfig symbol declaration, `depends on` / `select` semantics, kernel built-in vs module behavior, transitive header requirements, compile/link success, or compatibility with the pinned KSUN companion and Rothko BSP. An inventory PASS must not clear these gates.
 - Do not duplicate existing source audits or launch a fresh CI merely to restate these limitations. The next source-only decision should use actual job evidence and inspect exact Kconfig declaration/dependency blocks before proposing a BSP-specific candidate.
 - **Efficiency rule:** reuse validated candidates; at most two attempts for the same approach, stop after the first success. PR remains Draft; BUILD HOLD and all runtime/security blockers remain unchanged.
+
+## Source-only Kconfig dependency review — 2026-10-14
+
+- **External reference, not pinned proof:** the public Simonpunk `gki-android14-6.1` companion patch currently displays `config KSU_SUSFS` as a `bool` depending on `KSU` and `THREAD_INFO_IN_TASK`, with `default y`. This is a *moving branch* observation; it must be rechecked against the immutable `5192aa2` tree before being treated as the pinned contract.
+- **Integration implications:** `depends on KSU` alone does not establish that SUSFS can safely link when `KSU=m`. The existing Rothko `fs/Makefile` candidate uses `obj-$(CONFIG_KSU_SUSFS) += susfs.o`; its isolated y/n/unset success proves only object selection, not linkage. Built-in-only behavior, Kconfig symbol ownership and compatibility with KSUN must be checked together.
+- **Next bounded source-only action:** extract the `config KSU_SUSFS` block and adjacent `depends on` / `select` statements from the *pinned* companion patch, compare to Rothko Kconfig and candidate Makefile, then classify `KSU=y/m/n` against `KSU_SUSFS=y/n`. Do not create another CI or modify the kernel merely for this documentation review.
+- **No promotion:** no claim of Kconfig compatibility, compile, link, ABI, runtime safety or release readiness. PR #9 remains Draft / BUILD HOLD.
