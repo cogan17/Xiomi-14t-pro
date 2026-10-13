@@ -14,6 +14,7 @@ on:
       - patches/rothko-susfs-task-mmu-integrated-candidate.patch
       - patches/rothko-susfs-proc-map-files-candidate.patch
       - patches/rothko-susfs-proc-readlink-redirect-candidate.patch
+      - patches/rothko-susfs-proc-base-integrated-candidate.patch
       - patches/rothko-susfs-namei-walk-guard-candidate.patch
       - patches/rothko-susfs-namei-vfs-readlink-candidate.patch
       - patches/rothko-susfs-exec-include-candidate.patch
@@ -30,6 +31,7 @@ on:
       - patches/rothko-susfs-task-mmu-integrated-candidate.patch
       - patches/rothko-susfs-proc-map-files-candidate.patch
       - patches/rothko-susfs-proc-readlink-redirect-candidate.patch
+      - patches/rothko-susfs-proc-base-integrated-candidate.patch
       - patches/rothko-susfs-namei-walk-guard-candidate.patch
       - patches/rothko-susfs-namei-vfs-readlink-candidate.patch
       - patches/rothko-susfs-exec-include-candidate.patch
@@ -58,6 +60,7 @@ jobs:
             patches/rothko-susfs-task-mmu-integrated-candidate.patch
             patches/rothko-susfs-proc-map-files-candidate.patch
             patches/rothko-susfs-proc-readlink-redirect-candidate.patch
+            patches/rothko-susfs-proc-base-integrated-candidate.patch
             patches/rothko-susfs-namei-walk-guard-candidate.patch
             patches/rothko-susfs-namei-vfs-readlink-candidate.patch
             patches/rothko-susfs-exec-include-candidate.patch
@@ -669,3 +672,35 @@ jobs:
                "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
           echo "PASS: existing isolated patch source remains unchanged by comparison"
           echo "BLOCK: identity check does not prove compiler/linker, SRCU runtime, or full SUSFS integration"
+
+      - name: Confirm proc_base unified port exactly matches both prior candidates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base=b2d8b54a0d8bb002d32dda24e58d2b5d0423546b
+          patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-proc-base-integrated-candidate.patch"
+          test "$(git -C bsp rev-parse HEAD)" = "$base"
+          test -s "$patch"
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          git -C "$tmp" init -q
+          mkdir -p "$tmp/fs/proc"
+          git -C bsp show "$base:fs/proc/base.c" > "$tmp/fs/proc/base.c"
+          original="$(sha256sum "$tmp/fs/proc/base.c" | cut -d' ' -f1)"
+          staged="$(sha256sum bsp/fs/proc/base.c | cut -d' ' -f1)"
+          # Both original map_files and bounded readlink patches remain applied
+          # to the disposable BSP by earlier steps, not modified by this check.
+          git -C "$tmp" apply --check --verbose "$patch"
+          git -C "$tmp" apply "$patch"
+          git -C "$tmp" apply --reverse --check "$patch"
+          cmp "$tmp/fs/proc/base.c" bsp/fs/proc/base.c
+          test "$(sha256sum "$tmp/fs/proc/base.c" | cut -d' ' -f1)" = "$staged"
+          echo "PASS: integrated proc/base candidate equals both previously verified patches byte-for-byte"
+          git -C "$tmp" apply --reverse "$patch"
+          test "$(sha256sum "$tmp/fs/proc/base.c" | cut -d' ' -f1)" = "$original"
+          test "$(sha256sum bsp/fs/proc/base.c | cut -d' ' -f1)" = "$staged"
+          git -C bsp diff --check
+          test "$(git -C bsp diff --name-only)" = \
+               "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
+          echo "PASS: integrated proc/base patch reverses to pristine BSP; earlier candidates retained"
+          echo "BLOCK: structural port equivalence is not compile, runtime, helper semantics or device validation"
