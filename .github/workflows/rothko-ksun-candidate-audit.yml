@@ -26,6 +26,7 @@ on:
       - tests/test_rothko_ksun_shared_cred_candidate.py
       - patches/rothko-ksun-shared-cred-stage-guard-candidate.patch
       - patches/rothko-ksun-shared-cred-rc-prelatch-candidate.patch
+      - patches/rothko-ksun-g2-policy-backup-preflight-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -56,6 +57,7 @@ on:
       - tests/test_rothko_ksun_shared_cred_candidate.py
       - patches/rothko-ksun-shared-cred-stage-guard-candidate.patch
       - patches/rothko-ksun-shared-cred-rc-prelatch-candidate.patch
+      - patches/rothko-ksun-g2-policy-backup-preflight-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -796,3 +798,79 @@ jobs:
           print("BLOCK: still no G2/G5 safe initialization unwind, device compile or release")
           PY
           echo "BLOCK: G4 is only a reversible, source-only pre-latch candidate"
+
+      - name: Verify G2 backup snapshot exists before SELinux policy publication (source only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-g2-policy-backup-preflight-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          base_dir = Path("/tmp/ksun")
+          current = (base_dir / "kernel/selinux/rules.c").read_text()
+          pristine = subprocess.check_output(
+              ["git", "-C", str(base_dir), "show",
+               "3438d6aa431f96a23f9e625bec3d53ce1fb14161:kernel/selinux/rules.c"],
+              text=True
+          )
+          start_marker = "    /*\n     * Partial G2 fail-closed barrier:"
+          end_marker = "    pol = ksu_dup_sepolicy("
+          idx = current.index(start_marker)
+          next_idx = current.index(end_marker, idx)
+          insert = current[idx:next_idx]
+          guard = "    if (!backup_sepolicy) {"
+          def safe_preflight(content):
+              try:
+                  loc = content.index(start_marker)
+                  end = content.index(end_marker, loc)
+                  fragment = content[loc:end]
+                  main = content.split("void apply_kernelsu_rules()", 1)[1].split(
+                      "#define KSU_SEPOLICY_MAX_BATCH_SIZE", 1)[0]
+                  return all((
+                      content.count(start_marker) == 1,
+                      fragment.count(guard) == 1,
+                      fragment.count("goto out_unlock;") == 1,
+                      "    if (!backup_sepolicy) {\n" in fragment,
+                      "    }\n" in fragment,
+                      content.replace(fragment, "", 1) == pristine,
+                      main.count("backup_sepolicy = NULL;") == 3,
+                      main.index("mutex_lock(&selinux_state.policy_mutex);") <
+                      main.index("backup_sepolicy =") < main.index(start_marker) <
+                      main.index(end_marker) < main.index(
+                          "rcu_assign_pointer(selinux_state.policy, pol);"),
+                      main.index("out_unlock:") < main.index(
+                          "mutex_unlock(&selinux_state.policy_mutex);"),
+                  ))
+              except (ValueError, IndexError):
+                  return False
+          assert safe_preflight(current), "G2 policy backup candidate does not fail closed"
+          mutations = [
+              ("omit prerequisite block", current.replace(insert, "", 1)),
+              ("invert backup presence check", current.replace(
+                  guard, "    if (backup_sepolicy) {", 1)),
+              ("ignore missing backup", current.replace(
+                  guard, "    if (false) {", 1)),
+              ("remove guarded unlock jump", current.replace(
+                  "        goto out_unlock;\n    }\n    pol = ksu_dup_sepolicy(",
+                  "        ;\n    }\n    pol = ksu_dup_sepolicy(", 1)),
+              ("move policy clone before backup guard", current.replace(
+                  guard, "    pol = ksu_dup_sepolicy(rcu_dereference_protected(\n"
+                  "        old_pol, lockdep_is_held(&selinux_state.policy_mutex)));\n"
+                  + guard, 1)),
+              ("accept broken backup allocation", current.replace(
+                  "if (IS_ERR(backup_sepolicy)) {", "if (false) {", 1)),
+          ]
+          for label, mutation in mutations:
+              assert mutation != current, label + ": mutation not applied"
+              assert not safe_preflight(mutation), label + ": unsafe mutation passed"
+              print("PASS: reject unsafe G2 policy mutation — " + label)
+          print("PASS: pinned KSUN policy snapshot prerequisite is fail-closed")
+          print("BLOCK: rule application is void/non-transactional; failures after publish still unresolved")
+          print("BLOCK: repeated policy application, backup ownership, and G2/G5 unwind are unproven")
+          PY
+          echo "BLOCK: G2 policy backup candidate is source-only, not deployable"
