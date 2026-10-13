@@ -1561,7 +1561,8 @@ jobs:
           assert valid(source, header), "adb_root handler ownership guard invalid"
           cases = (
               ("ignore feature registry error", source.replace(
-                  "        return ret;", "        return 0;", 1), header),
+                  'pr_err("Failed to register adb_root feature handler: %d\\n", ret);\n        return ret;',
+                  'pr_err("Failed to register adb_root feature handler: %d\\n", ret);\n        return 0;', 1), header),
               ("allow duplicate init", source.replace(
                   "if (adb_root_handler_owned)\n        return -EALREADY;",
                   "if (false)\n        return -EALREADY;", 1), header),
