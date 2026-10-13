@@ -253,6 +253,22 @@ jobs:
           print("SUSFS core introduced by official kernel patch:", patch_core)
           print("SUSFS header candidates:", headers)
           print("Kconfig paths touched by official patch:", patch_kconfig)
+          companion = root / "kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
+          if not companion.is_file():
+              raise SystemExit("BLOCK: pinned KSUN companion patch missing")
+          companion_lines = companion.read_text(errors="replace").splitlines()
+          config_starts = [i for i, line in enumerate(companion_lines) if line.startswith("+config KSU_SUSFS") or line.startswith(" config KSU_SUSFS")]
+          print("Pinned KSUN companion KSU_SUSFS declaration blocks:")
+          for i in config_starts:
+              block = []
+              for line in companion_lines[i:i+35]:
+                  if block and (line.startswith(("+config ", " config ", "+endmenu", " endmenu", "diff --git ", "@@ "))):
+                      break
+                  block.append(line)
+              for line in block:
+                  print(line)
+          if not config_starts:
+              raise SystemExit("BLOCK: pinned companion patch lacks identifiable KSU_SUSFS declaration")
           print("Official patch linkage references:")
           for line in references[:35]:
               print(line)
