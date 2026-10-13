@@ -14,6 +14,7 @@ on:
       - patches/rothko-susfs-proc-readlink-redirect-candidate.patch
       - patches/rothko-susfs-namei-walk-guard-candidate.patch
       - patches/rothko-susfs-namei-vfs-readlink-candidate.patch
+      - patches/rothko-susfs-exec-include-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   pull_request:
     paths:
@@ -27,6 +28,7 @@ on:
       - patches/rothko-susfs-proc-readlink-redirect-candidate.patch
       - patches/rothko-susfs-namei-walk-guard-candidate.patch
       - patches/rothko-susfs-namei-vfs-readlink-candidate.patch
+      - patches/rothko-susfs-exec-include-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   workflow_dispatch:
 permissions:
@@ -52,6 +54,7 @@ jobs:
             patches/rothko-susfs-proc-readlink-redirect-candidate.patch
             patches/rothko-susfs-namei-walk-guard-candidate.patch
             patches/rothko-susfs-namei-vfs-readlink-candidate.patch
+            patches/rothko-susfs-exec-include-candidate.patch
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -65,6 +68,7 @@ jobs:
             fs/proc/task_mmu.c
             fs/proc/base.c
             fs/namei.c
+            fs/exec.c
       - name: Verify exact pinned SUSFS header prerequisite
         shell: bash
         run: |
@@ -467,3 +471,54 @@ jobs:
             echo "- Official pinned SUSFS helper occurrence verified"
             echo "- No kernel compilation, merge, releases, flash images, or runtime approval"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Isolate conditional SUSFS exec include without pre or post-exec hook
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base=b2d8b54a0d8bb002d32dda24e58d2b5d0423546b
+          patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-exec-include-candidate.patch"
+          test "$(git -C bsp rev-parse HEAD)" = "$base"
+          test -s "$patch"
+          test -s bsp/include/linux/susfs_def.h
+          # Verify against the exact pinned official upstream patch, not a mirror.
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          upstream = Path("susfs/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch").read_text()
+          marker = "diff --git a/fs/exec.c b/fs/exec.c"
+          assert upstream.count(marker) == 1, "official exec file hunk not uniquely located"
+          section = upstream.split(marker, 1)[1].split("\ndiff --git ", 1)[0]
+          required = ["+#ifdef CONFIG_KSU_SUSFS", "+#include <linux/susfs_def.h>", "+#endif"]
+          matches = [section.find(x) for x in required]
+          assert all(i >= 0 for i in matches) and matches == sorted(matches), (
+              "pinned Simonpunk exec include guard must be reviewed before port"
+          )
+          print("PASS: pinned upstream exec.c contains conditional SUSFS header")
+          PY
+          git -C bsp apply --check --verbose "$patch"
+          git -C bsp apply "$patch"
+          git -C bsp apply --reverse --check "$patch"
+          git -C bsp diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          from subprocess import check_output
+          src = Path("bsp/fs/exec.c").read_text()
+          base = check_output(["git", "-C", "bsp", "show",
+                               "b2d8b54a0d8bb002d32dda24e58d2b5d0423546b:fs/exec.c"],
+                              text=True)
+          include = "#ifdef CONFIG_KSU_SUSFS\n#include <linux/susfs_def.h>\n#endif\n"
+          assert src.count(include) == 1
+          assert src.replace(include, "", 1) == base, (
+              "exec candidate must not change any hook, credential or return path"
+          )
+          assert "retval = exec_binprm(bprm);" in src
+          assert "/* execve succeeded */" in src
+          assert "retval = bprm_execve(bprm, fd, filename, flags);" in src
+          print("PASS: isolated exec header candidate changes only 3 include-guard lines")
+          print("BLOCK: no pre/post exec hook, session FD issuer or success/rollback contract")
+          PY
+          git -C bsp apply --reverse "$patch"
+          test "$(git -C bsp show HEAD:fs/exec.c | sha256sum | cut -d' ' -f1)" = "$(sha256sum bsp/fs/exec.c | cut -d' ' -f1)"
+          test "$(git -C bsp diff --name-only)" = "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
+          echo "PASS: exec.c pristine restored; existing eight candidates remain isolated"
