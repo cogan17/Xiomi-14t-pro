@@ -8,6 +8,7 @@ on:
       - patches/rothko-susfs-memory-vma-candidate.patch
       - patches/rothko-susfs-memory-integrated-candidate.patch
       - patches/rothko-susfs-task-mmu-smap-candidate.patch
+      - patches/rothko-susfs-task-mmu-rollup-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   pull_request:
     paths:
@@ -15,6 +16,7 @@ on:
       - patches/rothko-susfs-memory-vma-candidate.patch
       - patches/rothko-susfs-memory-integrated-candidate.patch
       - patches/rothko-susfs-task-mmu-smap-candidate.patch
+      - patches/rothko-susfs-task-mmu-rollup-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   workflow_dispatch:
 permissions:
@@ -34,6 +36,7 @@ jobs:
           sparse-checkout: |
             patches/rothko-susfs-memory-integrated-candidate.patch
             patches/rothko-susfs-task-mmu-smap-candidate.patch
+            patches/rothko-susfs-task-mmu-rollup-candidate.patch
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -136,4 +139,42 @@ jobs:
             echo "- SUSFS official header prerequisite verified by pinned source SHA and tree"
             echo "- Both patches are isolated candidates; behavioral equivalence unproven"
             echo "- Release gate remains blocked: execve/FD/SELinux/TIF, ABI/KMI and build"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Validate rollup candidate without changing protected BSP
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-task-mmu-rollup-candidate.patch"
+          test -s "$patch"
+          git -C bsp apply --check "$patch"
+          git -C bsp apply "$patch"
+          git -C bsp diff --check
+          test "$(git -C bsp diff --name-only)" = "$(printf 'fs/proc/task_mmu.c\nmm/memory.c')"
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("bsp/fs/proc/task_mmu.c").read_text()
+          start = source.index("static int show_smaps_rollup(")
+          end = source.index("#undef SEQ_PUT_DEC", start)
+          body = source[start:end]
+          assert body.count("SUSFS_IS_INODE_SUS_MAP(") == 2, "two rollup accounting guards required"
+          first_stats = body.index("smap_gather_stats(vma, &mss, 0);")
+          first_guard = body.rfind("SUSFS_IS_INODE_SUS_MAP(", 0, first_stats)
+          assert 0 <= first_guard < first_stats, "initial VMA guard missing"
+          case4 = body.index("/* Case 4 above */")
+          last_stats = body.index("smap_gather_stats(vma, &mss, last_vma_end);")
+          last_guard = body.rfind("SUSFS_IS_INODE_SUS_MAP(", case4, last_stats)
+          assert case4 < last_guard < last_stats, "post-relock VMA guard missing"
+          assert "if (vma->vm_end > last_vma_end) {" in body, "case 4 boundary check lost"
+          assert "last_vma_end = vma->vm_end;" in body, "VMA boundary tracking lost"
+          assert "mmap_read_unlock(mm)" in body, "mmap locking path lost"
+          assert "release_task_mempolicy(priv)" in body, "mempolicy cleanup lost"
+          print("PASS: both rollup accounting paths filtered, with VMA iteration and cleanup anchors present")
+          print("NOTE: static structural probe only; no complete semantic or runtime validation")
+          PY
+          {
+            echo "### Isolated smaps_rollup candidate"
+            echo "- Added third candidate as a separate reversible patch on temporary BSP"
+            echo "- Normal VMA accounting and post-relock case-4 accounting checked"
+            echo "- No source kernel checkout committed, no device build, no flash artifact"
+            echo "- Security and ABI release gates remain blocked"
           } >> "$GITHUB_STEP_SUMMARY"
