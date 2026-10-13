@@ -20,7 +20,7 @@ diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
  #include "linux/sched.h"
  #include "objsec.h"
  #include "linux/version.h"
-@@ -159,6 +160,19 @@
+@@ -159,6 +160,17 @@
 -void setup_ksu_cred(void)
 +int setup_ksu_cred(void)
  {
