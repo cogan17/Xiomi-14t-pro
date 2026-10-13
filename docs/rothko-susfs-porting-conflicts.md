@@ -127,3 +127,10 @@ Compared `kernel/Kconfig` directly at the **exact two pinned commits**, not thei
 - The Kconfig contracts are **not equivalent**. The installer source cannot be treated as a drop-in replacement for the audited KSUN+SUSFS source. Absence of `KSU_SUSFS` is scoped to the inspected upstream `kernel/Kconfig` file, not an assertion about all downstream patches.
 - Keep the installer matrix pinned to its original source; do not change the audited `pershoot` pin or automatically enable SUSFS. Next useful review is the relevant Kbuild/SUSFS API surface at these same immutable commits, without rebuilding or repeating the Kconfig comparison.
 - PR #9 remains Draft / BUILD HOLD; no CI rerun, source integration, or device operation.
+
+## Targeted immutable KSUN Kbuild comparison — 2026-10-14
+
+- Compared exact pinned upstream `kernel/Kbuild`, `kernel/Makefile`, and `kernel/setup.sh` for installer `KernelSU-Next/KernelSU-Next@02a9e1c5` versus audit `pershoot/KernelSU-Next@3438d6aa`.
+- **Material Kbuild difference:** the audit pin conditionally excludes or selects hook objects under `ifneq ($(strip $(CONFIG_KSU_SUSFS)),y)`; the installer pin's inspected Kbuild does not contain that SUSFS selection branch. Therefore compiled hook selection is **not equivalent** for SUSFS-enabled configurations, in addition to the previously proven Kconfig differences.
+- Both pinned setup scripts expose the existing `drivers/kernelsu` Makefile/Kconfig wiring pattern. Rothko's isolated installer already owns this wiring; **do not duplicate it** or run upstream setup.sh in-tree.
+- Scope: static Kbuild comparison only; no claim of full API compatibility, successful link, runtime safety, or ready-to-flash kernel. Preserve both pins, all existing candidates and gates. Next gate is the **specific SUSFS companion/API contract**, not a repeated broad Kconfig/Kbuild audit.
