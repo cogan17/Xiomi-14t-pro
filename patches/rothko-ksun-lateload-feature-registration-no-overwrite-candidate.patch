@@ -1,6 +1,13 @@
 diff --git a/kernel/policy/feature.c b/kernel/policy/feature.c
 --- a/kernel/policy/feature.c
 +++ b/kernel/policy/feature.c
+@@ -1,5 +1,6 @@
+ #include "policy/feature.h"
+ #include "klog.h" // IWYU pragma: keep
+ 
++#include <linux/errno.h>
+ #include <linux/mutex.h>
+ 
 @@ -28,8 +28,10 @@
  	mutex_lock(&feature_mutex);
  
