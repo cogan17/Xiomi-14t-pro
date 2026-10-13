@@ -1,29 +1,36 @@
 diff --git a/fs/proc/task_mmu.c b/fs/proc/task_mmu.c
 --- a/fs/proc/task_mmu.c
 +++ b/fs/proc/task_mmu.c
-@@ -1719,6 +1719,9 @@
- 	while (count && (start_vaddr < end_vaddr)) {
- 		int len;
- 		unsigned long end;
-+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
-+		struct vm_area_struct *vma;
-+#endif
- 
- 		pm.pos = 0;
- 		end = (start_vaddr + PAGEMAP_WALK_SIZE) & PAGEMAP_WALK_MASK;
-@@ -1728,8 +1731,17 @@
+@@ -1728,8 +1728,34 @@
  		ret = mmap_read_lock_killable(mm);
  		if (ret)
  			goto out_free;
-+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
-+		vma = vma_lookup(mm, start_vaddr);
-+		if (vma && vma->vm_file &&
-+		    SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
-+			goto bypass_orig_flow;
-+#endif
  		ret = walk_page_range(mm, start_vaddr, end, &pagemap_ops, &pm);
 +#ifdef CONFIG_KSU_SUSFS_SUS_MAP
-+bypass_orig_flow:
++		/* Preserve one pagemap entry per virtual page in this output window. */
++		if (pm.pos) {
++			unsigned long scan = start_vaddr;
++			unsigned long covered_end =
++				start_vaddr + ((unsigned long)pm.pos << PAGE_SHIFT);
++
++			while (scan < covered_end) {
++				struct vm_area_struct *vma = find_vma(mm, scan);
++				unsigned long mask_start, mask_end;
++
++				if (!vma || vma->vm_start >= covered_end)
++					break;
++				mask_start = max(scan, vma->vm_start);
++				mask_end = min(covered_end, vma->vm_end);
++				if (mask_end <= mask_start)
++					break;
++				if (vma->vm_file &&
++				    SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
++					memset(&pm.buffer[(mask_start - start_vaddr) >> PAGE_SHIFT],
++					       0, ((mask_end - mask_start) >> PAGE_SHIFT) *
++					       PM_ENTRY_BYTES);
++				scan = mask_end;
++			}
++		}
 +#endif
  		mmap_read_unlock(mm);
  		start_vaddr = end;
