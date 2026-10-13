@@ -1,3 +1,18 @@
+# Pemberitahuan Pengembangan / Development Notice
+
+> [!WARNING]
+> **Kernel dan repositori ini masih dalam tahap pembangunan dan pengembangan.**
+>
+> **Bahasa Indonesia:** Proyek kernel kustom Xiaomi 14T Pro (Rothko) dan integrasi KSUN/SUSFS **belum dinyatakan siap digunakan**. Build perangkat, rilis, dan flashing masih ditahan. **Mohon jangan menggunakan patch atau hasil percobaan untuk penggunaan harian maupun flashing** sampai ada rilis yang telah diuji dan dinyatakan siap. Harap maklum dan bersabar selama proses pengembangan berlangsung.
+>
+> **English:** This Xiaomi 14T Pro (Rothko) custom-kernel project and its KSUN/SUSFS integration are **still under development and not ready for use**. Device builds, releases, and flashing are on hold. **Please do not use experimental patches or artifacts for daily use or flashing** until a tested release is explicitly announced. Thank you for your understanding and patience.
+
+**Status pengembangan / Development status:** [Draft PR #9](https://github.com/cogan17/Xiomi-14t-pro/pull/9) · [Upstream #11](https://github.com/cogan17/Xiomi-14t-pro/issues/11) · [Build HOLD #12](https://github.com/cogan17/Xiomi-14t-pro/issues/12).
+
+---
+
+<!-- Original Android Common Kernel README preserved below. -->
+
 # How do I submit patches to Android Common Kernels
 
 1. BEST: Make all of your changes to upstream Linux. If appropriate, backport to the stable releases.
