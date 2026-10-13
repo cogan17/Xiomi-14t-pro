@@ -1,0 +1,26 @@
+diff --git a/kernel/feature/sulog.c b/kernel/feature/sulog.c
+--- a/kernel/feature/sulog.c
++++ b/kernel/feature/sulog.c
+@@ -1,4 +1,5 @@
+ #include <linux/cache.h>
++#include <linux/atomic.h>
+ #include <linux/compiler_types.h>
+ 
+ #include "feature/sulog.h"
+@@ -41,11 +42,16 @@
+  * its last void initializer; it does not prove overall KSUN readiness.
+  */
+ static bool sulog_initialized;
++static atomic_t sulog_init_attempted = ATOMIC_INIT(0);
+ 
+ int __init ksu_sulog_init(void)
+ {
+     int ret;
+ 
++    /* A failed partial init is never retried against uncertain state. */
++    if (atomic_cmpxchg(&sulog_init_attempted, 0, 1) != 0)
++        return -EALREADY;
++
+     ksu_sulog_enabled = false;
+     sulog_initialized = false;
+ 
