@@ -37,6 +37,7 @@ on:
       - patches/rothko-ksun-lateload-feature-registration-no-overwrite-candidate.patch
       - patches/rothko-ksun-lateload-adb-root-owned-handler-candidate.patch
       - patches/rothko-ksun-lateload-sucompat-owned-handler-candidate.patch
+      - patches/rothko-ksun-lateload-sucompat-static-key-teardown-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -78,6 +79,7 @@ on:
       - patches/rothko-ksun-lateload-feature-registration-no-overwrite-candidate.patch
       - patches/rothko-ksun-lateload-adb-root-owned-handler-candidate.patch
       - patches/rothko-ksun-lateload-sucompat-owned-handler-candidate.patch
+      - patches/rothko-ksun-lateload-sucompat-static-key-teardown-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -106,6 +108,24 @@ jobs:
           timeout 90 git -C /tmp/susfs-connectivity -c http.version=HTTP/1.1 fetch --quiet --depth=1 origin "$pin"
           test "$(git -C /tmp/susfs-connectivity rev-parse FETCH_HEAD)" = "$pin"
           echo "PASS: pinned SUSFS GitLab source reachable from GitHub Actions"
+          git -C /tmp/susfs-connectivity show "$pin:kernel_patches/fs/susfs.c" > /tmp/susfs-pinned.c
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          src = Path("/tmp/susfs-pinned.c").read_text()
+          init = re.search(r"(?m)^\s*(?:void|int)\s+susfs_init\s*\([^)]*\)\s*\{", src)
+          exitfn = re.search(r"(?m)^\s*(?:void|int)\s+(?:__exit\s+)?susfs_exit\s*\([^)]*\)\s*\{", src)
+          if init:
+              excerpt = src[init.start():init.start() + 420]
+              print("PINNED SUSFS init evidence:\n" + excerpt)
+          else:
+              print("BLOCK: no recognized susfs_init definition at pinned tree; do not assume reset behavior")
+          if exitfn:
+              print("REVIEW: active susfs_exit exists, validate all resources and references before proposing unwind")
+          else:
+              print("BLOCK: no active susfs_exit definition found in pinned fs/susfs.c")
+          print("BLOCK: this is evidence only; startup/teardown safety and full integration remain NO-GO")
+          PY
   candidate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -1683,3 +1703,74 @@ jobs:
           print("BLOCK: full SUSFS integration, G5 credentials and device boot remain NO-GO")
           PY
           echo "BLOCK: source-only candidate; no merge, kernel build or release"
+
+      - name: Verify sucompat static-key shutdown after owned deregistration (source-only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-lateload-sucompat-static-key-teardown-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          src = Path("/tmp/ksun/kernel/feature/sucompat.c").read_text()
+          state = "sucompat_handler_owned"
+          sign = "void __exit ksu_sucompat_exit(void)\n{"
+          gate = "if (!sucompat_handler_owned)\n\t\treturn;"
+          release = "sucompat_handler_owned = false;"
+          unregister = "ksu_unregister_feature_handler(KSU_FEATURE_SU_COMPAT);"
+          disable = "static_branch_disable(&ksu_su_compat_enabled);"
+          setter = "static int su_compat_feature_set(u64 value)"
+
+          def valid(text):
+              try:
+                  func = text.split(sign, 1)[1].split("\n}", 1)[0]
+                  return all((
+                      text.count(sign) == 1,
+                      text.count(setter) == 1,
+                      "static_branch_enable(&ksu_su_compat_enabled);" in text,
+                      "static_branch_disable(&ksu_su_compat_enabled);" in text,
+                      func.count(gate) == 1,
+                      func.count(release) == 1,
+                      func.count(unregister) == 1,
+                      func.count(disable) == 1,
+                      func.index(gate) < func.index(release)
+                          < func.index(unregister) < func.index(disable),
+                  ))
+              except (ValueError, IndexError):
+                  return False
+
+          assert valid(src), "unowned sucompat static-key teardown may leave an active hook"
+          base = "\t" + release + "\n"
+          mutations = (
+              ("omit key teardown", src.replace(
+                  "\t" + disable + "\n", "", 1)),
+              ("leave key enabled", src.replace(
+                  "\t" + disable + "\n",
+                  "\tstatic_branch_enable(&ksu_su_compat_enabled);\n", 1)),
+              ("disable before registry release", src.replace(
+                  "\t" + unregister + "\n\t" + disable,
+                  "\t" + disable + "\n\t" + unregister, 1)),
+              ("disable before ownership test", src.replace(
+                  "\t" + gate,
+                  "\t" + disable + "\n\t" + gate, 1).replace(
+                  "\t" + unregister + "\n\t" + disable,
+                  "\t" + unregister, 1)),
+              ("unregister after key shutdown", src.replace(
+                  "\t" + unregister + "\n\t" + disable,
+                  "\t" + disable + "\n\t" + unregister, 1)),
+              ("forget ownership release", src.replace(
+                  base + "\t/* Handler deregistration",
+                  "\t/* Handler deregistration", 1)),
+          )
+          for label, mutated in mutations:
+              assert mutated != src, label + ": mutation missing"
+              assert not valid(mutated), label + ": unsafe mutation accepted"
+              print("PASS: rejected unsafe sucompat static-key mutation — " + label)
+          print("PASS: owned handler deregistration precedes static-key shutdown")
+          print("BLOCK: hook quiescence and module lifetime not proved by structural test")
+          print("BLOCK: runtime SUSFS teardown and G5 shared-credential ownership still unresolved")
+          PY
+          echo "BLOCK: GKI device build and release prohibited"
