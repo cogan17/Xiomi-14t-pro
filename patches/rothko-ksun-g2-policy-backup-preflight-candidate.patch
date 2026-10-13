@@ -13,7 +13,7 @@ diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
 +     * transaction, READY publication, or guaranteed rollback.
 +     */
 +    if (!backup_sepolicy) {
-+        pr_err("KSUN: refusing policy update without rollback backup\\n");
++        pr_err("KSUN: refusing policy update without rollback backup\n");
 +        goto out_unlock;
 +    }
      pol = ksu_dup_sepolicy(rcu_dereference_protected(
