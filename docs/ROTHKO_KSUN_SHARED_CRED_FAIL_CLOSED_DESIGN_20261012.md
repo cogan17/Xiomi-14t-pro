@@ -146,3 +146,21 @@ Audit pass means all **currently observed** source relationships are unchanged, 
 **Next actionable dependency:** capture one precise upstream-maintainer answer on *when and under whose authorization a fresh post-exec FD may be issued*, including ownership and revocation, then review it against existing KSUN hook and init-credential invariants. Existing issue #11 remains the request tracker: do not send duplicate requests. Do not add more hiding patches or start a device build in the meantime. This checkpoint does not claim upstream approval.
 
 **PR #9 remains Draft**; eight SUSFS candidates remain reversible source-only patches, not a complete enabled kernel. No `dev/rothko` mutation, merge, deployable image, release or flash.
+
+
+---
+
+## Decision: distinguish driver FD from post-exec SU session FD (2026-10-13)
+
+**Finding (pinned source only; not an implementation):** At `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161`, `kernel/supercall/supercall.c:ksu_install_fd()` creates a general anonymous `[ksu_driver]` ioctl FD with `O_CLOEXEC`. Existing command handlers still consult command-specific permission predicates; merely possessing this driver FD does not establish SU authorization. In contrast, the pinned official Simonpunk `10_enable_susfs_for_ksu.patch` refers to `ksu_install_su_fd()` and introduces `ksu_handle_post_execveat_sucompat(..., int *retval)`. That patch's observed `*retval >= 0` condition reflects successful exec, **not an authenticated SU-intent proof**. Its context does not by itself establish that the post-exec callback runs only for an authorized and successfully escalated SU request. The pinned KSUN checkout does not contain the expected compatible `ksu_install_su_fd()` definition/post-exec companion; the official patch also does not apply cleanly. **Do not silently substitute `ksu_install_fd()` for the missing function, remove `O_CLOEXEC`, or call an installer on every successful exec.**
+
+**Implementation contract — NO-GO until all are answered:**
+
+1. Identify the **exact pre-exec authorization event** (SU pathname/request, UID allowlist, chroot restriction, root-profile and SELinux transition succeeded) and demonstrate where its authorization result is stored without becoming forgeable, inheritable, or visible across unrelated execs/tasks. A successful `execve` alone is never sufficient.
+2. Demonstrate a **one-shot post-exec transition**, scoped to the same task/request and correct exec phase, with an explicit failure path that cannot install a session FD after rejected SU, failed credential setup, failed exec, or retry from unrelated exec. Verify that the callback cannot mistakenly grant a capability to a different process or thread.
+3. Define **session FD ownership, refcounting, revocation and teardown**, including task exit, exec succession, closed FD, failed installation, module unload and concurrency. Retain command-by-command permission checks; do not conflate anonymous driver control FD, KSU `su` session FD and temporary `O_PATH` FD used by existing syscall-bridge logic.
+4. Resolve G1–G5 shared `ksu_cred` READY/publication/lifetime and late-load unwind before integration. An authenticated session FD cannot compensate for using unverified shared credentials.
+
+**Required negative acceptance cases:** ordinary successful exec without SU request; denied UID/chroot; failed root-profile/SELinux credential transition; failed exec after approved request; repeated post-exec callback; cross-task/reused PID; FD install failure and cleanup; subsequent session teardown; unavailable or failed module late-load. Each must fail closed without handing out privileged session capability. Only an explicitly authorized SU request with successful exec and validated credential state may be eligible, subject to maintainer-reviewed semantics and independent kernel/runtime validation.
+
+**Upstream dependency remains open:** the exact callback/issuer semantics should be reviewed with Simonpunk/maintainer via the already open issue #11, not guessed, auto-ported, or re-requested repeatedly. The current upstream patch's existence is not a compatibility or security endorsement for this KSUN fork. No new kernel hooks, ioctl permissions, GKI/BSP source, merged code, device build, release or flash are authorized by this documentation.
