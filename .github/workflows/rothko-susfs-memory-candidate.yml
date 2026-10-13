@@ -5,6 +5,7 @@ on:
       - feat/rothko-ksun-susfs-compat-audit
     paths:
       - patches/rothko-susfs-memory-include-candidate.patch
+      - patches/rothko-susfs-memory-vma-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   pull_request:
     paths:
@@ -51,11 +52,24 @@ jobs:
           test -s bsp/include/linux/susfs_def.h
           git -C bsp apply --check "$patch"
           git -C bsp apply "$patch"
+          vma_patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-memory-vma-candidate.patch"
+          git -C bsp apply --check "$vma_patch"
+          git -C bsp apply "$vma_patch"
           git -C bsp diff --check
           git -C bsp diff -- mm/memory.c
           test "$(git -C bsp diff --name-only)" = "mm/memory.c"
           test -f bsp/include/linux/susfs_def.h
-          grep -q '^#include <linux/susfs_def.h>$' bsp/mm/memory.c
+          grep -q '^#include <linux/susfs_def.h>
+          echo "PASS: isolated include and VMA candidates apply cleanly; no compile or semantic approval"
+          {
+            echo "### Isolated SUSFS memory include candidate"
+            echo "- Both candidate patches: applied on disposable BSP checkout (textual only)"
+            echo "- Modified file: mm/memory.c only (temporary runner workspace)"
+            echo "- Full SUSFS integration, header dependencies, VMA behavior and security: NOT CLEARED"
+            echo "- No kernel build, release, merge or flash"
+          } >> "$GITHUB_STEP_SUMMARY"
+ bsp/mm/memory.c
+          grep -q 'SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file))' bsp/mm/memory.c
           echo "PASS: isolated include candidate applies cleanly; no compile or semantic approval"
           {
             echo "### Isolated SUSFS memory include candidate"
