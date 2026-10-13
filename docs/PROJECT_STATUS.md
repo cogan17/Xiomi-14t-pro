@@ -1,5 +1,7 @@
 # Status proyek — Cogan Kernel Rothko
 
+> **Keputusan 2026-10-14:** Hanya KSUN dan BakaSU yang aktif. [Arsip internal KSU/Mama](archive/ksu-mama/README.md) menyimpan rujukan dan riwayat opsi lama. Rincian tiga-root di bawah bersifat historis; BUILD HOLD tetap aktif.
+
 **Snapshot:** 12 Oktober 2026 · **Bahasa:** Indonesia · **Jenis:** catatan kondisi proyek, bukan sertifikasi flash.
 
 ### Keadaan pasca-flash 09.09 — bukti terbaru (12 Oktober 2026)
