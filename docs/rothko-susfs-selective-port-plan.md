@@ -45,3 +45,13 @@ The successful read-only `context-drift` job fetched and verified the pinned SUS
 **Disposition:** header location is verified, but presence is not proof that all companion headers, implementation sources, configuration symbols, exports and include paths are integrated. Do not copy this header alone or auto-apply mixed hunks. Next source-only task: build an exact pinned-tree dependency manifest for `susfs_def.h` and map its referenced types/functions to the BSP before creating the first isolated port candidate.
 
 The same run's `provenance` job deliberately failed with exit code 14 on the official patch applicability and security gates; `context-drift` succeeded. This is expected and must remain release-blocking.
+
+
+## Patch failure triage — latest observed run 38324521235
+
+- `provenance`: failure (expected release gate, exit 14); `context-drift`: success; `gitlab-transport`: skipped on automatic run.
+- `fs/proc/task_mmu.c` upstream hunk near 883 searches for a `mem_size_stats` / `vma_pages(vma)` block that differs in the target. The mismatch is not evidence that removing the VMA check is safe.
+- `mm/memory.c` upstream hunk near 79 searches for an include sequence involving `linux/vmalloc.h`, `linux/sched/sysctl.h`, `linux/set_memory.h`, `trace/events/kmem.h`, and `trace/hooks/mm.h`. Reconcile the real target includes and symbol dependencies before modifying the file.
+- Existing independent security blockers remain: credential/post-exec session FD, KSUN companion patch, execve/ARM64 source contract, and ARM64 TIF collision.
+
+**Next implementable unit:** create a source-only dependency inventory for the pinned SUSFS header and the precise upstream/BSP functions touched by these two rejected hunks. Do not manufacture a hunk offset, remove a VMA condition, or treat header insertion as a complete port.
