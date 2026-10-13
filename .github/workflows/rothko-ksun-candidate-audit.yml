@@ -29,6 +29,7 @@ on:
       - patches/rothko-ksun-g2-policy-backup-preflight-candidate.patch
       - patches/rothko-ksun-g2-policy-error-status-candidate.patch
       - patches/rothko-ksun-g2-second-stage-status-guard-candidate.patch
+      - patches/rothko-ksun-g2-single-attempt-policy-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -62,6 +63,7 @@ on:
       - patches/rothko-ksun-g2-policy-backup-preflight-candidate.patch
       - patches/rothko-ksun-g2-policy-error-status-candidate.patch
       - patches/rothko-ksun-g2-second-stage-status-guard-candidate.patch
+      - patches/rothko-ksun-g2-single-attempt-policy-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -1005,4 +1007,85 @@ jobs:
           print("BLOCK: late-load ignores status; G2 unwind, G5 cred ownership and runtime safety unresolved")
           PY
           echo "BLOCK: G2 caller patch is source-only; no compile, merge or release"
+
+      - name: Verify G2 policy single-attempt guard rejects replay (source-only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-g2-single-attempt-policy-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          rules = Path("/tmp/ksun/kernel/selinux/rules.c").read_text()
+
+          def accepts(src):
+              try:
+                  body = src.split("int apply_kernelsu_rules(void)\n{", 1)[1].split(
+                      "#define KSU_SEPOLICY_MAX_BATCH_SIZE", 1
+                  )[0]
+                  gate = (
+                      "if (policy_attempted) {\n"
+                      "        ret = -EALREADY;\n"
+                      "        goto out_unlock;\n"
+                      "    }\n"
+                      "    policy_attempted = true;"
+                  )
+                  return all((
+                      body.count("static bool policy_attempted;") == 1,
+                      body.count(gate) == 1,
+                      body.count("policy_attempted = true;") == 1,
+                      body.count("policy_attempted = false;") == 0,
+                      body.index("mutex_lock(&selinux_state.policy_mutex);")
+                      < body.index(gate)
+                      < body.index("backup_sepolicy ="),
+                      body.index("backup_sepolicy =")
+                      < body.index("rcu_assign_pointer(selinux_state.policy, pol);"),
+                      body.index("out_unlock:")
+                      < body.index("mutex_unlock(&selinux_state.policy_mutex);")
+                      < body.index("return ret;"),
+                  ))
+              except (ValueError, IndexError):
+                  return False
+
+          assert accepts(rules), "unsafe repeated SELinux policy attempt permitted"
+          gate = ("if (policy_attempted) {\n"
+                  "        ret = -EALREADY;\n"
+                  "        goto out_unlock;\n"
+                  "    }\n"
+                  "    policy_attempted = true;")
+          mutations = (
+              ("bypass duplicate-attempt denial", rules.replace(
+                  "if (policy_attempted) {", "if (false) {", 1)),
+              ("discard attempt marker", rules.replace(
+                  "policy_attempted = true;", "policy_attempted = false;", 1)),
+              ("hide duplicate-attempt error", rules.replace(
+                  "ret = -EALREADY;", "ret = 0;", 1)),
+              ("omit failed-attempt jump", rules.replace(
+                  "ret = -EALREADY;\n        goto out_unlock;",
+                  "ret = -EALREADY;\n        ;", 1)),
+              ("allow guard after policy backup", rules.replace(
+                  gate, "", 1).replace(
+                  "    backup_sepolicy =",
+                  "    backup_sepolicy = " if False else gate + "\n    backup_sepolicy =", 1)),
+              ("drop static lifetime", rules.replace(
+                  "static bool policy_attempted;", "bool policy_attempted;", 1)),
+              ("move guard before mutex", rules.replace(
+                  "mutex_lock(&selinux_state.policy_mutex);",
+                  gate + "\n    mutex_lock(&selinux_state.policy_mutex);", 1
+              ).replace(gate + "\n\n    backup_sepolicy =",
+                        "    backup_sepolicy =", 1)),
+          )
+          for label, altered in mutations:
+              assert altered != rules, label + ": mutation did not modify source"
+              assert not accepts(altered), label + ": mutation unexpectedly passed"
+              print("PASS: reject unsafe G2 replay mutation — " + label)
+          print("PASS: G2 policy attempts are single-shot under policy mutex; duplicate returns -EALREADY")
+          print("BLOCK: this prevents replay, not successful initialization or rollback")
+          print("BLOCK: fake-status second-stage side effect precedes G2 and may repeat")
+          print("BLOCK: late-load and G5 ownership/unwind, user-visible boot, ABI and compile remain unproven")
+          PY
+          echo "BLOCK: G2 single-attempt candidate remains non-deployable; no image/release"
 
