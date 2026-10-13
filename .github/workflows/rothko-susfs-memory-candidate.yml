@@ -1,4 +1,4 @@
-name: Rothko SUSFS memory + smaps + pagemap candidates (isolated)
+name: Rothko SUSFS isolated proc and memory candidates
 on:
   push:
     branches:
@@ -10,6 +10,7 @@ on:
       - patches/rothko-susfs-task-mmu-smap-candidate.patch
       - patches/rothko-susfs-task-mmu-rollup-candidate.patch
       - patches/rothko-susfs-task-mmu-pagemap-candidate.patch
+      - patches/rothko-susfs-proc-map-files-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   pull_request:
     paths:
@@ -19,6 +20,7 @@ on:
       - patches/rothko-susfs-task-mmu-smap-candidate.patch
       - patches/rothko-susfs-task-mmu-rollup-candidate.patch
       - patches/rothko-susfs-task-mmu-pagemap-candidate.patch
+      - patches/rothko-susfs-proc-map-files-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   workflow_dispatch:
 permissions:
@@ -40,6 +42,7 @@ jobs:
             patches/rothko-susfs-task-mmu-smap-candidate.patch
             patches/rothko-susfs-task-mmu-rollup-candidate.patch
             patches/rothko-susfs-task-mmu-pagemap-candidate.patch
+            patches/rothko-susfs-proc-map-files-candidate.patch
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -51,6 +54,7 @@ jobs:
           sparse-checkout: |
             mm/memory.c
             fs/proc/task_mmu.c
+            fs/proc/base.c
       - name: Verify exact pinned SUSFS header prerequisite
         shell: bash
         run: |
@@ -226,4 +230,45 @@ jobs:
             echo "- Read-lock, bypass-unlock, address progress, and copy accounting anchors checked"
             echo "- Remaining behavioral risks: mixed-visibility range, partial reads, zero-length/EOF behavior"
             echo "- No device kernel build, ABI/KMI approval, release, or flash"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Validate proc map_files VMA candidate in isolated BSP
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-proc-map-files-candidate.patch"
+          test -s "$patch"
+          git -C bsp apply --check "$patch"
+          git -C bsp apply "$patch"
+          git -C bsp diff --check
+          test "$(git -C bsp diff --name-only)" = "$(printf 'fs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
+          python3 - <<'PY'
+          from pathlib import Path
+          src = Path("bsp/fs/proc/base.c").read_text()
+          assert "#ifdef CONFIG_KSU_SUSFS_SUS_MAP\n#include <linux/susfs_def.h>\n#endif" in src
+          start = src.index("proc_map_files_readdir(")
+          end = src.index("static const struct file_operations proc_map_files_operations", start)
+          body = src[start:end]
+          lock = body.index("ret = mmap_read_lock_killable(mm);")
+          collect = body.index("for_each_vma(vmi, vma)")
+          file_check = body.index("if (!vma->vm_file)", collect)
+          feature = body.index("#ifdef CONFIG_KSU_SUSFS_SUS_MAP", file_check)
+          filtered = body.index("SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file))", feature)
+          skip = body.index("continue;", filtered)
+          pos = body.index("if (++pos <= ctx->pos)", skip)
+          entry = body.index("genradix_ptr_alloc(", pos)
+          unlock = body.index("mmap_read_unlock(mm);", entry)
+          assert lock < collect < file_check < feature < filtered < skip < pos < entry < unlock
+          assert "vma_iter_init(&vmi, mm, 0);" in body[:collect]
+          assert "for (i = 0; i < nr_files; i++)" in body[unlock:]
+          assert "ctx->pos++;" in body[unlock:]
+          print("PASS: isolated proc map_files guard applies before position and entry allocation")
+          print("PASS: mmap lock and visible entry emission anchors retained")
+          print("NOTE: structural source test only; no directory iteration runtime evidence")
+          PY
+          {
+            echo "### Isolated proc map_files candidate"
+            echo "- Fifth independently reversible candidate applied only in disposable BSP"
+            echo "- Guard precedes visible mapping position and radix entry creation"
+            echo "- mmap lock and original emission paths retained by structural assertions"
+            echo "- Neither VFS behavior nor whole SUSFS integration is approved for devices"
           } >> "$GITHUB_STEP_SUMMARY"
