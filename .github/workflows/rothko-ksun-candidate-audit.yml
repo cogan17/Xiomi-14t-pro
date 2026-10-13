@@ -7,6 +7,7 @@ on:
       - patches/rothko-ksun-sucompat-fail-closed-candidate.patch
       - patches/rothko-ksun-sucompat-session-intent-candidate.patch
       - patches/rothko-ksun-su-precommit-domain-candidate.patch
+      - patches/rothko-ksun-su-profile-precommit-compat-candidate.patch
       - patches/rothko-ksun-groups-fail-closed-candidate.patch
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
@@ -30,6 +31,7 @@ on:
       - patches/rothko-ksun-sucompat-fail-closed-candidate.patch
       - patches/rothko-ksun-sucompat-session-intent-candidate.patch
       - patches/rothko-ksun-su-precommit-domain-candidate.patch
+      - patches/rothko-ksun-su-profile-precommit-compat-candidate.patch
       - patches/rothko-ksun-groups-fail-closed-candidate.patch
       - patches/rothko-ksun-seccomp-prealloc-candidate.patch
       - patches/rothko-ksun-selinux-fail-closed-candidate.patch
@@ -334,3 +336,94 @@ jobs:
           print("BLOCK: compiler, runtime, credential ownership, post-exec FD and KMI unverified")
           PY
           echo "BLOCK: isolated candidate is NOT an integrated SU session implementation"
+
+      - name: Verify custom root profile is not hardcoded to KSU domain (source-only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-su-profile-precommit-compat-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path("/tmp/ksun/kernel")
+          profile = (root / "policy/app_profile.c").read_text()
+          allow = (root / "policy/allowlist.c").read_text()
+          su = (root / "feature/sucompat.c").read_text()
+          selinux = (root / "selinux/selinux.c").read_text()
+          name = "static int escape_with_root_profile_common(bool require_su_profile)"
+          guard = (
+              "if (require_su_profile &&\n"
+              "        (cred->uid.val != profile->uid ||\n"
+              "         cred->euid.val != profile->uid ||\n"
+              "         cred->gid.val != profile->gid ||\n"
+              "         cred->egid.val != profile->gid)) {\n"
+              "        ret = -EACCES;\n"
+              "        goto out_abort_creds;\n"
+              "    }"
+          )
+          def accepts_contract(code):
+              if code.count(name) != 1:
+                  return False
+              try:
+                  body = code.split(name, 1)[1].split("int escape_with_root_profile(void)", 1)[0]
+                  if body.count("commit_creds(cred);") != 1:
+                      return False
+                  before, after = body.split("commit_creds(cred);", 1)
+              except (IndexError, ValueError):
+                  return False
+              selinux_call = "ret = setup_selinux(profile->selinux_domain, cred);"
+              selinux_check = "if (ret)\n        goto out_abort_creds;"
+              return (
+                  before.count(guard) == 1
+                  and before.find(selinux_call) >= 0
+                  and before.find(selinux_call) < before.find(selinux_check, before.find(selinux_call)) < before.find(guard)
+                  and "out_abort_creds:" in after
+                  and "abort_creds(cred);" in after
+                  and "return escape_with_root_profile_common(false);" in code
+                  and "return escape_with_root_profile_common(true);" in code
+              )
+          assert accepts_contract(profile), "prepared credentials do not follow authorized profile"
+          assert "return ret;" in selinux.split("int setup_selinux(", 1)[1].split("\n}", 1)[0]
+          assert "ksu_get_root_profile(cred->uid.val)" in profile
+          assert "if (!p->profile.rp_config.use_default)" in allow
+          assert "profile->rp_config.profile.selinux_domain" in allow
+          assert "ret = escape_with_root_profile_for_su();" in su
+          # Real FD authorization is deliberately NOT claimed by this guard.
+          assert "susfs_is_current_ksu_domain()" in su
+          negative = [
+              ("omit UID comparison", profile.replace("cred->euid.val != profile->uid", "false", 1)),
+              ("omit GID comparison", profile.replace("cred->egid.val != profile->gid", "false", 1)),
+              ("always skip requirement", profile.replace("if (require_su_profile &&", "if (false &&", 1)),
+              ("allow failed transition", profile.replace("ret = setup_selinux(profile->selinux_domain, cred);\n    if (ret)\n        goto out_abort_creds;",
+                  "ret = setup_selinux(profile->selinux_domain, cred);\n    if (ret)\n        ret = 0;", 1)),
+              ("move guard after commit", profile.replace(guard, "", 1).replace(
+                  "    commit_creds(cred);", "    commit_creds(cred);\n    " + guard, 1)),
+              ("change generic root callers", profile.replace(
+                  "return escape_with_root_profile_common(false);",
+                  "return escape_with_root_profile_common(true);", 1)),
+          ]
+          for label, broken in negative:
+              assert broken != profile, label + ": mutation fixture did not change source"
+              assert not accepts_contract(broken), label + ": unsafe mutation not detected"
+              print("PASS: reject unsafe source mutation — " + label)
+          # Host-only behavior matrix; does not execute kernel C or issue privileges.
+          def prepared_matches_profile(profile_uid, profile_gid, effective_uid, effective_gid, selinux_ok):
+              return selinux_ok and profile_uid == effective_uid and profile_gid == effective_gid
+          cases = [
+              ("default KSU profile", 0, 0, 0, 0, True, True),
+              ("authorized custom UID", 2000, 2000, 2000, 2000, True, True),
+              ("authorized custom SELinux domain", 0, 0, 0, 0, True, True),
+              ("prepared UID mismatch", 2000, 2000, 0, 2000, True, False),
+              ("prepared GID mismatch", 2000, 2000, 2000, 0, True, False),
+              ("SELinux transition failure", 0, 0, 0, 0, False, False),
+          ]
+          for label, uid, gid, euid, egid, sid_ok, expected in cases:
+              assert prepared_matches_profile(uid, gid, euid, egid, sid_ok) == expected, label
+          print("PASS: profile-aware precommit candidate and six host matrix cases")
+          print("BLOCK: post-escape sucompat still requires UID 0/KSU domain; custom-profile SU redirect not proven")
+          print("BLOCK: no SU_SESSION FD ownership, runtime, compile or KMI authorization")
+          PY
+          echo "BLOCK: source-only compatibility refinement; not an SU_SESSION implementation"
