@@ -29,6 +29,8 @@ on:
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
       - tests/test_rothko_ksun_g2_g4_risk_audit.py
+      - scripts/rothko_ksun_su_exec_intent_model.py
+      - tests/test_rothko_ksun_su_exec_intent_model.py
   pull_request:
     paths:
       - patches/rothko-ksun-sucompat-fail-closed-candidate.patch
@@ -56,6 +58,8 @@ on:
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
       - tests/test_rothko_ksun_g2_g4_risk_audit.py
+      - scripts/rothko_ksun_su_exec_intent_model.py
+      - tests/test_rothko_ksun_su_exec_intent_model.py
   workflow_dispatch:
 permissions:
   contents: read
@@ -710,3 +714,15 @@ jobs:
           print("BLOCK: no owner setter, no session FD issuer, no real exec lifecycle, no runtime proof")
           PY
           echo "BLOCK: owner-bound candidate is source-only and cannot install session privileges"
+
+      - name: Exercise host-only su request and post-exec lifecycle model (no FD)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # Host-only reference specification: never imports kernel modules,
+          # generates boot artifacts, touches device partitions or calls ioctl.
+          python3 -B "$GITHUB_WORKSPACE/tests/test_rothko_ksun_su_exec_intent_model.py"
+          echo "PASS: 20 host-only request/exec/owner/replay negative and positive cases"
+          echo "BLOCK: inputs are NOT cryptographically authenticated; no kernel-owned request"
+          echo "BLOCK: no post-exec callback, actual FD issuer or credential rollback proof"
+          echo "BLOCK: model's unbounded token set is NOT a production kernel design"
