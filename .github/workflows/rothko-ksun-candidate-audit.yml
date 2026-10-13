@@ -28,6 +28,7 @@ on:
       - patches/rothko-ksun-shared-cred-rc-prelatch-candidate.patch
       - patches/rothko-ksun-g2-policy-backup-preflight-candidate.patch
       - patches/rothko-ksun-g2-policy-error-status-candidate.patch
+      - patches/rothko-ksun-g2-second-stage-status-guard-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -60,6 +61,7 @@ on:
       - patches/rothko-ksun-shared-cred-rc-prelatch-candidate.patch
       - patches/rothko-ksun-g2-policy-backup-preflight-candidate.patch
       - patches/rothko-ksun-g2-policy-error-status-candidate.patch
+      - patches/rothko-ksun-g2-second-stage-status-guard-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -919,3 +921,88 @@ jobs:
           print("BLOCK: later rule helper failures, SELinux races, kernel ABI and runtime remain unverified")
           PY
           echo "BLOCK: non-deployable source-only candidate; no device build or release"
+
+      - name: Verify G2 second-stage caller status gate (source-only, nondeployable)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-g2-second-stage-status-guard-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("/tmp/ksun/kernel/runtime/ksud_integration.c").read_text()
+          core = Path("/tmp/ksun/kernel/core/init.c").read_text()
+          header = Path("/tmp/ksun/kernel/selinux/selinux.h").read_text()
+
+          assert header.count("int apply_kernelsu_rules(void);") == 1
+          assert core.count("apply_kernelsu_rules();") == 1, (
+              "late-load remains a separate unsafe gate until reverse-order unwind is designed"
+          )
+
+          def accepts(src):
+              try:
+                  sus = src.split("int ksu_handle_execveat_ksud(int *fd", 1)[1].split(
+                      "#else\nvoid ksu_handle_execveat_ksud", 1
+                  )[0]
+                  non = src.split("#else\nvoid ksu_handle_execveat_ksud", 1)[1].split(
+                      "\n#endif", 1
+                  )[0]
+                  if src.count("if (apply_kernelsu_rules()) {") != 2:
+                      return False
+                  for func, returned in ((sus, "return 0;"), (non, "return;")):
+                      stage = func.split(
+                          "if (static_branch_unlikely(&is_init_second_stage_not_executed))",
+                          1
+                      )[1].split("if (static_branch_unlikely(&is_first_zygote))", 1)[0]
+                      begin = "if (apply_kernelsu_rules()) {"
+                      if stage.count(begin) != 1:
+                          return False
+                      guarded = stage.split(begin, 1)[1].split("cache_sid();", 1)[0]
+                      if returned not in guarded or "return" not in guarded:
+                          return False
+                      if stage.index("ksu_selinux_hide_handle_second_stage();") >= stage.index(begin):
+                          return False
+                      if not (
+                          stage.index(begin) < stage.index("cache_sid();")
+                          < stage.index("if (setup_ksu_cred())")
+                          < stage.index("static_branch_disable(&is_init_second_stage_not_executed);")
+                      ):
+                          return False
+                      if stage.count("static_branch_disable(&is_init_second_stage_not_executed);") != 1:
+                          return False
+                  return True
+              except (ValueError, IndexError):
+                  return False
+
+          assert accepts(source), "G2 second-stage guards are missing or incorrectly ordered"
+          mutations = (
+              ("bypass SUSFS policy guard", source.replace(
+                  "if (apply_kernelsu_rules()) {", "if (false) {", 1)),
+              ("bypass non-SUSFS policy guard", source.replace(
+                  "if (apply_kernelsu_rules()) {", "if (false) {", 2).replace(
+                  "if (false) {", "if (apply_kernelsu_rules()) {", 1)),
+              ("wrong SUSFS failure return", source.replace(
+                  'pr_err("KernelSU policy setup failed; second_stage not ready\\n");\n                    return 0;',
+                  'pr_err("KernelSU policy setup failed; second_stage not ready\\n");\n                    return;', 1)),
+              ("wrong non-SUSFS failure return", source.replace(
+                  'pr_err("KernelSU policy setup failed; second_stage not ready\\n");\n                    return;',
+                  'pr_err("KernelSU policy setup failed; second_stage not ready\\n");\n                    return 0;', 1)),
+              ("cache SID before policy success", source.replace(
+                  "if (apply_kernelsu_rules()) {", "cache_sid();\n                if (apply_kernelsu_rules()) {", 1)),
+              ("consume one-shot before policy success", source.replace(
+                  "if (apply_kernelsu_rules()) {",
+                  "static_branch_disable(&is_init_second_stage_not_executed);\n                if (apply_kernelsu_rules()) {", 1)),
+          )
+          for name, changed in mutations:
+              assert changed != source, name + ": mutation did not apply"
+              assert not accepts(changed), name + ": unsafe mutation accepted"
+              print("PASS: reject " + name)
+          print("PASS: two CONFIG-specific second-stage callbacks inspect policy status before cache_sid/setup_ksu_cred")
+          print("BLOCK: previously executed selinux-hide side effect and retry/one-shot lifecycle unproven")
+          print("BLOCK: late-load ignores status; G2 unwind, G5 cred ownership and runtime safety unresolved")
+          PY
+          echo "BLOCK: G2 caller patch is source-only; no compile, merge or release"
+
