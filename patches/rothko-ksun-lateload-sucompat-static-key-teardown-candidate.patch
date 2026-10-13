@@ -1,7 +1,7 @@
 diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
 --- a/kernel/feature/sucompat.c
 +++ b/kernel/feature/sucompat.c
-@@ -612,7 +612,9 @@
+@@ -612,6 +612,8 @@
  	if (!sucompat_handler_owned)
  		return;
  
@@ -12,4 +12,3 @@ diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
 +	ksu_unregister_feature_handler(KSU_FEATURE_SU_COMPAT);
 +	static_branch_disable(&ksu_su_compat_enabled);
  }
- 
