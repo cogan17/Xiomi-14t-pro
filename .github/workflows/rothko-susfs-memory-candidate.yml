@@ -57,6 +57,25 @@ jobs:
           test "$(git -C bsp diff --name-only)" = "mm/memory.c"
           grep -Fq '#include <linux/susfs_def.h>' bsp/mm/memory.c
           grep -Fq 'SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file))' bsp/mm/memory.c
+          # Narrow structural safety check: guard must run before GUP pins a page.
+          python3 - <<'PY'
+          from pathlib import Path
+          src = Path("bsp/mm/memory.c").read_text()
+          start = src.index("int __access_remote_vm(")
+          end = src.index("\n}", start)
+          body = src[start:end]
+          loop = body.index("while (len) {")
+          guard = body.index("SUSFS_IS_INODE_SUS_MAP(", loop)
+          gup = body.index("get_user_pages_remote(", loop)
+          assert loop < guard < gup, "VMA guard must precede page pinning"
+          before = body[loop:guard]
+          assert "#ifdef CONFIG_KSU_SUSFS_SUS_MAP" in before, "guard must be feature-gated"
+          assert "vma = vma_lookup(mm, addr);" in before, "guard must refresh VMA"
+          assert "struct page *page = NULL;" in before, "page pointer must start NULL"
+          assert "mmap_read_lock_killable(mm)" in body[:loop], "mmap lock must precede loop"
+          assert "mmap_read_unlock(mm)" in body[gup:], "mmap unlock must remain"
+          print("PASS: structural guard ordering and feature gate (not semantic clearance)")
+          PY
           echo "PASS: two patches apply in isolated BSP; not a compile, behavior or security approval"
           {
             echo "### Isolated memory candidates"
