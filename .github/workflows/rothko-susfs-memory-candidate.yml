@@ -13,6 +13,7 @@ on:
       - patches/rothko-susfs-proc-map-files-candidate.patch
       - patches/rothko-susfs-proc-readlink-redirect-candidate.patch
       - patches/rothko-susfs-namei-walk-guard-candidate.patch
+      - patches/rothko-susfs-namei-vfs-readlink-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   pull_request:
     paths:
@@ -25,6 +26,7 @@ on:
       - patches/rothko-susfs-proc-map-files-candidate.patch
       - patches/rothko-susfs-proc-readlink-redirect-candidate.patch
       - patches/rothko-susfs-namei-walk-guard-candidate.patch
+      - patches/rothko-susfs-namei-vfs-readlink-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   workflow_dispatch:
 permissions:
@@ -49,6 +51,7 @@ jobs:
             patches/rothko-susfs-proc-map-files-candidate.patch
             patches/rothko-susfs-proc-readlink-redirect-candidate.patch
             patches/rothko-susfs-namei-walk-guard-candidate.patch
+            patches/rothko-susfs-namei-vfs-readlink-candidate.patch
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -79,6 +82,8 @@ jobs:
           grep -Fq 'susfs_open_redirect_spoof_do_proc_readlink' susfs/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch
           grep -Fq 'susfs_is_inode_sus_path' susfs/kernel_patches/fs/susfs.c
           grep -Fq 'susfs_is_inode_sus_path' susfs/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch
+          grep -Fq 'susfs_open_redirect_spoof_vfs_readlink' susfs/kernel_patches/fs/susfs.c
+          grep -Fq 'susfs_open_redirect_spoof_vfs_readlink' susfs/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch
       - name: Validate memory candidate in disposable BSP checkout
         shell: bash
         run: |
@@ -374,4 +379,54 @@ jobs:
             echo "- Guard added before may_lookup inside link_path_walk only; no dentry dput"
             echo "- Source and helper symbol verified against exact pinned official SUSFS upstream"
             echo "- No full namei patch, no kernel compile, security clearance, ABI/KMI approval or flash"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Validate isolated VFS readlink redirection paths
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-namei-vfs-readlink-candidate.patch"
+          test -s "$patch"
+          git -C bsp apply --check "$patch"
+          git -C bsp apply "$patch"
+          git -C bsp diff --check
+          test "$(git -C bsp diff --name-only)" = "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
+          python3 - <<'PY'
+          from pathlib import Path
+          src = Path("bsp/fs/namei.c").read_text()
+          assert "#if defined(CONFIG_KSU_SUSFS_SUS_PATH) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)\n#include <linux/susfs_def.h>\n#endif" in src
+          assert "#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT\nextern int susfs_open_redirect_spoof_vfs_readlink(struct inode *inode," in src
+          start = src.index("int vfs_readlink(")
+          stop = src.index("EXPORT_SYMBOL(vfs_readlink);", start)
+          body = src[start:stop]
+          helper = "susfs_open_redirect_spoof_vfs_readlink(inode, buffer, buflen)"
+          assert body.count(helper) == 2, "both original readlink paths must have their own guarded helper"
+          assert body.count("if (SUSFS_IS_INODE_OPEN_REDIRECT(inode))") == 2
+          fallback = body.index("return inode->i_op->readlink(dentry, buffer, buflen);")
+          early_helper = body.index(helper)
+          early_success = body.index("if (!res)", early_helper)
+          assert early_helper < early_success < fallback, "legacy i_op fallback/return missing"
+          assert "#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT" in body[:early_helper]
+          lookup = body.index("link = READ_ONCE(inode->i_link);")
+          getlink = body.index("link = inode->i_op->get_link(dentry, inode, &done);", lookup)
+          next_helper = body.index(helper, getlink)
+          next_success = body.index("if (!res)", next_helper)
+          cleanup_success = body.index("do_delayed_call(&done);", next_success)
+          success_return = body.index("return res;", cleanup_success)
+          original_copy = body.index("res = readlink_copy(buffer, buflen, link);", success_return)
+          cleanup_original = body.index("do_delayed_call(&done);", original_copy)
+          assert lookup < getlink < next_helper < next_success < cleanup_success < success_return < original_copy < cleanup_original
+          assert "#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT" in body[getlink:next_helper]
+          assert "if (IS_ERR(link))" in body[getlink:next_helper], "get_link error must be handled"
+          assert "return -EINVAL;" in body[fallback:lookup], "non-symlink rejection missing"
+          print("PASS: isolated namei vfs_readlink candidate applies after seven previous source-only candidates")
+          print("PASS: both original readlink fallbacks and delayed_call cleanup retained")
+          print("BLOCK: helper returning zero is upstream convention, not proven runtime readlink semantics")
+          print("BLOCK: still no feature-on compilation, complete namei/exec contract or device ABI validation")
+          PY
+          {
+            echo "### Source-only VFS readlink OPEN_REDIRECT candidate"
+            echo "- Eighth independently reversible candidate, applied after previous seven in disposable checkout only"
+            echo "- Legacy i_op->readlink and ordinary get_link fallback retained; delayed_call release checked"
+            echo "- Official pinned SUSFS helper occurrence verified"
+            echo "- No kernel compilation, merge, releases, flash images, or runtime approval"
           } >> "$GITHUB_STEP_SUMMARY"
