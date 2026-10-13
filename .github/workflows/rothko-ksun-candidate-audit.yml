@@ -31,6 +31,7 @@ on:
       - patches/rothko-ksun-g2-second-stage-status-guard-candidate.patch
       - patches/rothko-ksun-g2-single-attempt-policy-candidate.patch
       - patches/rothko-ksun-g2-second-stage-one-shot-candidate.patch
+      - patches/rothko-ksun-g2-policy-locked-snapshot-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -66,6 +67,7 @@ on:
       - patches/rothko-ksun-g2-second-stage-status-guard-candidate.patch
       - patches/rothko-ksun-g2-single-attempt-policy-candidate.patch
       - patches/rothko-ksun-g2-second-stage-one-shot-candidate.patch
+      - patches/rothko-ksun-g2-policy-locked-snapshot-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -1181,3 +1183,78 @@ jobs:
           print("BLOCK: late-load unwind, G5 cred lifetime, zygote/rc one-shot, compile and runtime still NO-GO")
           PY
           echo "BLOCK: atomic second-stage guard is source-only and not flashable"
+
+      - name: Verify G2 old policy pointer acquired under mutex (source-only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-g2-policy-locked-snapshot-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("/tmp/ksun/kernel/selinux/rules.c").read_text()
+          signature = "int apply_kernelsu_rules(void)\n{"
+          snapshot = (
+              "old_pol = rcu_dereference_protected(selinux_state.policy,\n"
+              "        lockdep_is_held(&selinux_state.policy_mutex));"
+          )
+          mutex = "mutex_lock(&selinux_state.policy_mutex);"
+          guard = "if (policy_attempted) {"
+          backup = "backup_sepolicy ="
+
+          def accepted(src):
+              try:
+                  body = src.split(signature, 1)[1].split(
+                      "#define KSU_SEPOLICY_MAX_BATCH_SIZE", 1
+                  )[0]
+                  return all((
+                      src.count(signature) == 1,
+                      body.count("struct selinux_policy *pol, *old_pol;") == 1,
+                      body.count(snapshot) == 1,
+                      body.count("old_pol =") == 1,
+                      body.count(mutex) == 1,
+                      body.count(guard) == 1,
+                      body.index(mutex) < body.index(snapshot)
+                          < body.index(guard) < body.index(backup),
+                      body.index("rcu_assign_pointer(selinux_state.policy, pol);")
+                          > body.index(backup),
+                      body.index("out_unlock:") < body.index(
+                          "mutex_unlock(&selinux_state.policy_mutex);"
+                      ),
+                  ))
+              except (ValueError, IndexError):
+                  return False
+
+          assert accepted(source), "G2 policy snapshot read not guarded by policy_mutex"
+          cases = (
+              ("racy initializer", source.replace(
+                  "struct selinux_policy *pol, *old_pol;",
+                  "struct selinux_policy *pol, *old_pol = selinux_state.policy;", 1)),
+              ("unguarded direct policy pointer", source.replace(
+                  snapshot, "old_pol = selinux_state.policy;", 1)),
+              ("read before mutex acquired", source.replace(
+                  mutex + "\n    " + snapshot,
+                  snapshot + "\n    " + mutex, 1)),
+              ("snapshot after attempt marker", source.replace(
+                  snapshot + "\n    /*",
+                  "/*", 1).replace(
+                  "    policy_attempted = true;\n",
+                  "    policy_attempted = true;\n    " + snapshot + "\n", 1)),
+              ("no lock ownership assertion", source.replace(
+                  "lockdep_is_held(&selinux_state.policy_mutex)",
+                  "true", 1)),
+              ("missing initial pointer assignment", source.replace(
+                  "    " + snapshot + "\n", "", 1)),
+          )
+          for label, mutated in cases:
+              assert mutated != source, label + ": mutation did not modify the source"
+              assert not accepted(mutated), label + ": unsafe pointer access passed"
+              print("PASS: deny G2 policy old_pol mutation — " + label)
+          print("PASS: selected SELinux policy pointer under policy_mutex before snapshot/backup")
+          print("BLOCK: policy old pointer is only one G2 prerequisite; no G2 late-load unwind or G5 ownership")
+          print("BLOCK: cannot infer compile/runtime/ABI correctness from source matching")
+          PY
+          echo "BLOCK: G2 locked-pointer source candidate is non-deployable"
