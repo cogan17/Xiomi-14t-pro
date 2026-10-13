@@ -1460,6 +1460,7 @@ jobs:
                   return all((
                       text.count("#include <linux/errno.h>") == 1,
                       scope.count(acquire) == 1,
+                      scope.count("mutex_unlock(&feature_mutex);") == 2,
                       scope.count(guard) == 1,
                       scope.count(store) == 1,
                       scope.index(acquire) < scope.index(guard)
