@@ -1,0 +1,19 @@
+diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration.c
+--- a/kernel/runtime/ksud_integration.c
++++ b/kernel/runtime/ksud_integration.c
+@@ -181,3 +181,6 @@
+                 ksu_selinux_hide_handle_second_stage();
+-                apply_kernelsu_rules();
++                if (apply_kernelsu_rules()) {
++                    pr_err("KernelSU policy setup failed; second_stage not ready\n");
++                    return 0;
++                }
+                 cache_sid();
+@@ -219,3 +222,6 @@
+                 ksu_selinux_hide_handle_second_stage();
+-                apply_kernelsu_rules();
++                if (apply_kernelsu_rules()) {
++                    pr_err("KernelSU policy setup failed; second_stage not ready\n");
++                    return;
++                }
+                 cache_sid();
