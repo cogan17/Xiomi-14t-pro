@@ -19,6 +19,7 @@ on:
       - patches/rothko-susfs-namei-vfs-readlink-candidate.patch
       - patches/rothko-susfs-namei-integrated-candidate.patch
       - patches/rothko-susfs-namei-dcache-enoent-candidate.patch
+      - patches/rothko-susfs-namei-slow-lookup-enoent-candidate.patch
       - patches/rothko-susfs-exec-include-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   pull_request:
@@ -38,6 +39,7 @@ on:
       - patches/rothko-susfs-namei-vfs-readlink-candidate.patch
       - patches/rothko-susfs-namei-integrated-candidate.patch
       - patches/rothko-susfs-namei-dcache-enoent-candidate.patch
+      - patches/rothko-susfs-namei-slow-lookup-enoent-candidate.patch
       - patches/rothko-susfs-exec-include-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   workflow_dispatch:
@@ -69,6 +71,7 @@ jobs:
             patches/rothko-susfs-namei-vfs-readlink-candidate.patch
             patches/rothko-susfs-namei-integrated-candidate.patch
             patches/rothko-susfs-namei-dcache-enoent-candidate.patch
+            patches/rothko-susfs-namei-slow-lookup-enoent-candidate.patch
             patches/rothko-susfs-exec-include-candidate.patch
       - uses: actions/checkout@v4
         with:
@@ -793,3 +796,70 @@ jobs:
           test "$(git -C bsp diff --name-only)" = \
                "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
           echo "PASS: targeted namei candidate completely reversed; prior port states preserved"
+
+      - name: Verify slow-lookup hidden result rejects only after dentry completion
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C bsp rev-parse HEAD)" = b2d8b54a0d8bb002d32dda24e58d2b5d0423546b
+          patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-namei-slow-lookup-enoent-candidate.patch"
+          test -s "$patch"
+          previous="$(sha256sum bsp/fs/namei.c | cut -d' ' -f1)"
+          # The preceding dcache candidate reverses itself. Reapply it
+          # temporarily because the new hunk is based on both prior namei ports.
+          dcache="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-namei-dcache-enoent-candidate.patch"
+          git -C bsp apply --check "$dcache"
+          git -C bsp apply "$dcache"
+          git -C bsp apply --check --verbose "$patch"
+          git -C bsp apply "$patch"
+          git -C bsp apply --reverse --check "$patch"
+          git -C bsp diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          from subprocess import check_output
+          src=Path("bsp/fs/namei.c").read_text()
+          fn=src.split("static struct dentry *__lookup_slow(",1)[1].split(
+              "\nstatic struct dentry *lookup_slow(",1)[0]
+          guard=(
+              "#ifdef CONFIG_KSU_SUSFS_SUS_PATH\n"
+              "\t/* d_alloc_parallel() or ->lookup() produced an owned dentry. */\n"
+              "\tif (!IS_ERR(dentry) && dentry && d_inode(dentry) &&\n"
+              "\t    susfs_is_inode_sus_path(d_inode(dentry))) {\n"
+              "\t\tdput(dentry);\n"
+              "\t\treturn ERR_PTR(-ENOENT);\n"
+              "\t}\n"
+              "#endif\n"
+          )
+          assert fn.count(guard)==1, "guard should appear exactly once in slow lookup"
+          normal=fn.replace(guard,"",1)
+          # Verify the original error, retry and d_lookup_done paths are
+          # preserved. This is not a proof of runtime concurrency correctness.
+          for phrase in (
+              "dentry = d_alloc_parallel(dir, name, &wq);",
+              "d_revalidate(dentry, flags);",
+              "d_invalidate(dentry);",
+              "goto again;",
+              "old = inode->i_op->lookup(inode, dentry, flags);",
+              "d_lookup_done(dentry);",
+              "return dentry;",
+          ):
+              assert phrase in normal, "original lookup semantics removed: "+phrase
+          assert fn.index("d_lookup_done(dentry);") < fn.index(guard) < fn.rindex("return dentry;")
+          assert "if (!IS_ERR(dentry) && dentry && d_inode(dentry)" in guard
+          assert guard.index("dput(dentry);") < guard.index("return ERR_PTR(-ENOENT);")
+          for label,mutant in (
+              ("skip owned ref release",guard.replace("\t\tdput(dentry);\n","")),
+              ("retry hidden inode",guard.replace("return ERR_PTR(-ENOENT);","goto again;")),
+              ("dereference error pointer",guard.replace("!IS_ERR(dentry) && ","")),
+          ):
+              assert mutant!=guard and mutant not in fn, "unsafe mutation accepted: "+label
+          print("PASS: owned slow-lookup result rejected after lookup_done and released once")
+          print("PASS: existing RCU lookup_fast untouched, original slow lookup retained")
+          print("BLOCK: only source-level guard, not a concurrency/refcount proof or integrated kernel build")
+          PY
+          git -C bsp apply --reverse "$patch"
+          git -C bsp apply --reverse "$dcache"
+          test "$(sha256sum bsp/fs/namei.c | cut -d ' ' -f1)" = "$previous"
+          test "$(git -C bsp diff --name-only)" = \
+               "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
+          echo "PASS: both temporary source guards fully reversed; prior candidates untouched"
