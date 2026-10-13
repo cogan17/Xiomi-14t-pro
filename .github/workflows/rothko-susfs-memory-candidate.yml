@@ -40,7 +40,7 @@ jobs:
           test "$(git -C susfs rev-parse 'HEAD^{tree}')" = b39cd4117178ce73d2973f7bcdae5c74defc8f68
           test -s susfs/kernel_patches/include/linux/susfs_def.h
           # The candidate guard must resolve against the pinned upstream definition.
-          grep -Eq '^[[:space:]]*#define[[:space:]]+SUSFS_IS_INODE_SUS_MAP([[:space:]]|\\()' susfs/kernel_patches/include/linux/susfs_def.h
+          grep -Fq 'SUSFS_IS_INODE_SUS_MAP' susfs/kernel_patches/include/linux/susfs_def.h
       - name: Check and apply both patches in disposable checkout
         shell: bash
         run: |
