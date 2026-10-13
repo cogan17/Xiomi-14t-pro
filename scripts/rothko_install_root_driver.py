@@ -56,12 +56,23 @@ def install(tree: Path, driver: Path) -> None:
         output.symlink_to(os.path.relpath(kernel_dir, output.parent), target_is_directory=True)
         if not output.joinpath("Kconfig").is_file():
             raise ValueError("Integration symlink failed")
-    except Exception:
-        # Never remove a pre-existing driver: it was rejected above.
-        if output.is_symlink():
-            output.unlink()
-        makefile.write_text(original_make, encoding="utf-8")
-        kconfig.write_text(original_kconfig, encoding="utf-8")
+    except Exception as original_error:
+        # Attempt every rollback action even if an earlier cleanup step fails.
+        # A failed rollback is never reported as a clean installation failure.
+        rollback_errors = []
+        for action in (
+            lambda: output.unlink() if output.is_symlink() else None,
+            lambda: makefile.write_text(original_make, encoding="utf-8"),
+            lambda: kconfig.write_text(original_kconfig, encoding="utf-8"),
+        ):
+            try:
+                action()
+            except OSError as error:
+                rollback_errors.append(error)
+        if rollback_errors:
+            raise RuntimeError(
+                f"Root integration failed and rollback was incomplete: {rollback_errors!r}"
+            ) from original_error
         raise
 
 
