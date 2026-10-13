@@ -134,3 +134,10 @@ Compared `kernel/Kconfig` directly at the **exact two pinned commits**, not thei
 - **Material Kbuild difference:** the audit pin conditionally excludes or selects hook objects under `ifneq ($(strip $(CONFIG_KSU_SUSFS)),y)`; the installer pin's inspected Kbuild does not contain that SUSFS selection branch. Therefore compiled hook selection is **not equivalent** for SUSFS-enabled configurations, in addition to the previously proven Kconfig differences.
 - Both pinned setup scripts expose the existing `drivers/kernelsu` Makefile/Kconfig wiring pattern. Rothko's isolated installer already owns this wiring; **do not duplicate it** or run upstream setup.sh in-tree.
 - Scope: static Kbuild comparison only; no claim of full API compatibility, successful link, runtime safety, or ready-to-flash kernel. Preserve both pins, all existing candidates and gates. Next gate is the **specific SUSFS companion/API contract**, not a repeated broad Kconfig/Kbuild audit.
+
+## Targeted pinned KSUN sucompat FD / post-exec check — 2026-10-14
+
+- Inspected immutable `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161` `kernel/feature/sucompat.c` and `kernel/feature/sucompat.h` (no build).
+- Neither inspected file contains the identifiers `ksu_handle_post_execveat_sucompat` or `ksu_install_fd`. This is a **file-scoped negative observation**, not proof those identifiers are absent from every upstream file or that the companion patch cannot add them.
+- The existing `sucompat.c` exec interception uses `get_unused_fd_flags(O_CLOEXEC)`, `filp_open(KSUD_PATH, O_PATH, 0)`, `fd_install(tmp_fd, ksud_file)`, `escape_with_root_profile()`, then invokes the execveat syscall path. The temporary executable FD must **not** be equated with a privileged post-exec `SU_SESSION` FD.
+- Official pinned companion patch is already inspected by `.github/workflows/rothko-susfs-source-audit.yml`; no duplicate workflow or upstream fetch is needed. **HOLD** post-exec authorization, FD ownership/revocation, credential lifecycle and full KSUN/SUSFS integration until their combined contract is proven.
