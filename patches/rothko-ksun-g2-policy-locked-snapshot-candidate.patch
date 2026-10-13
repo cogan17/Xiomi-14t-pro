@@ -1,0 +1,21 @@
+diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
+--- a/kernel/selinux/rules.c
++++ b/kernel/selinux/rules.c
+@@ -44,7 +44,7 @@
+ 
+ int apply_kernelsu_rules(void)
+ {
+-    struct selinux_policy *pol, *old_pol = selinux_state.policy;
++    struct selinux_policy *pol, *old_pol;
+     struct policydb *db;
+     static bool policy_attempted;
+     int ret = 0;
+@@ -54,6 +54,8 @@
+     }
+ 
+     mutex_lock(&selinux_state.policy_mutex);
++    old_pol = rcu_dereference_protected(selinux_state.policy,
++        lockdep_is_held(&selinux_state.policy_mutex));
+     /*
+      * Partial G2 one-shot safety barrier only: a failed setup is not
+      * retried against already published or partially initialized state.
