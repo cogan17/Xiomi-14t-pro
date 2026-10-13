@@ -910,7 +910,7 @@ jobs:
           end=fn.index("\n\t}\n\tif (unlikely(status <= 0))",start)
           branch=fn[start:end]
           assert guard.rstrip("\n") in branch, "guard must remain inside non-RCU else branch"
-          assert branch.index("status = d_revalidate(dentry, nd->flags);") < branch.index(guard)
+          assert branch.index("status = d_revalidate(dentry, nd->flags);") < branch.index(guard.rstrip("\n"))
           assert guard.index("likely(status > 0)") < guard.index("dput(dentry);") < guard.index("return ERR_PTR(-ENOENT);")
           assert "__d_lookup_rcu(parent, &nd->last, &nd->next_seq);" in fn.split("\t} else {",1)[0]
           assert "try_to_unlazy_next(nd, dentry)" in fn.split("\t} else {",1)[0]
