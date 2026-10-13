@@ -1,0 +1,21 @@
+diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
+--- a/kernel/selinux/rules.c
++++ b/kernel/selinux/rules.c
+@@ -74,7 +74,17 @@
+                 pr_info("backup sepolicy success! latest_granting=%d\n", backup_sepolicy->latest_granting);
+             }
+         }
+     }
++    /*
++     * Partial G2 fail-closed barrier: never publish modified SELinux
++     * policy when the rollback snapshot failed to materialize.
++     * The caller is still void; this is NOT a complete startup
++     * transaction, READY publication, or guaranteed rollback.
++     */
++    if (!backup_sepolicy) {
++        pr_err("KSUN: refusing policy update without rollback backup\\n");
++        goto out_unlock;
++    }
+     pol = ksu_dup_sepolicy(rcu_dereference_protected(
+         old_pol, lockdep_is_held(&selinux_state.policy_mutex)));
+     if (IS_ERR(pol)) {
