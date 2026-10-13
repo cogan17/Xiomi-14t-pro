@@ -27,6 +27,17 @@ jobs:
           persist-credentials: false
           ref: dev/rothko
           path: bsp
+      - name: Verify exact pinned SUSFS header prerequisite
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git init -q susfs
+          timeout 105 git -C susfs -c http.version=HTTP/1.1 fetch --quiet --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git 5192aa2d33b381b58c1051532f9e1dfa5de6e8d3
+          git -C susfs checkout -q --detach FETCH_HEAD
+          test "$(git -C susfs rev-parse HEAD)" = 5192aa2d33b381b58c1051532f9e1dfa5de6e8d3
+          test "$(git -C susfs rev-parse 'HEAD^{tree}')" = b39cd4117178ce73d2973f7bcdae5c74defc8f68
+          test -s susfs/kernel_patches/include/linux/susfs_def.h
+          echo "PASS: required header exists in exact pinned SUSFS tree; not yet integrated"
       - name: Check and apply candidate only inside disposable checkout
         shell: bash
         run: |
