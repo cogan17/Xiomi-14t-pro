@@ -24,11 +24,14 @@ class RothkoFormTests(unittest.TestCase):
                 variants, selected = select(selection, self.flags, "refs/heads/dev/rothko")
                 self.assertEqual(variants, expected)
                 self.assertTrue(selected["susfs"])
-        self.assertEqual(len(ROOTS["All (KSU + KSUN + BakaSU)"]), 3)
+        self.assertEqual(set(ROOTS), {"KernelSU-Next", "BakaSU"})
 
     def test_wrong_root_branch_and_boolean_fail(self):
         with self.assertRaises(ValueError):
             select("No Root", self.flags, "refs/heads/dev/rothko")
+        for archived in ("KernelSU", "All (KSU + KSUN + BakaSU)"):
+            with self.assertRaisesRegex(ValueError, "archived"):
+                select(archived, self.flags, "refs/heads/dev/rothko")
         with self.assertRaises(ValueError):
             select("BakaSU", self.flags, "refs/heads/bsp-rothko-u-oss")
         with self.assertRaises(ValueError):
@@ -51,7 +54,7 @@ class RothkoFormTests(unittest.TestCase):
 
     def test_cli_writes_expected_no_build_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
-            env = dict(os.environ, ROOT_FLAVOR="All (KSU + KSUN + BakaSU)",
+            env = dict(os.environ, ROOT_FLAVOR="KernelSU-Next",
                        GITHUB_REF="refs/heads/dev/rothko",
                        GITHUB_OUTPUT=str(Path(tmp) / "out"),
                        GITHUB_STEP_SUMMARY=str(Path(tmp) / "summary"))
@@ -59,7 +62,7 @@ class RothkoFormTests(unittest.TestCase):
             run = subprocess.run([sys.executable, str(ROOT / "scripts/rothko_feature_plan.py")],
                                  env=env, capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stderr)
-            self.assertIn('root_matrix=["KernelSU","KernelSU-Next","BakaSU"]',
+            self.assertIn('root_matrix=["KernelSU-Next"]',
                           Path(tmp, "out").read_text())
             self.assertIn("PLAN ONLY", Path(tmp, "summary").read_text())
         opts = {name: raw == "true" for name, raw in self.flags.items()}
