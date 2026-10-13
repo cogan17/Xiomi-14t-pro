@@ -1746,10 +1746,11 @@ jobs:
           base = "\t" + release + "\n"
           mutations = (
               ("omit key teardown", src.replace(
-                  "\t" + disable + "\n", "", 1)),
+                  "\t" + unregister + "\n\t" + disable,
+                  "\t" + unregister, 1)),
               ("leave key enabled", src.replace(
-                  "\t" + disable + "\n",
-                  "\tstatic_branch_enable(&ksu_su_compat_enabled);\n", 1)),
+                  "\t" + unregister + "\n\t" + disable,
+                  "\t" + unregister + "\n\tstatic_branch_enable(&ksu_su_compat_enabled);", 1)),
               ("disable before registry release", src.replace(
                   "\t" + unregister + "\n\t" + disable,
                   "\t" + disable + "\n\t" + unregister, 1)),
@@ -1758,9 +1759,9 @@ jobs:
                   "\t" + disable + "\n\t" + gate, 1).replace(
                   "\t" + unregister + "\n\t" + disable,
                   "\t" + unregister, 1)),
-              ("unregister after key shutdown", src.replace(
+              ("omit owned deregistration", src.replace(
                   "\t" + unregister + "\n\t" + disable,
-                  "\t" + disable + "\n\t" + unregister, 1)),
+                  "\t" + disable, 1)),
               ("forget ownership release", src.replace(
                   base + "\t/* Handler deregistration",
                   "\t/* Handler deregistration", 1)),
