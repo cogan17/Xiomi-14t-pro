@@ -1,15 +1,9 @@
 name: Cogan Rothko - BakaSU and NoMount Combined Compile (Experimental)
 
-# First combined source compilation. Generic GKI config, NOT Rothko board verified.
+# Deferred BakaSU experiment: manual dispatch only while KSUN + SUSFS + NoMount is priority.
+# Previous runs/results are preserved. Generic GKI config, NOT Rothko board verified.
 # No upload, release, packaging, flashing, or permission to override ABI/KMI.
 on:
-  pull_request:
-    branches:
-      - dev/rothko
-    paths:
-      - '.github/workflows/rothko-bakasu-nomount-combined.yml'
-      - 'scripts/rothko_install_root_driver.py'
-      - 'scripts/rothko_install_nomount.py'
   workflow_dispatch:
 
 permissions:
