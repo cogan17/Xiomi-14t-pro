@@ -55,6 +55,7 @@ jobs:
             patches/rothko-susfs-task-mmu-rollup-candidate.patch
             patches/rothko-susfs-task-mmu-pagemap-candidate.patch
             patches/rothko-susfs-task-mmu-show-map-vma-candidate.patch
+            patches/rothko-susfs-task-mmu-integrated-candidate.patch
             patches/rothko-susfs-proc-map-files-candidate.patch
             patches/rothko-susfs-proc-readlink-redirect-candidate.patch
             patches/rothko-susfs-namei-walk-guard-candidate.patch
