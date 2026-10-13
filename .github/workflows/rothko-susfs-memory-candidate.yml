@@ -10,6 +10,7 @@ on:
       - patches/rothko-susfs-task-mmu-smap-candidate.patch
       - patches/rothko-susfs-task-mmu-rollup-candidate.patch
       - patches/rothko-susfs-task-mmu-pagemap-candidate.patch
+      - patches/rothko-susfs-task-mmu-show-map-vma-candidate.patch
       - patches/rothko-susfs-proc-map-files-candidate.patch
       - patches/rothko-susfs-proc-readlink-redirect-candidate.patch
       - patches/rothko-susfs-namei-walk-guard-candidate.patch
@@ -24,6 +25,7 @@ on:
       - patches/rothko-susfs-task-mmu-smap-candidate.patch
       - patches/rothko-susfs-task-mmu-rollup-candidate.patch
       - patches/rothko-susfs-task-mmu-pagemap-candidate.patch
+      - patches/rothko-susfs-task-mmu-show-map-vma-candidate.patch
       - patches/rothko-susfs-proc-map-files-candidate.patch
       - patches/rothko-susfs-proc-readlink-redirect-candidate.patch
       - patches/rothko-susfs-namei-walk-guard-candidate.patch
@@ -50,6 +52,7 @@ jobs:
             patches/rothko-susfs-task-mmu-smap-candidate.patch
             patches/rothko-susfs-task-mmu-rollup-candidate.patch
             patches/rothko-susfs-task-mmu-pagemap-candidate.patch
+            patches/rothko-susfs-task-mmu-show-map-vma-candidate.patch
             patches/rothko-susfs-proc-map-files-candidate.patch
             patches/rothko-susfs-proc-readlink-redirect-candidate.patch
             patches/rothko-susfs-namei-walk-guard-candidate.patch
@@ -522,3 +525,105 @@ jobs:
           test "$(git -C bsp show HEAD:fs/exec.c | sha256sum | cut -d' ' -f1)" = "$(sha256sum bsp/fs/exec.c | cut -d' ' -f1)"
           test "$(git -C bsp diff --name-only)" = "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
           echo "PASS: exec.c pristine restored; existing eight candidates remain isolated"
+
+      - name: Validate task_mmu maps spoof candidate after prior isolated ports
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base=b2d8b54a0d8bb002d32dda24e58d2b5d0423546b
+          test "$(git -C bsp rev-parse HEAD)" = "$base"
+          pin=5192aa2d33b381b58c1051532f9e1dfa5de6e8d3
+          test "$(git -C susfs rev-parse HEAD)" = "$pin"
+          patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-task-mmu-show-map-vma-candidate.patch"
+          test -s "$patch"
+          python3 - <<'PY'
+          from pathlib import Path
+          upstream = Path("susfs/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch").read_text()
+          marker = "diff --git a/fs/proc/task_mmu.c b/fs/proc/task_mmu.c"
+          assert upstream.count(marker) == 1, "pinned official task_mmu section not unique"
+          section = upstream.split(marker, 1)[1].split("\ndiff --git ", 1)[0]
+          header = Path("susfs/kernel_patches/include/linux/susfs_def.h").read_text()
+          required = (
+              "susfs_sus_kstat_spoof_show_map_vma",
+              "susfs_open_redirect_spoof_show_map_vma_srcu",
+              "SUSFS_IS_INODE_SUS_MAP",
+              "SUSFS_IS_INODE_OPEN_REDIRECT",
+          )
+          for symbol in required:
+              assert symbol in section or symbol in header, (
+                  "pinned upstream lacks task_mmu feature " + symbol
+              )
+          assert "SUSFS_IS_INODE_OPEN_REDIRECT" in header
+          print("PASS: official pinned SUSFS task_mmu helpers and macro provenance verified")
+          PY
+          # All earlier source-only candidates in this run remain applied to the disposable checkout.
+          test "$(git -C bsp diff --name-only)" = "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
+          before="$(sha256sum bsp/fs/proc/task_mmu.c | cut -d' ' -f1)"
+          git -C bsp apply --check --verbose "$patch"
+          git -C bsp apply "$patch"
+          git -C bsp apply --reverse --check "$patch"
+          git -C bsp diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          src = Path("bsp/fs/proc/task_mmu.c").read_text()
+          header = Path("susfs/kernel_patches/include/linux/susfs_def.h").read_text()
+          begin = "show_map_vma(struct seq_file *m, struct vm_area_struct *vma)"
+          end = "\nstatic int show_map("
+          redirect = "susfs_open_redirect_spoof_show_map_vma_srcu("
+          kstat = "susfs_sus_kstat_spoof_show_map_vma(inode, &dev, &ino);"
+          lock = "srcu_read_lock(&susfs_srcu_open_redirect);"
+          unlock = "srcu_read_unlock(&susfs_srcu_open_redirect, idx);"
+          def accepts(s):
+              try:
+                  body = s.split(begin, 1)[1].split(end, 1)[0]
+                  branch = body.split("#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT", 1)[1].split(
+                      "#endif", 1
+                  )[0]
+                  return all((
+                      s.count(begin) == 1,
+                      s.count("#include <linux/srcu.h>") == 1,
+                      redirect in branch,
+                      branch.count(lock) == 1,
+                      branch.count(unlock) == 2,
+                      branch.index(lock) < branch.index(redirect) <
+                          branch.index("if (!ret)") < branch.index("return;") <
+                          branch.rindex(unlock),
+                      branch.index(unlock) < branch.index("return;"),
+                      body.count("SUSFS_IS_INODE_SUS_MAP(inode)") == 1,
+                      body.count(kstat) == 1,
+                      body.index("SUSFS_IS_INODE_SUS_MAP(inode)") < body.index(kstat),
+                      "show_vma_header_prefix(m, start, end, flags, pgoff, dev, ino);" in body,
+                      'seq_file_path(m, file, "\\n");' in body,
+                      'seq_putc(m, \'\\n\');' in body,
+                  ))
+              except (IndexError, ValueError):
+                  return False
+          assert accepts(src), "task_mmu candidate must keep original maps fallbacks"
+          cases = (
+              ("missing SRCU unlock on success", src.replace(
+                  "\t\t\t\tsrcu_read_unlock(&susfs_srcu_open_redirect, idx);\n"
+                  "\t\t\t\treturn;",
+                  "\t\t\t\treturn;", 1)),
+              ("missing SRCU unlock on failure", src.replace(
+                  "\t\t\tsrcu_read_unlock(&susfs_srcu_open_redirect, idx);\n"
+                  "\t\t}", "\t\t}", 1)),
+              ("remove kstat spoof", src.replace("\t\t" + kstat + "\n", "", 1)),
+              ("erase normal file-path fallback", src.replace(
+                  'seq_file_path(m, file, "\\n");',
+                  'seq_puts(m, "missing");', 1)),
+              ("erase map inode hiding", src.replace(
+                  "SUSFS_IS_INODE_SUS_MAP(inode)", "false", 1)),
+          )
+          for label, mutated in cases:
+              assert mutated != src, label + ": mutation ineffective"
+              assert not accepts(mutated), label + ": unsafe mutation accepted"
+              print("PASS: denied unsafe show_map_vma change — " + label)
+          assert "SUSFS_IS_INODE_SUS_MAP" in header
+          print("PASS: show_map_vma candidate applies after previous eight isolated candidates")
+          print("BLOCK: SRCU lifetime, aliasing, output semantics and ABI/runtime not compiled or tested")
+          PY
+          git -C bsp apply --reverse "$patch"
+          test "$(sha256sum bsp/fs/proc/task_mmu.c | cut -d' ' -f1)" = "$before"
+          test "$(git -C bsp diff --name-only)" = "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
+          echo "PASS: reversible pinned show_map_vma candidate; prior eight candidate modifications preserved"
+          echo "BLOCK: no device build, merge, release, or flash"
