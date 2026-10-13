@@ -63,14 +63,13 @@ class RootDriverIntegrationTests(unittest.TestCase):
         makefile = self.tree / "drivers/Makefile"
         kconfig = self.tree / "drivers/Kconfig"
         original_config = kconfig.read_text()
-        original_symlink = Path.symlink_to
         original_write = Path.write_text
 
         def fail_symlink(path, *args, **kwargs):
             raise OSError("simulated symlink failure")
 
         def fail_makefile_restore(path, text, *args, **kwargs):
-            if path == makefile and text == "obj-y += base/\\n":
+            if path == makefile and text == "obj-y += base/\n":
                 raise OSError("simulated rollback failure")
             return original_write(path, text, *args, **kwargs)
 
