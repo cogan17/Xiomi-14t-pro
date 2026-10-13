@@ -11,6 +11,7 @@ on:
       - patches/rothko-susfs-task-mmu-rollup-candidate.patch
       - patches/rothko-susfs-task-mmu-pagemap-candidate.patch
       - patches/rothko-susfs-task-mmu-show-map-vma-candidate.patch
+      - patches/rothko-susfs-task-mmu-integrated-candidate.patch
       - patches/rothko-susfs-proc-map-files-candidate.patch
       - patches/rothko-susfs-proc-readlink-redirect-candidate.patch
       - patches/rothko-susfs-namei-walk-guard-candidate.patch
@@ -26,6 +27,7 @@ on:
       - patches/rothko-susfs-task-mmu-rollup-candidate.patch
       - patches/rothko-susfs-task-mmu-pagemap-candidate.patch
       - patches/rothko-susfs-task-mmu-show-map-vma-candidate.patch
+      - patches/rothko-susfs-task-mmu-integrated-candidate.patch
       - patches/rothko-susfs-proc-map-files-candidate.patch
       - patches/rothko-susfs-proc-readlink-redirect-candidate.patch
       - patches/rothko-susfs-namei-walk-guard-candidate.patch
@@ -627,3 +629,35 @@ jobs:
           test "$(git -C bsp diff --name-only)" = "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
           echo "PASS: reversible pinned show_map_vma candidate; prior eight candidate modifications preserved"
           echo "BLOCK: no device build, merge, release, or flash"
+
+      - name: Prove consolidated task_mmu port is byte-identical to four prior candidates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base=b2d8b54a0d8bb002d32dda24e58d2b5d0423546b
+          patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-task-mmu-integrated-candidate.patch"
+          test "$(git -C bsp rev-parse HEAD)" = "$base"
+          test -s "$patch"
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          git -C "$tmp" init -q
+          mkdir -p "$tmp/fs/proc"
+          git -C bsp show "$base:fs/proc/task_mmu.c" > "$tmp/fs/proc/task_mmu.c"
+          original="$(sha256sum "$tmp/fs/proc/task_mmu.c" | cut -d' ' -f1)"
+          # Existing eight isolated candidates plus show_map_vma are already
+          # staged in bsp. This is a content-identity check, not a fifth mutation.
+          git -C "$tmp" apply --check --verbose "$patch"
+          git -C "$tmp" apply "$patch"
+          git -C "$tmp" apply --reverse --check "$patch"
+          git -C "$tmp" diff --check
+          cmp "$tmp/fs/proc/task_mmu.c" bsp/fs/proc/task_mmu.c
+          test "$(sha256sum "$tmp/fs/proc/task_mmu.c" | cut -d' ' -f1)" = \
+               "$(sha256sum bsp/fs/proc/task_mmu.c | cut -d' ' -f1)"
+          echo "PASS: consolidated task_mmu patch exactly equals all four earlier task_mmu patches together"
+          git -C "$tmp" apply --reverse "$patch"
+          test "$(sha256sum "$tmp/fs/proc/task_mmu.c" | cut -d' ' -f1)" = "$original"
+          echo "PASS: consolidation reverses exactly to unchanged pinned Rothko BSP file"
+          test "$(git -C bsp diff --name-only)" = \
+               "$(printf 'fs/namei.c\nfs/proc/base.c\nfs/proc/task_mmu.c\nmm/memory.c')"
+          echo "PASS: existing isolated patch source remains unchanged by comparison"
+          echo "BLOCK: identity check does not prove compiler/linker, SRCU runtime, or full SUSFS integration"
