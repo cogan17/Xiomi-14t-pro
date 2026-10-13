@@ -52,7 +52,12 @@ class SessionIntentModel:
               fd_profile_eligible: bool, precommit_checks_ok: bool) -> bool:
         if not isinstance(task, TaskIdentity) or not isinstance(request, RequestIdentity):
             return False
-        if task in self._active or task in self._retired or request in self._seen:
+        if task in self._active:
+            # A newer exec/intent attempt supersedes an unconsumed decision,
+            # including one already marked successful. Never retain stale SU.
+            self.cancel(task)
+            return False
+        if task in self._retired or request in self._seen:
             return False
         if not (su_intent and allowlisted and not chrooted and
                 fd_profile_eligible and precommit_checks_ok):
@@ -65,7 +70,12 @@ class SessionIntentModel:
                     exec_succeeded: bool, credential_transition_ok: bool,
                     selinux_transition_ok: bool) -> bool:
         intent = self._active.get(task)
-        if intent is None or intent.phase is not Phase.PENDING:
+        if intent is None:
+            return False
+        if intent.phase is not Phase.PENDING:
+            # A repeated or unrelated exec result after success MUST revoke
+            # the ready decision, not leave it available for a late issuer.
+            self.cancel(task)
             return False
         # A different exec attempt by the SAME task invalidates any old intent.
         # A foreign task cannot mutate this task's state.
