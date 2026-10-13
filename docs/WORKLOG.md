@@ -586,3 +586,11 @@ bukan menghapus jejak kejadian.
 - **Perubahan:** menambahkan job `susfs-core-layout` read-only pada workflow audit yang sudah ada. Mengambil commit/tree SUSFS yang tepat, mencatat kandidat berkas dan referensi `CONFIG_KSU_SUSFS` / `susfs.o` dari patch resmi.
 - **Bukti perubahan:** commit `151e256f4d358c1b177f135960b5331ed8ddf4a2` pada Draft PR #9; hasil CI masih harus diperiksa.
 - **Batas:** inspeksi lokasi file tidak membuktikan port Kconfig, compile/link, keamanan runtime, ABI/KMI, atau kelayakan flash. Semua release blocker tetap aktif; tidak ada build, merge, atau flashing.
+
+## 2026-10-14 — Root source pin audit: upstream drift warning (PR #13)
+
+- **Tujuan:** mencegah kegagalan palsu audit sumber KSUN/BakaSU ketika HEAD branch upstream bergerak, tanpa mengubah versi sumber yang diaudit.
+- **Perubahan:** `.github/workflows/validate-root-sources.yml` tetap memakai SHA terpin untuk pengunduhan dan pemeriksaan statis. Pemeriksaan keberadaan commit terpin memakai GitHub commit API; perbedaan HEAD upstream hanya menghasilkan warning dan ringkasan, tidak melakukan pembaruan pin otomatis.
+- **Pengaman:** SHA harus berbentuk 40 digit heksadesimal, commit terpin harus tersedia, dan pemeriksaan `setup.sh`, `Kconfig`, `Makefile` tetap fail-closed. Tidak ada eksekusi setup, integrasi kernel, maupun perubahan KSU/Mama.
+- **Bukti:** PR #13 https://github.com/cogan17/Xiomi-14t-pro/pull/13 ; commit awal `b1fdb31508eebd28144c501e5ad36cb395085fc5`.
+- **Batas:** hasil kedua matrix audit dan Documentation Guard harus diverifikasi setelah commit ini; perubahan upstream belum dinilai kompatibel, dan tidak ada izin build/merge kernel atau flashing.
