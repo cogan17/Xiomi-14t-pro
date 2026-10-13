@@ -10,6 +10,7 @@ on:
   pull_request:
     paths:
       - patches/rothko-susfs-memory-include-candidate.patch
+      - patches/rothko-susfs-memory-vma-candidate.patch
       - .github/workflows/rothko-susfs-memory-candidate.yml
   workflow_dispatch:
 permissions:
@@ -38,43 +39,27 @@ jobs:
           test "$(git -C susfs rev-parse HEAD)" = 5192aa2d33b381b58c1051532f9e1dfa5de6e8d3
           test "$(git -C susfs rev-parse 'HEAD^{tree}')" = b39cd4117178ce73d2973f7bcdae5c74defc8f68
           test -s susfs/kernel_patches/include/linux/susfs_def.h
-          echo "PASS: required header exists in exact pinned SUSFS tree; not yet integrated"
-      - name: Check and apply candidate only inside disposable checkout
+      - name: Check and apply both patches in disposable checkout
         shell: bash
         run: |
           set -Eeuo pipefail
-          patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-memory-include-candidate.patch"
-          echo "Pristine BSP: $(git -C bsp rev-parse HEAD)"
-          # Stage the exact upstream header only in the disposable BSP tree.
-          # This tests dependency availability, not complete SUSFS integration.
+          patch_dir="$GITHUB_WORKSPACE/candidate/patches"
           mkdir -p bsp/include/linux
           cp susfs/kernel_patches/include/linux/susfs_def.h bsp/include/linux/susfs_def.h
           test -s bsp/include/linux/susfs_def.h
-          git -C bsp apply --check "$patch"
-          git -C bsp apply "$patch"
-          vma_patch="$GITHUB_WORKSPACE/candidate/patches/rothko-susfs-memory-vma-candidate.patch"
-          git -C bsp apply --check "$vma_patch"
-          git -C bsp apply "$vma_patch"
+          for patch in rothko-susfs-memory-include-candidate.patch rothko-susfs-memory-vma-candidate.patch; do
+            git -C bsp apply --check "$patch_dir/$patch"
+            git -C bsp apply "$patch_dir/$patch"
+          done
           git -C bsp diff --check
-          git -C bsp diff -- mm/memory.c
           test "$(git -C bsp diff --name-only)" = "mm/memory.c"
-          test -f bsp/include/linux/susfs_def.h
-          grep -q '^#include <linux/susfs_def.h>
-          echo "PASS: isolated include and VMA candidates apply cleanly; no compile or semantic approval"
+          grep -Fq '#include <linux/susfs_def.h>' bsp/mm/memory.c
+          grep -Fq 'SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file))' bsp/mm/memory.c
+          echo "PASS: two patches apply in isolated BSP; not a compile, behavior or security approval"
           {
-            echo "### Isolated SUSFS memory include candidate"
-            echo "- Both candidate patches: applied on disposable BSP checkout (textual only)"
-            echo "- Modified file: mm/memory.c only (temporary runner workspace)"
-            echo "- Full SUSFS integration, header dependencies, VMA behavior and security: NOT CLEARED"
-            echo "- No kernel build, release, merge or flash"
-          } >> "$GITHUB_STEP_SUMMARY"
- bsp/mm/memory.c
-          grep -q 'SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file))' bsp/mm/memory.c
-          echo "PASS: isolated include candidate applies cleanly; no compile or semantic approval"
-          {
-            echo "### Isolated SUSFS memory include candidate"
-            echo "- Patch applicability: PASS on disposable BSP checkout"
-            echo "- Modified file: mm/memory.c only (temporary runner workspace)"
-            echo "- Full SUSFS integration, header dependencies, VMA behavior and security: NOT CLEARED"
-            echo "- No kernel build, release, merge or flash"
+            echo "### Isolated memory candidates"
+            echo "- Two patches applied to temporary BSP checkout"
+            echo "- Only tracked change: mm/memory.c"
+            echo "- Pinned SUSFS header staged as untracked dependency"
+            echo "- No build, release, merge, flash or semantic clearance"
           } >> "$GITHUB_STEP_SUMMARY"
