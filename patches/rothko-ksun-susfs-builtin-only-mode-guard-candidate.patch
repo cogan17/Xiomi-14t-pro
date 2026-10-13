@@ -1,0 +1,26 @@
+diff --git a/kernel/core/init.c b/kernel/core/init.c
+--- a/kernel/core/init.c
++++ b/kernel/core/init.c
+@@ -33,6 +33,10 @@
+ extern void ksu_avc_spoof_late_init(void);
+ #endif
+ 
++#if defined(CONFIG_KSU_SUSFS) && defined(MODULE)
++#error "KernelSU SUSFS requires built-in mode: pinned SUSFS has no module teardown"
++#endif
++
+ #if defined(__x86_64__) && !defined(CONFIG_KSU_X86_PATCH_SYSCALL_DISPATCHER)
+ #include <asm/cpufeature.h>
+ #include <linux/version.h>
+
+diff --git a/kernel/Kconfig b/kernel/Kconfig
+--- a/kernel/Kconfig
++++ b/kernel/Kconfig
+@@ -57,6 +57,7 @@
+ config KSU_SUSFS
+ 	bool "KernelSU addon - SUSFS"
+ 	depends on KSU
++	depends on KSU=y
+ 	depends on THREAD_INFO_IN_TASK
+ 	default y
+ 	help
