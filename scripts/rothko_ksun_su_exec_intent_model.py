@@ -46,6 +46,10 @@ class SessionIntentModel:
         # Kernel implementation would require bounded, lifetime-safe storage.
         self._seen: set[RequestIdentity] = set()
         self._retired: set[TaskIdentity] = set()
+        # Models the unresolved privilege risk from a FAILED exec occurring
+        # AFTER credentials were committed. Cancelling FD intent cannot undo
+        # task credentials; only the end of this task lifetime clears it.
+        self._credential_hazard: set[TaskIdentity] = set()
 
     def begin(self, task: TaskIdentity, request: RequestIdentity, *,
               su_intent: bool, allowlisted: bool, chrooted: bool,
@@ -57,7 +61,7 @@ class SessionIntentModel:
             # including one already marked successful. Never retain stale SU.
             self.cancel(task)
             return False
-        if task in self._retired or request in self._seen:
+        if task in self._retired or task in self._credential_hazard or request in self._seen:
             return False
         if not (su_intent and allowlisted and not chrooted and
                 fd_profile_eligible and precommit_checks_ok):
@@ -68,9 +72,18 @@ class SessionIntentModel:
 
     def exec_result(self, task: TaskIdentity, request: RequestIdentity, *,
                     exec_succeeded: bool, credential_transition_ok: bool,
-                    selinux_transition_ok: bool) -> bool:
+                    selinux_transition_ok: bool,
+                    credentials_already_committed: bool) -> bool:
         intent = self._active.get(task)
         if intent is None:
+            return False
+        if credentials_already_committed and not (
+                exec_succeeded and credential_transition_ok and
+                selinux_transition_ok):
+            # We cannot roll back committed task credentials by dropping the
+            # request token. Mark this identity permanently unsafe until exit.
+            self._credential_hazard.add(task)
+            self.cancel(task)
             return False
         if intent.phase is not Phase.PENDING:
             # A repeated or unrelated exec result after success MUST revoke
@@ -80,9 +93,12 @@ class SessionIntentModel:
         # A different exec attempt by the SAME task invalidates any old intent.
         # A foreign task cannot mutate this task's state.
         if intent.request is not request:
+            if credentials_already_committed:
+                self._credential_hazard.add(task)
             del self._active[task]
             return False
-        if not (exec_succeeded and credential_transition_ok and selinux_transition_ok):
+        if not (exec_succeeded and credential_transition_ok and
+                selinux_transition_ok and credentials_already_committed):
             del self._active[task]
             return False
         self._active[task] = Intent(task, request, Phase.EXEC_SUCCEEDED)
@@ -93,15 +109,22 @@ class SessionIntentModel:
         intent = self._active.get(task)
         if intent is None or intent.request is not request:
             return False
+        if task in self._credential_hazard:
+            return False
         if intent.phase is not Phase.EXEC_SUCCEEDED:
             return False
         del self._active[task]
         return True
 
     def cancel(self, task: TaskIdentity) -> None:
+        # Deliberately does NOT clear an unresolved committed-credential risk.
         self._active.pop(task, None)
+
+    def has_unresolved_credential_hazard(self, task: TaskIdentity) -> bool:
+        return task in self._credential_hazard
 
     def task_exit(self, task: TaskIdentity) -> None:
         self.cancel(task)
         if isinstance(task, TaskIdentity):
+            self._credential_hazard.discard(task)
             self._retired.add(task)
