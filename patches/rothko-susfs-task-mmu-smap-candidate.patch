@@ -1,0 +1,27 @@
+diff --git a/fs/proc/task_mmu.c b/fs/proc/task_mmu.c
+--- a/fs/proc/task_mmu.c
++++ b/fs/proc/task_mmu.c
+@@ -20,6 +20,10 @@
+ #include <linux/uaccess.h>
+ #include <linux/pkeys.h>
+ #include <trace/hooks/mm.h>
++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++#include <linux/susfs_def.h>
++#endif
++
+ 
+ #include <asm/elf.h>
+ #include <asm/tlb.h>
+@@ -876,6 +880,13 @@
+ 	struct vm_area_struct *vma = v;
+ 	struct mem_size_stats mss;
+ 
++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++	if (vma->vm_file &&
++	    SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
++		return 0;
++#endif
++
+ 	memset(&mss, 0, sizeof(mss));
+ 
+ 	smap_gather_stats(vma, &mss, 0);
