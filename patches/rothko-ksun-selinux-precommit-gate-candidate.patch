@@ -50,7 +50,7 @@ diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
      struct cred *cred = prepare_creds();
 +    int ret;
      if (!cred) {
-         pr_err("Failed to prepare init's creds!\\n");
+         pr_err("Failed to prepare init's creds!\n");
          return -EINVAL;
 @@ -241,7 +242,11 @@
          return -EINVAL;
