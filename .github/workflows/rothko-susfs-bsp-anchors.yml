@@ -1,0 +1,50 @@
+name: Rothko SUSFS BSP anchors (read-only)
+on:
+  push:
+    branches:
+      - feat/rothko-ksun-susfs-compat-audit
+    paths:
+      - scripts/rothko_susfs_bsp_anchor_map.py
+      - .github/workflows/rothko-susfs-bsp-anchors.yml
+  pull_request:
+    paths:
+      - scripts/rothko_susfs_bsp_anchor_map.py
+      - .github/workflows/rothko-susfs-bsp-anchors.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect-bsp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout read-only mapper from candidate branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          path: mapper
+      - name: Checkout pristine Rothko BSP baseline
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: dev/rothko
+          path: bsp
+      - name: Validate Python syntax
+        run: python3 -m py_compile mapper/scripts/rothko_susfs_bsp_anchor_map.py
+      - name: Map memory and proc VMA anchors without modifying source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "BSP commit: $(git -C bsp rev-parse HEAD)"
+          python3 mapper/scripts/rothko_susfs_bsp_anchor_map.py bsp | tee anchor-map.txt
+          {
+            echo "### Rothko BSP anchor mapping (diagnostic only)"
+            echo
+            echo "- Baseline commit: $(git -C bsp rev-parse HEAD)"
+            echo "- This does not prove SUSFS patch compatibility or release safety."
+            echo
+            echo '~~~~'
+            cat anchor-map.txt
+            echo '~~~~'
+          } >> "$GITHUB_STEP_SUMMARY"
+          test -z "$(git -C bsp status --porcelain)"
