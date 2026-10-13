@@ -1,6 +1,13 @@
 diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
 --- a/kernel/policy/app_profile.c
 +++ b/kernel/policy/app_profile.c
+@@ -9,6 +9,7 @@
+ #include <linux/seccomp.h>
+ #include <linux/slab.h>
++#include <linux/string.h>
+ #include <linux/thread_info.h>
+ #include <linux/uidgid.h>
+ #include <linux/version.h>
 @@ -238,14 +238,28 @@
       * by KSUN's allowlist. setup_selinux(profile->selinux_domain, cred)
       * succeeded above. This does not authorize an SU_SESSION FD.
