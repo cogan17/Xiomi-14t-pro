@@ -32,6 +32,7 @@ on:
       - patches/rothko-ksun-g2-single-attempt-policy-candidate.patch
       - patches/rothko-ksun-g2-second-stage-one-shot-candidate.patch
       - patches/rothko-ksun-g2-policy-locked-snapshot-candidate.patch
+      - patches/rothko-ksun-lateload-sulog-local-lifecycle-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -68,6 +69,7 @@ on:
       - patches/rothko-ksun-g2-single-attempt-policy-candidate.patch
       - patches/rothko-ksun-g2-second-stage-one-shot-candidate.patch
       - patches/rothko-ksun-g2-policy-locked-snapshot-candidate.patch
+      - patches/rothko-ksun-lateload-sulog-local-lifecycle-candidate.patch
       - scripts/rothko_ksun_stage_guard_candidate_audit.py
       - tests/test_rothko_ksun_stage_guard_candidate.py
       - scripts/rothko_ksun_g2_g4_risk_audit.py
@@ -1258,3 +1260,93 @@ jobs:
           print("BLOCK: cannot infer compile/runtime/ABI correctness from source matching")
           PY
           echo "BLOCK: G2 locked-pointer source candidate is non-deployable"
+
+      - name: Verify late-load sulog local cleanup candidate (source only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          patch="$GITHUB_WORKSPACE/patches/rothko-ksun-lateload-sulog-local-lifecycle-candidate.patch"
+          git -C /tmp/ksun apply --check --verbose "$patch"
+          git -C /tmp/ksun apply "$patch"
+          git -C /tmp/ksun apply --reverse --check "$patch"
+          git -C /tmp/ksun diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          body = Path("/tmp/ksun/kernel/feature/sulog.c").read_text()
+          header = Path("/tmp/ksun/kernel/feature/sulog.h").read_text()
+          core = Path("/tmp/ksun/kernel/core/init.c").read_text()
+
+          def accepts(src, hdr):
+              try:
+                  init = src.split("int __init ksu_sulog_init(void)\n{", 1)[1].split(
+                      "\nvoid __exit ksu_sulog_exit(void)", 1
+                  )[0]
+                  cleanup = src.split("void __exit ksu_sulog_exit(void)\n{", 1)[1]
+                  register = "ret = ksu_register_feature_handler(&sulog_handler);"
+                  events = "ret = ksu_sulog_events_init();"
+                  fd_init = "ksu_sulog_fd_init();"
+                  ready = "sulog_initialized = true;"
+                  destroy = (
+                      "if (!sulog_initialized)\n"
+                      "        return;\n"
+                      "    sulog_initialized = false;\n"
+                      "    ksu_sulog_fd_exit();\n"
+                      "    ksu_sulog_events_exit();\n"
+                      "    ksu_unregister_feature_handler(KSU_FEATURE_SULOG);"
+                  )
+                  return all((
+                      src.count("static bool sulog_initialized;") == 1,
+                      hdr.count("int __init ksu_sulog_init(void);") == 1,
+                      "void __init ksu_sulog_init(void);" not in hdr,
+                      src.count("int __init ksu_sulog_init(void)") == 1,
+                      init.count("sulog_initialized = false;") == 1,
+                      init.count("return ret;") == 2,
+                      init.count("ksu_unregister_feature_handler(KSU_FEATURE_SULOG);") == 1,
+                      init.count("if (ret) {") == 2,
+                      init.index(register) < init.index(events) <
+                      init.index(fd_init) < init.index(ready) <
+                      init.index("return 0;"),
+                      init.count(ready) == 1,
+                      destroy in cleanup,
+                      cleanup.index("ksu_sulog_fd_exit();") <
+                      cleanup.index("ksu_sulog_events_exit();") <
+                      cleanup.index("ksu_unregister_feature_handler(KSU_FEATURE_SULOG);"),
+                  ))
+              except (ValueError, IndexError):
+                  return False
+
+          assert accepts(body, header), "sulog local lifecycle readiness/cleanup invalid"
+          mutations = (
+              ("ignore failed status", body.replace(
+                  "return ret;", "return 0;", 1), header),
+              ("publish ready before event creation", body.replace(
+                  "ret = ksu_sulog_events_init();",
+                  "sulog_initialized = true;\n    ret = ksu_sulog_events_init();", 1), header),
+              ("omit local event failure rollback", body.replace(
+                  "        ksu_unregister_feature_handler(KSU_FEATURE_SULOG);\n        return ret;",
+                  "        return ret;", 1), header),
+              ("omit failure-safe destructor gate", body.replace(
+                  "if (!sulog_initialized)\n        return;",
+                  "if (false)\n        return;", 1), header),
+              ("remove destructor readiness reset", body.replace(
+                  "    sulog_initialized = false;\n    ksu_sulog_fd_exit();",
+                  "    ksu_sulog_fd_exit();", 1), header),
+              ("reverse event and fd teardown", body.replace(
+                  "ksu_sulog_fd_exit();\n    ksu_sulog_events_exit();",
+                  "ksu_sulog_events_exit();\n    ksu_sulog_fd_exit();", 1), header),
+              ("remove status-return declaration", body,
+                  header.replace("int __init ksu_sulog_init(void);",
+                                 "void __init ksu_sulog_init(void);")),
+          )
+          for label, mutated, hdr in mutations:
+              assert mutated != body or hdr != header, label + ": no source modification"
+              assert not accepts(mutated, hdr), label + ": unsafe cleanup mutation passed"
+              print("PASS: refuse unsafe sulog mutation — " + label)
+
+          assert "ksu_sulog_init();" in core, "pinned core invocation missing"
+          print("PASS: sulog returns local failure status and only tears down initialized FD/events/handler")
+          print("BLOCK: kernelsu_init still ignores sulog status; late-load transaction is NOT resolved")
+          print("BLOCK: upstream sulog_events_init currently returns zero, so no real failure injection/compilation occurred")
+          print("BLOCK: no general G2/G5 unwind, ABI verification or device build/release")
+          PY
+          echo "BLOCK: sulog lifecycle candidate stays source-only and nondeployable"
