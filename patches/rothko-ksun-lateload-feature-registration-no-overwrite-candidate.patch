@@ -1,0 +1,16 @@
+diff --git a/kernel/policy/feature.c b/kernel/policy/feature.c
+--- a/kernel/policy/feature.c
++++ b/kernel/policy/feature.c
+@@ -28,8 +28,10 @@
+ 	mutex_lock(&feature_mutex);
+ 
+ 	if (feature_handlers[handler->feature_id]) {
+-		pr_warn("feature: handler for %u already registered, overwriting\n",
+-		handler->feature_id);
++		pr_err("feature: handler for %u already registered, refusing overwrite\n",
++			handler->feature_id);
++		mutex_unlock(&feature_mutex);
++		return -EEXIST;
+ 	}
+ 
+ 	feature_handlers[handler->feature_id] = handler;
