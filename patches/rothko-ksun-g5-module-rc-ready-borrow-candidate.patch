@@ -1,7 +1,7 @@
 diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration.c
 --- a/kernel/runtime/ksud_integration.c
 +++ b/kernel/runtime/ksud_integration.c
-@@ -276,17 +276,19 @@
+@@ -277,15 +277,20 @@
      ssize_t r;
      size_t fsize;
      const struct cred *old_cred;
@@ -24,7 +24,7 @@ diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration
 +    old_cred = override_creds(borrowed);
  
      f = open_module_rc(&path);
-@@ -327,5 +329,6 @@
+@@ -328,4 +333,5 @@
  
  out_revert_creds:
      revert_creds(old_cred);
