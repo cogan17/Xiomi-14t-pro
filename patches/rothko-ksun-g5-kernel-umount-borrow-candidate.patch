@@ -1,7 +1,7 @@
 diff --git a/kernel/feature/kernel_umount.c b/kernel/feature/kernel_umount.c
 --- a/kernel/feature/kernel_umount.c
 +++ b/kernel/feature/kernel_umount.c
-@@ -113,8 +113,12 @@
+@@ -113,6 +113,10 @@
  	// umount the target mnt
  	pr_info("handle umount for uid: %d, pid: %d\n", new_uid, current->pid);
  
