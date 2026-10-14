@@ -1,0 +1,75 @@
+diff --git a/kernel/include/ksu.h b/kernel/include/ksu.h
+--- a/kernel/include/ksu.h
++++ b/kernel/include/ksu.h
+@@ -9,6 +9,10 @@
+ #define KERNEL_SU_VERSION_TAG KSU_VERSION_TAG
+ 
+ extern struct cred *ksu_cred;
++/* G5 candidate API: consumers must migrate before this can be enabled. */
++const struct cred *ksu_borrow_ready_cred(void);
++void ksu_return_cred(const struct cred *cred);
++void ksu_unpublish_cred(void);
+ extern bool ksu_late_loaded;
+ extern bool allow_shell;
+ extern struct selinux_policy *backup_sepolicy;
+diff --git a/kernel/core/init.c b/kernel/core/init.c
+--- a/kernel/core/init.c
++++ b/kernel/core/init.c
+@@ -4,6 +4,7 @@
+ #include <linux/rcupdate.h>
+ #include <linux/sched.h>
+ #include <linux/workqueue.h>
++#include <linux/spinlock.h>
+ 
+ #include "policy/allowlist.h"
+ #include "policy/app_profile.h"
+@@ -79,6 +80,44 @@
+ 
+ struct cred *ksu_cred;
++/*
++ * G5 isolated candidate. Publication must be called only after SELinux
++ * setup succeeds; unpublish before owner put during teardown.
++ * NOT WIRED until all direct ksu_cred readers have migrated.
++ */
++static DEFINE_SPINLOCK(ksu_cred_lock);
++static bool ksu_cred_ready;
++
++const struct cred *ksu_borrow_ready_cred(void)
++{
++    const struct cred *borrowed = NULL;
++    unsigned long flags;
++
++    spin_lock_irqsave(&ksu_cred_lock, flags);
++    if (ksu_cred_ready && ksu_cred)
++        borrowed = get_cred(ksu_cred);
++    spin_unlock_irqrestore(&ksu_cred_lock, flags);
++    return borrowed;
++}
++
++void ksu_return_cred(const struct cred *cred)
++{
++    if (cred)
++        put_cred(cred);
++}
++
++void ksu_unpublish_cred(void)
++{
++    unsigned long flags;
++
++    spin_lock_irqsave(&ksu_cred_lock, flags);
++    ksu_cred_ready = false;
++    spin_unlock_irqrestore(&ksu_cred_lock, flags);
++}
++
++/* Caller must verify SELinux domain before declaring READY. */
++static void ksu_publish_cred_after_selinux(void)
++{
++    unsigned long flags;
++
++    spin_lock_irqsave(&ksu_cred_lock, flags);
++    if (ksu_cred)
++        ksu_cred_ready = true;
++    spin_unlock_irqrestore(&ksu_cred_lock, flags);
++}
++
+ bool ksu_late_loaded;
