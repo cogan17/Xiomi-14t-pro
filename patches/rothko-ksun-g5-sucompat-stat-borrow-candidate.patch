@@ -1,7 +1,8 @@
 diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
 --- a/kernel/feature/sucompat.c
 +++ b/kernel/feature/sucompat.c
-@@ -441,5 +441,5 @@
+@@ -440,6 +440,6 @@
+ long ksu_handle_stat_sucompat(int orig_nr, struct pt_regs *regs)
  	const char __user **filename_user, *orig_filename;
  	long ret;
 -	const struct cred *old_cred;
