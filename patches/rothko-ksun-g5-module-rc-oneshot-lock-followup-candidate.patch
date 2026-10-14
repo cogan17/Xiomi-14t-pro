@@ -1,6 +1,11 @@
 diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration.c
 --- a/kernel/runtime/ksud_integration.c
 +++ b/kernel/runtime/ksud_integration.c
+@@ -2,3 +2,4 @@
+ #include <linux/rcupdate.h>
+ #include <linux/slab.h>
++#include <linux/mutex.h>
+ #include <linux/mm.h>
 @@ -271,3 +271,4 @@
  static void load_module_rc_once(void)
  {
