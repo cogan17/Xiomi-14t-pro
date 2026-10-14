@@ -8,7 +8,8 @@ diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
  
 +    /*
 +     * G5: do not mutate a credential already published to borrowers.
-+     * READY is accepted only when the SELinux domain remains correct.
++     * READY is accepted without re-entering SELinux under a spinlock.
++     * Publication must remain gated by successful domain validation.
 +     */
 +    ret = ksu_ready_cred_setup_status();
 +    if (ret != -EAGAIN)
@@ -33,7 +34,7 @@ diff --git a/kernel/core/init.c b/kernel/core/init.c
  static bool ksu_cred_ready;
  static bool ksu_cred_stopping;
 +
-+/* -EAGAIN: not published yet; 0: already READY and valid. */
++/* READY implies domain validation succeeded before publication. */
 +int ksu_ready_cred_setup_status(void)
 +{
 +    unsigned long flags;
@@ -43,7 +44,7 @@ diff --git a/kernel/core/init.c b/kernel/core/init.c
 +    if (ksu_cred_stopping)
 +        ret = -ESHUTDOWN;
 +    else if (ksu_cred_ready)
-+        ret = (ksu_cred && is_task_ksu_domain(ksu_cred)) ? 0 : -EACCES;
++        ret = ksu_cred ? 0 : -EINVAL;
 +    else
 +        ret = -EAGAIN;
 +    spin_unlock_irqrestore(&ksu_cred_lock, flags);
