@@ -1,7 +1,7 @@
 diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
 --- a/kernel/selinux/selinux.c
 +++ b/kernel/selinux/selinux.c
-@@ -162,6 +162,14 @@
+@@ -162,6 +162,15 @@
  int setup_ksu_cred(void)
  {
      int ret;
