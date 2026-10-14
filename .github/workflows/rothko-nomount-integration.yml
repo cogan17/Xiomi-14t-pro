@@ -1,15 +1,10 @@
-name: Cogan Rothko - NoMount Kernel Source Integration (Experimental)
+name: Rothko NoMount source tests (manual; kernel compile on HOLD)
 
-# Actual compile experiment, not a device-compatible artifact.
+# Manual source tests only while KSUN + SUSFS integration remains blocked.
+# The historical compile experiment is preserved but cannot run during BUILD HOLD.
 # No download artifacts, release, AK3, boot.img, root manager, or flashing.
 on:
-  pull_request:
-    branches:
-      - dev/rothko
-    paths:
-      - '.github/workflows/rothko-nomount-integration.yml'
-      - 'scripts/rothko_install_nomount.py'
-      - 'tests/test_rothko_install_nomount.py'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -29,7 +24,9 @@ jobs:
       - run: python3 -m unittest discover -s tests -p 'test_rothko_install_nomount.py' -v
 
   compile:
-    name: Compile NoMount-enabled ARM64 Image (NON-FLASHABLE)
+    name: NoMount ARM64 compile experiment (BUILD HOLD)
+    # Remove only after the owner explicitly authorizes kernel build work.
+    if: ${{ false }}
     needs: tests
     runs-on: ubuntu-24.04
     timeout-minutes: 90

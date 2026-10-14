@@ -2,6 +2,24 @@
 
 Updated: 2026-10-14. This is the **single current handoff index**, not a new deployment authorization. Earlier emergency/history checkpoints remain archival references; do not duplicate their audits.
 
+## Owner rules — current development and continuation policy (2026-10-14)
+
+These rules supersede older scope/next-action notes. Main work is **KSUN + SUSFS + NoMount**; BakaSU is deferred and its completed work is preserved. The last validated source milestone is [`8d10fc10`](https://github.com/cogan17/Xiomi-14t-pro/commit/8d10fc10eb3b0c5a28495c23404c134027e22044); this policy update creates no new technical checkpoint or runtime proof.
+
+1. **No duplicate work.** Start from the existing checkpoint, candidate order and evidence. Finish or compose outstanding work before adding parallel alternatives. A green result is reused unless a relevant source/dependency changed or a concrete defect invalidates it. Independent reviewers must have distinct scope.
+2. **Repeat only when necessary.** Stop immediately on success. Use one attempt when sufficient; at most two attempts/corrections with the same approach. Record the failure/cause and count when needed. At the limit, change strategy or record a precise blocker and proceed with an independent dependency; do not loop, weaken a gate or rerun merely to obtain a green result.
+3. **Selective validation/CI.** Prefer the smallest relevant source-only check. CI/rerun is allowed when it answers a concrete unresolved question or validates a changed dependency; use existing workflows where suitable. No automatic whole-audit rerun after every edit. Report local evidence separately from CI and runtime. Workflow titles, job names and triggers must describe their real scope.
+4. **Bounded backlog and selective checkpoints.** Keep the four priorities below as one queue. Every pending item needs its reason, dependency and next closing step. Difficult work may wait explicitly while independent work progresses. Update this existing checkpoint at a meaningful validated milestone, changed blocker or handoff; do not create a checkpoint file after every small change. Final reports still state commit, relevant validation, remaining blocker and next step.
+5. **Maintain current metadata.** Tidy issue #12 and PR #9 when status, priorities or evidence materially change, not on every commit. Historical comments/commits/results are preserved; stale descriptions must not override this index. The owner can simply type **"Lanjutkan"** and work resumes from the first unresolved actionable item within these rules.
+6. **BUILD HOLD remains binding.** Source-only candidates, conflict resolution and focused static tests are allowed. No kernel/device build, flashable image, flashing, release, PR merge, force push, history rewrite or weakening of integration gates. Runtime/build work needs separate explicit authorization.
+
+| Priority | Current state | Next closing work |
+| --- | --- | --- |
+| **1 — KSUN** | Source-only precommit/borrow composition validated at `8d10fc10`; caller success handling, groups/seccomp, G2 rollback, teardown and SU_SESSION still blocked. | Compose existing groups/seccomp candidates, preserve preparation errors, and guard escape callers. Resolve the concrete lifecycle/security contracts before promoting integration. |
+| **2 — SUSFS integration** | Existing passing proc/VFS/memory candidates and pinned source evidence retained; full BSP/KSUN companion integration, RCU, hook placement and teardown unresolved. | Resume the existing conflict matrix and source/Kconfig dependencies; integrate applicable pieces against the same pins without redoing green isolated audits or GitLab acquisition. Do independent conflict work when KSUN dependencies permit. |
+| **3 — NoMount** | Full KSUN+SUSFS+NoMount integration not proven; historical NoMount compile experiment is now manual-only and its compile job is disabled under BUILD HOLD. | Continue source integration/compatibility after the relevant KSUN/SUSFS contracts; kernel compilation remains prohibited. |
+| **4 — validation/workflow/issue/PR cleanup** | Current rules and status descriptions being aligned. NoMount title/automatic-build mismatch corrected. Duplicate root installer unit-test paths remain identified. | Consolidate duplicated installer CI when that integration path is next changed; preserve required checks and avoid a cleanup-only rerun. Maintain accurate workflow names and evidence-linked issue/PR status. |
+
 ## Current milestone — KSUN app-profile SELinux and namespace admission (2026-10-14)
 
 Parent: `7421b71439d77b9355d257bdef58181b40f853b3`. **KSUN only; BakaSU excluded. Draft / BUILD HOLD.** This section supersedes older next-action notes.
