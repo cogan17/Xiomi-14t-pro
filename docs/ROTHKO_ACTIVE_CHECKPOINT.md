@@ -77,3 +77,13 @@ Next `Lanjutkan`: use syntax-aware validation to close the existing G2 WIP's own
 - [Detailed earlier checkpoint history](https://github.com/cogan17/Xiomi-14t-pro/blob/f4ab84456407b9d533d8081656818345c4e3868b/docs/ROTHKO_ACTIVE_CHECKPOINT.md), [G5 caller inventory](ROTHKO_KSUN_G5_CREDENTIAL_CALLER_INVENTORY.md), [G5 contract](ROTHKO_KSUN_G5_CREDENTIAL_LIFETIME_CONTRACT.md)
 - [SUSFS conflict matrix](rothko-susfs-conflict-resolution-matrix.md), [emergency archive](ROTHKO_EMERGENCY_CHECKPOINT_2026-10-14.md), [priority archive](ROTHKO_RECOVERY_CHECKPOINT_2026-10-14_PRIORITY_KSUN_SUSFS_NOMOUNT.md)
 - [PR #9](https://github.com/cogan17/Xiomi-14t-pro/pull/9), [issue #12](https://github.com/cogan17/Xiomi-14t-pro/issues/12)
+
+## Owner development rules — reaffirmed 2026-10-14
+
+- Main objective and priority order: **1 KSUN, 2 SUSFS, 3 NoMount, 4 targeted validation and cleanup**. Defer all BakaSU-related work until the primary backlog is resolved.
+- No duplicate work or repeat audits already green. Prefer one focused attempt when sufficient; cap the same approach at **two attempts total**. If still blocked, change approach or record the blocker, dependency and precise next action. Never weaken a failed gate to claim success.
+- Reuse validated candidates and evidence; resolve conflicts and close existing homework before adding alternatives. Difficult work may be deferred but must remain owned and actionable, never abandoned.
+- Run CI or create workflows only when a concrete unanswered technical question warrants it. Avoid cosmetic reruns and ensure workflow titles, triggers and executed jobs describe the same real scope.
+- Maintain issues and PRs when substantive status changes justify it; avoid churn. Preserve PR #9 Draft and BUILD HOLD until technical gates and explicit owner authorization permit a later stage.
+- Update this existing checkpoint **selectively** at meaningful milestones, blockers or handoffs, not after each small step. The owner need only say **“Lanjutkan”** to resume from the latest recorded state.
+- Next execution remains syntax-aware G2 checked-rule ownership/control-flow validation against the preserved local WIP, then SELinux-hide backup reader lifetime and ADB/late-load contracts; independently pursue typed single-consumer SUSFS pre-exec integration when its dependencies are demonstrated. Do not claim unavailable local WIP is validated.
