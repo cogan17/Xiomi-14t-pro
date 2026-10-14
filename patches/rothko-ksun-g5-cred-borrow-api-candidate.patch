@@ -9,22 +9,23 @@ diff --git a/kernel/include/ksu.h b/kernel/include/ksu.h
 +const struct cred *ksu_borrow_ready_cred(void);
 +void ksu_return_cred(const struct cred *cred);
 +void ksu_unpublish_cred(void);
-+bool ksu_publish_ready_cred(void);
++int ksu_publish_ready_cred(void);
  extern bool ksu_late_loaded;
  extern bool allow_shell;
  extern struct selinux_policy *backup_sepolicy;
 diff --git a/kernel/core/init.c b/kernel/core/init.c
 --- a/kernel/core/init.c
 +++ b/kernel/core/init.c
-@@ -4,6 +4,7 @@
+@@ -4,6 +4,8 @@
  #include <linux/rcupdate.h>
  #include <linux/sched.h>
  #include <linux/workqueue.h>
 +#include <linux/spinlock.h>
++#include <linux/errno.h>
  
  #include "policy/allowlist.h"
  #include "policy/app_profile.h"
-@@ -80,3 +81,55 @@
+@@ -80,3 +82,58 @@
  
  struct cred *ksu_cred;
 +/*
@@ -54,19 +55,25 @@ diff --git a/kernel/core/init.c b/kernel/core/init.c
 +        put_cred(cred);
 +}
 +
-+/* Invoke only after setup_ksu_cred() returns success and verifies domain. */
-+bool ksu_publish_ready_cred(void)
++/* 0: published; -EALREADY: ready; -ESHUTDOWN: stopping; -EINVAL: no owner. */
++int ksu_publish_ready_cred(void)
 +{
 +    unsigned long flags;
-+    bool published = false;
++    int ret;
 +
 +    spin_lock_irqsave(&ksu_cred_lock, flags);
-+    if (!ksu_cred_stopping && !ksu_cred_ready && ksu_cred) {
++    if (ksu_cred_stopping)
++        ret = -ESHUTDOWN;
++    else if (ksu_cred_ready)
++        ret = -EALREADY;
++    else if (!ksu_cred)
++        ret = -EINVAL;
++    else {
 +        ksu_cred_ready = true;
-+        published = true;
++        ret = 0;
 +    }
 +    spin_unlock_irqrestore(&ksu_cred_lock, flags);
-+    return published;
++    return ret;
 +}
 +
 +void ksu_unpublish_cred(void)
@@ -80,7 +87,7 @@ diff --git a/kernel/core/init.c b/kernel/core/init.c
 +}
 +
  bool ksu_late_loaded;
-@@ -266,4 +319,5 @@
+@@ -266,4 +322,5 @@
 +	ksu_unpublish_cred();
  	ksu_feature_exit();
  
