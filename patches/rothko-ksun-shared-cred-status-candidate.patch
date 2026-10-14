@@ -20,12 +20,11 @@ diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
  #include "linux/sched.h"
  #include "objsec.h"
  #include "linux/version.h"
-@@ -159,10 +160,21 @@
+@@ -159,6 +160,21 @@
 -void setup_ksu_cred(void)
 -{
 -    if (ksu_cred) {
--        if (setup_selinux(KERNEL_SU_CONTEXT, ksu_cred))
--            pr_err("Failed to initialize KernelSU credentials SELinux context\n");
+-        setup_selinux(KERNEL_SU_CONTEXT, ksu_cred);
 -    }
 -}
 +int setup_ksu_cred(void)
