@@ -20,14 +20,15 @@ diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
  #include "linux/sched.h"
  #include "objsec.h"
  #include "linux/version.h"
-@@ -156,12 +157,23 @@
+@@ -156,13 +157,24 @@
      }
  }
  
 -void setup_ksu_cred(void)
 -{
 -    if (ksu_cred) {
--        setup_selinux(KERNEL_SU_CONTEXT, ksu_cred);
+-        if (setup_selinux(KERNEL_SU_CONTEXT, ksu_cred))
+-            pr_err("Failed to initialize KernelSU credentials SELinux context\n");
 -    }
 -}
 +int setup_ksu_cred(void)
@@ -37,13 +38,14 @@ diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
 +    if (!ksu_cred)
 +        return -EINVAL;
 +
-+    /* setup_selinux() returns void; use the status-bearing helper. */
-+    ret = transive_to_domain(KERNEL_SU_CONTEXT, ksu_cred, false);
-+    if (ret)
++    ret = setup_selinux(KERNEL_SU_CONTEXT, ksu_cred);
++    if (ret) {
 +        return ret;
++    }
 +
-+    if (!is_task_ksu_domain(ksu_cred))
++    if (!is_task_ksu_domain(ksu_cred)) {
 +        return -EACCES;
++    }
 +
 +    return 0;
 +}
