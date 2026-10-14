@@ -15,12 +15,23 @@ These rules supersede older scope/next-action notes. Main work is **KSUN + SUSFS
 
 | Priority | Current state | Next closing work |
 | --- | --- | --- |
-| **1 — KSUN** | 20-stage source composition now includes checked groups/ucounts, preallocated profile seccomp scratch and SU/bridge caller error guards. ADB, late-load unwind, G2 rollback, teardown and SU_SESSION remain blocked. | Close G2 snapshot/replay composition and explicit ADB/late-load transaction contracts; preserve supported custom-profile behavior and verify lifecycle before promotion. |
+| **1 — KSUN** | 21-stage source composition includes a locked G2 policy snapshot and one-attempt policy/second-stage guards, after the preserved profile/caller milestone. Rule errors, rollback, hide-reader lifetime, ADB, late-load unwind and SU_SESSION remain blocked. | Close checked rule construction before publication and backup-reader ownership; then explicit ADB/late-load transactions. Do not replay the closed snapshot/context work. |
 | **2 — SUSFS integration** | Existing passing proc/VFS/memory candidates and pinned source evidence retained; full BSP/KSUN companion integration, RCU, hook placement and teardown unresolved. | Resume the existing conflict matrix and source/Kconfig dependencies; integrate applicable pieces against the same pins without redoing green isolated audits or GitLab acquisition. Do independent conflict work when KSUN dependencies permit. |
 | **3 — NoMount** | Full KSUN+SUSFS+NoMount integration not proven; historical NoMount compile experiment is now manual-only and its compile job is disabled under BUILD HOLD. | Continue source integration/compatibility after the relevant KSUN/SUSFS contracts; kernel compilation remains prohibited. |
 | **4 — validation/workflow/issue/PR cleanup** | Current rules and status descriptions aligned. NoMount title/automatic-build mismatch corrected. Duplicate root installer unit-test paths remain identified. | Consolidate duplicated installer CI when that integration path is next changed; preserve required checks and avoid a cleanup-only rerun. Maintain accurate workflow names and evidence-linked issue/PR status. |
 
-## Current milestone — KSUN preparation and internal escape caller errors (2026-10-14)
+## Current milestone — G2 locked snapshot and replay composition (2026-10-14)
+
+Parent branch: `efb4f852dd8c6949274489354c2376c439e0540d`. Audit pin remains `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161`. Draft / BUILD HOLD.
+
+- New `patches/rothko-ksun-g2-snapshot-replay-composable-candidate.patch` composes the existing single-attempt, locked-snapshot and second-stage one-shot intentions against the selected 20-stage base. The historical standalone candidates remain preserved; do not stack them with this replacement composition.
+- `policy_attempted` is checked/set under `policy_mutex` before acquiring the live `old_pol` snapshot or touching the backup. Repeat calls return `-EALREADY`; a missing live policy returns `-EAGAIN`. Both failures retain the attempted latch. There is no retry, backup overwrite or claimed rollback.
+- Both SUSFS and non-SUSFS second-stage alternatives take the same atomic attempt latch before SELinux-hide or other startup side effects. A concurrent/repeated callback returns according to its existing signature and does not replay those effects. Ordinary exec continuation and the historical static-key behavior are retained; this is not end-to-end startup failure propagation.
+- `ksu_dup_sepolicy()` deep-copies the policydb but borrows the live SID table. Publication remains `rcu_assign_pointer` -> `synchronize_rcu` -> destruction of the old outer policy/policydb; the shared live SID table is not destroyed. An independent read-only review found no defect in the new diff.
+- **Precise remaining G2 blockers:** rule-building helpers return `bool` but their failures are ignored before publication; `backup_sepolicy` owns a separate initial-SID table for SELinux hide, not a complete live rollback snapshot. Hide readers do not take the backup owner's mutex; `drop_backup_if_unused()` has no proven reader drain and hide exit does not free the backup. Do not publish the hide backup as a rollback policy or add live SID-table destruction. The policy -> cached SID -> READY transaction and first-zygote side effects remain unproven.
+- `tests/test_rothko_ksun_g2_snapshot_replay.py` checks only the new G2 contract over the necessary prerequisite chain. Strict **21-stage** forward/reverse applicability, **13 negative mutations** across both CONFIG alternatives, prerequisite/duplicate-apply rejection, preservation of all **11 non-G2 files**, and exact pinned-byte restoration of **13 files** passed. Only inherited zero-context G1 uses `--unidiff-zero`; no recount or whitespace relaxation. The first run passed patch application but exposed a test matcher treating a semicolon inside the warning string as statement termination. One matcher correction was made; the second run passed and testing stopped. Earlier green contract audits were not rerun. No kernel build or CI dispatch/rerun.
+
+## Preserved milestone — KSUN preparation and internal escape caller errors (2026-10-14)
 
 Parent branch: `f4ab84456407b9d533d8081656818345c4e3868b`. Audit pin remains `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161`. Draft / BUILD HOLD. No existing candidate is overwritten.
 
@@ -33,16 +44,17 @@ Parent branch: `f4ab84456407b9d533d8081656818345c4e3868b`. Audit pin remains `pe
 
 ## Remaining contracts and next closing work
 
-- **KSUN G2:** existing one-shot/snapshot candidates need coherent contextual composition; policy snapshot currently precedes its protecting mutex in the selected sequence. Replay/rollback remains unproven. Resolve the source conflict and exact ownership before extending the selected sequence.
+- **KSUN G2:** locked snapshot/one-attempt contextual composition is now source-validated; reuse it. Next close checked rule-helper errors before publication and private backup/hide-reader lifetime, with an explicit publication/failure contract. Rollback and policy -> cached SID -> READY are still unproven. Do not retry or restore the hide backup to mask those blockers.
 - **ADB / late-load:** ADB still has a void domain helper and can commit one phase before a later failure. Late-load registers facilities before escape, ignores final escape status and has no proven partial-init unwind. A failing return at that late point could unload module code while callbacks survive. They remain explicit HOLD; do not claim caller-only guards close these transactions.
 - **SUSFS/BSP caller:** internal filename hooks now return errors, but the real BSP `fs/exec.c` consumer/placement and error propagation remain unverified. Work from the existing conflict matrix and preserved isolated candidates; integrate an independent piece when KSUN dependencies allow. Do not redo GitLab acquisition or green isolated audits.
 - **Namespace / lifecycle / FD:** INHERITED admission remains; GLOBAL/INDIVIDUAL are unsupported until namespace rollback is proven. Private owner/publication boundaries, callback/task-work/proxy/module lifetime and SU_SESSION post-exec identity/revocation remain HOLD. Root installer and audit pins still differ and must not be unified automatically.
 - **NoMount / cleanup:** NoMount compile stays disabled and manual-only under BUILD HOLD. Full-stack compatibility awaits relevant KSUN/SUSFS contracts. Consolidate duplicated installer tests when that path is next changed; no cleanup-only CI rerun.
 
-Next `Lanjutkan`: close the existing G2 snapshot/replay composition or a concrete transaction blocker; progress independent SUSFS source conflicts when security dependencies allow. Finish this queue before adding unrelated alternatives. BakaSU remains deferred.
+Next `Lanjutkan`: close G2 rule-construction error handling before publication or a concrete backup-reader/transaction blocker; then ADB/late-load contracts. Progress independent SUSFS source conflicts from the existing matrix when dependencies permit, without redoing green isolated candidates. Finish this queue before adding unrelated alternatives. BakaSU remains deferred. Storage migration to A: was cancelled by the owner; do not resume it. Workspace C: has been restored.
 
 ## Preserved evidence and archives
 
+- [20-stage preparation/caller milestone `efb4f852`](https://github.com/cogan17/Xiomi-14t-pro/commit/efb4f852dd8c6949274489354c2376c439e0540d)
 - [18-stage profile/namespace milestone `8d10fc10`](https://github.com/cogan17/Xiomi-14t-pro/commit/8d10fc10eb3b0c5a28495c23404c134027e22044)
 - [16-stage borrower composition `7421b714`](https://github.com/cogan17/Xiomi-14t-pro/commit/7421b71439d77b9355d257bdef58181b40f853b3)
 - [Initial setup serialization `a0da8f3`](https://github.com/cogan17/Xiomi-14t-pro/commit/a0da8f333ce87a0141a8359ab9f15d2aea1e0e5b)

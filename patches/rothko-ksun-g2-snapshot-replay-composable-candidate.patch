@@ -1,0 +1,77 @@
+diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
+--- a/kernel/selinux/rules.c
++++ b/kernel/selinux/rules.c
+@@ -44,8 +44,9 @@
+ 
+ int apply_kernelsu_rules(void)
+ {
+-    struct selinux_policy *pol, *old_pol = selinux_state.policy;
++    struct selinux_policy *pol, *old_pol;
+     struct policydb *db;
++    static bool policy_attempted;
+     int ret = 0;
+ 
+     if (!getenforce()) {
+@@ -53,6 +54,19 @@
+     }
+ 
+     mutex_lock(&selinux_state.policy_mutex);
++    /* One attempt per module lifetime, including failure; no backup replay. */
++    if (policy_attempted) {
++        ret = -EALREADY;
++        goto out_unlock;
++    }
++    policy_attempted = true;
++
++    old_pol = rcu_dereference_protected(selinux_state.policy,
++        lockdep_is_held(&selinux_state.policy_mutex));
++    if (!old_pol) {
++        ret = -EAGAIN;
++        goto out_unlock;
++    }
+     backup_sepolicy =
+         ksu_dup_sepolicy(rcu_dereference_protected(old_pol, lockdep_is_held(&selinux_state.policy_mutex)));
+     if (IS_ERR(backup_sepolicy)) {
+diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration.c
+--- a/kernel/runtime/ksud_integration.c
++++ b/kernel/runtime/ksud_integration.c
+@@ -1,4 +1,5 @@
+ #include "feature/selinux_hide.h"
++#include <linux/atomic.h>
+ #include <linux/rcupdate.h>
+ #include <linux/slab.h>
+ #include <linux/mutex.h>
+@@ -40,6 +41,9 @@
+ DEFINE_STATIC_KEY_TRUE(is_init_second_stage_not_executed);
+ DEFINE_STATIC_KEY_TRUE(is_first_zygote);
+ 
++/* A rejected or concurrent second stage never replays startup side effects. */
++static atomic_t ksu_second_stage_attempted = ATOMIC_INIT(0);
++
+ // clang-format off
+ static const char KERNEL_SU_RC[] =
+     "\n"
+@@ -178,6 +182,11 @@
+         if (unlikely(!memcmp(filename->name, system_bin_init, sizeof(system_bin_init) - 1) && argv)) {
+             char buf[16];
+             if (check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
++                /* Fail-stop: retain the attempted latch on every outcome. */
++                if (atomic_cmpxchg(&ksu_second_stage_attempted, 0, 1) != 0) {
++                    pr_warn("KernelSU second_stage already attempted; refusing replay\n");
++                    return 0;
++                }
+                 pr_info("/system/bin/init second_stage executed\n");
+                 ksu_selinux_hide_handle_second_stage();
+                 if (apply_kernelsu_rules()) {
+@@ -225,6 +234,11 @@
+         if (unlikely(!memcmp(path, system_bin_init, sizeof(system_bin_init) - 1) && argv)) {
+             char buf[16];
+             if (check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
++                /* Fail-stop: retain the attempted latch on every outcome. */
++                if (atomic_cmpxchg(&ksu_second_stage_attempted, 0, 1) != 0) {
++                    pr_warn("KernelSU second_stage already attempted; refusing replay\n");
++                    return;
++                }
+                 pr_info("/system/bin/init second_stage executed\n");
+                 ksu_selinux_hide_handle_second_stage();
+                 if (apply_kernelsu_rules()) {
