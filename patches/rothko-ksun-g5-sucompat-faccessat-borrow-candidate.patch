@@ -18,7 +18,10 @@ diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
 +			goto do_orig_facessat;
 +		old_cred = override_creds(borrowed);
  		if (is_ksud_exists()) {
-@@ -426,8 +429,10 @@
+@@ -423,11 +426,13 @@
+ 			ksu_compat_sulog('a');
+ 			pr_info("faccessat su->ksud!\\n");
+ 			orig_filename = *filename_user;
  			*filename_user = ksud_user_path();
  			ret = ksu_syscall_table[orig_nr](regs);
  			revert_creds(old_cred);
