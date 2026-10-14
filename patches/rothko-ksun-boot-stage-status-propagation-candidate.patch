@@ -1,0 +1,622 @@
+diff --git a/kernel/core/init.c b/kernel/core/init.c
+--- a/kernel/core/init.c
++++ b/kernel/core/init.c
+@@ -257,52 +257,54 @@
+ 	ksu_selinux_hide_init();
+ 
+ 	ksu_supercalls_init();
+ 	ksu_app_profile_init();
+ 
+ #ifdef CONFIG_KSU_SUSFS
+ 	ksu_sucompat_init();
+ 	ksu_setuid_hook_init();
+ 	ksu_avc_spoof_init();
+ #endif
+ 
+ 	if (ksu_late_loaded) {
+ 		pr_info("late load mode, skipping kprobe hooks\n");
+ 
+ 		/*
+ 		 * Partial G2/G1 gate only: skip late-load root escalation
+-		 * unless policy setup and shared-credential setup report
+-		 * success. This does not unwind hooks or publish a G5 READY
+-		 * credential, and is not approved for integrated deployment.
++		 * unless policy setup, SID caching and shared-credential setup
++		 * report success. This does not unwind hooks and is not approved
++		 * for integrated deployment; late-load admission is disabled above.
+ 		 */
+ 		int rules_ret;
++		int sid_ret = -EAGAIN;
+ 		int cred_ret = -EAGAIN;
+ 
+ 		rules_ret = apply_kernelsu_rules();
+ 		if (!rules_ret) {
+-			cache_sid();
+-			cred_ret = setup_ksu_cred();
++			sid_ret = cache_sid();
++			if (!sid_ret)
++				cred_ret = setup_ksu_cred();
+ 		}
+ 
+ 		// Grant current process (ksud late-load) root only after the
+ 		// checked prerequisites. Other subsystems remain BUILD HOLD.
+-		if (!rules_ret && !cred_ret) {
++		if (!rules_ret && !sid_ret && !cred_ret) {
+ 			escape_to_root_for_init();
+ 		} else {
+-			pr_err("late-load root escalation blocked: policy=%d cred=%d\n",
+-			       rules_ret, cred_ret);
++			pr_err("late-load root escalation blocked: policy=%d sid=%d cred=%d\n",
++			       rules_ret, sid_ret, cred_ret);
+ 		}
+ 
+ 		ksu_allowlist_init();
+ 		ksu_load_allow_list();
+ 
+ #if !defined(CONFIG_KSU_SUSFS) && defined(CONFIG_KPROBES)
+ 		ksu_syscall_hook_manager_init();
+ #endif
+ 
+ 		ksu_throne_tracker_init();
+ 		ksu_observer_init();
+ 		ksu_file_wrapper_init();
+ 
+ 		ksu_boot_completed = true;
+ 		track_throne(false);
+ 
+diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
+--- a/kernel/feature/sucompat.c
++++ b/kernel/feature/sucompat.c
+@@ -279,50 +279,54 @@
+     }
+ 
+     /* Status zero now means the checked selected-profile commit succeeded. */
+     *filename_ptr = replacement;
+     putname(filename);
+     ksu_sulog_emit_pending(pending_sucompat, 0, GFP_KERNEL);
+ 
+     return 0;
+ }
+ 
+ extern struct static_key_true is_first_zygote;
+ 
+ int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv,
+             void *envp, int *flags)
+ {
+     struct ksu_sulog_pending_event *pending_root_execve = NULL;
+-
+-    if (unlikely(!filename_ptr))
++    struct user_arg_ptr *argv_ptr = argv;
++    int ret;
++
++    if (unlikely(!filename_ptr) || IS_ERR_OR_NULL(*filename_ptr))
+         return 0;
+ 
+-    if (IS_ERR(*filename_ptr))
+-        return 0;
+-
+-    if (current_euid().val == 0) {
+-        struct user_arg_ptr *argv_ptr = (struct user_arg_ptr *)argv;
++    if (static_branch_unlikely(&is_first_zygote)) {
++        ret = ksu_handle_execveat_ksud(fd, filename_ptr, argv, envp, flags);
++        if (ret)
++            return ret;
++    }
++
++    /* This logger takes native pointers; COMPAT needs its own audit adapter. */
++    if (current_euid().val == 0 && argv_ptr
++#ifdef CONFIG_COMPAT
++        && !argv_ptr->is_compat
++#endif
++    ) {
+         pending_root_execve = ksu_sulog_capture_root_execve_kernel((*filename_ptr)->name,
+                                                                    (const char __user *const __user *)argv_ptr->ptr.native,
+                                                                    GFP_KERNEL);
+         ksu_sulog_emit_pending(pending_root_execve, 0, GFP_KERNEL);
+-    }
+-
+-    if (static_branch_unlikely(&is_first_zygote)) {
+-        if (ksu_handle_execveat_ksud(fd, filename_ptr, argv, envp, flags))
+-            return 0;
+     }
+ 
+     return ksu_handle_execveat_sucompat(fd, filename_ptr, argv, envp,
+                         flags);
+ }
+ #endif
+ 
+ #ifdef CONFIG_KSU_SUSFS
+ int ksu_handle_faccessat(int *dfd, struct filename **filename,
+ 		int *mode, int *__unused_flags)
+ {
+ 	if (unlikely(IS_ERR(*filename) || (*filename)->name == NULL))
+ 		return 0;
+ 
+ 	if (likely(memcmp((*filename)->name, su_path, sizeof(su_path))))
+ 		return 0;
+diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration.c
+--- a/kernel/runtime/ksud_integration.c
++++ b/kernel/runtime/ksud_integration.c
+@@ -1,18 +1,18 @@
+ #include "feature/selinux_hide.h"
+-#include <linux/atomic.h>
++#include <linux/errno.h>
+ #include <linux/rcupdate.h>
+ #include <linux/slab.h>
+ #include <linux/mutex.h>
+ #include <linux/mm.h>
+ #include <asm/current.h>
+ #include <linux/compat.h>
+ #include <linux/cred.h>
+ #include <linux/dcache.h>
+ #include <linux/err.h>
+ #include <linux/file.h>
+ #include <linux/fs.h>
+ #include <linux/version.h>
+ #include <linux/input-event-codes.h>
+ #include <linux/kprobes.h>
+ #include <linux/printk.h>
+ #include <linux/types.h>
+@@ -28,34 +28,37 @@
+ #include "runtime/ksud.h"
+ #include "runtime/ksud_boot.h"
+ #include "selinux/selinux.h"
+ #include "hook/syscall_hook.h"
+ #include "hook/syscall_event_bridge.h"
+ 
+ #include "linux/jump_label.h"
+ 
+ #ifdef CONFIG_KSU_SUSFS
+ DEFINE_STATIC_KEY_TRUE(ksu_is_init_rc_hook_enabled);
+ DEFINE_STATIC_KEY_TRUE(ksu_is_input_hook_enabled);
+ #endif
+ 
+ DEFINE_STATIC_KEY_TRUE(is_init_second_stage_not_executed);
+ DEFINE_STATIC_KEY_TRUE(is_first_zygote);
+ 
+-/* A rejected or concurrent second stage never replays startup side effects. */
+-static atomic_t ksu_second_stage_attempted = ATOMIC_INIT(0);
++/* One owner serializes boot-stage effects; a failed attempt stays failed. */
++static DEFINE_MUTEX(ksu_boot_stage_lock);
++static int ksu_boot_error;
++static bool ksu_second_stage_done;
++static bool ksu_first_zygote_done;
+ 
+ // clang-format off
+ static const char KERNEL_SU_RC[] =
+     "\n"
+     "on post-fs-data\n"
+     "    start logd\n"
+     // We should wait for the post-fs-data finish
+     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " post-fs-data\n"
+     "\n"
+     "on nonencrypted\n"
+     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " services\n"
+     "\n"
+     "on property:vold.decrypt=trigger_restart_framework\n"
+     "    exec u:r:" KERNEL_SU_DOMAIN ":s0 root -- " KSUD_PATH " services\n"
+     "\n"
+     "on property:sys.boot_completed=1\n"
+@@ -142,143 +145,123 @@
+     #ifdef CONFIG_KSU_SUSFS
+     if (strncpy_from_user(buf, p, buf_len) <= 0)
+         goto fail;
+     #else
+     if (strncpy_from_user_nofault(buf, p, buf_len) <= 0)
+         goto fail;
+     #endif
+ 
+     buf[buf_len - 1] = '\0';
+ 
+     return !strcmp(buf, expected);
+ 
+ fail:
+     return false;
+ }
+ 
++/*
++ * Serialize this exec startup path only. Policy/hide publication is not undone
++ * after failure, and the separate supercall boot-event path is not owned here.
++ */
++static int ksu_run_boot_stage(bool first_zygote)
++{
++    int ret;
++
++    mutex_lock(&ksu_boot_stage_lock);
++    ret = ksu_boot_error;
++    if (ret)
++        goto out_unlock;
++
++    if (first_zygote) {
++        if (!ksu_second_stage_done) {
++            ret = -EAGAIN;
++            goto out_unlock;
++        }
++        if (ksu_first_zygote_done)
++            goto out_unlock;
++        ret = cache_sid();
++        if (ret)
++            goto out_failed;
++        ret = setup_ksu_cred();
++        if (ret)
++            goto out_failed;
++        on_post_fs_data();
++        ksu_first_zygote_done = true;
++        static_branch_disable(&is_first_zygote);
++#ifndef CONFIG_KSU_SUSFS
++        ksu_stop_ksud_execve_hook();
++#endif
++    } else {
++        if (ksu_second_stage_done)
++            goto out_unlock;
++        ksu_selinux_hide_handle_second_stage();
++        ret = apply_kernelsu_rules();
++        if (ret)
++            goto out_failed;
++        ret = cache_sid();
++        if (ret)
++            goto out_failed;
++        ret = setup_ksu_cred();
++        if (ret)
++            goto out_failed;
++        ksu_second_stage_done = true;
++        static_branch_disable(&is_init_second_stage_not_executed);
++    }
++    goto out_unlock;
++
++out_failed:
++    ksu_boot_error = ret;
++    pr_err("KernelSU boot stage failed: %d\n", ret);
++out_unlock:
++    mutex_unlock(&ksu_boot_stage_lock);
++    return ret;
++}
++
++static int ksu_handle_execveat_ksud_path(const char *path,
++                                       struct user_arg_ptr *argv)
++{
++    char buf[16];
++
++    if (!path || !argv)
++        return 0;
++    if (static_branch_unlikely(&is_init_second_stage_not_executed) &&
++        !strcmp(path, "/system/bin/init") &&
++        check_argv(*argv, 1, "second_stage", buf, sizeof(buf)))
++        return ksu_run_boot_stage(false);
++    if (static_branch_unlikely(&is_first_zygote) &&
++        (!strcmp(path, "/system/bin/app_process") ||
++         !strcmp(path, "/system/bin/app_process32") ||
++         !strcmp(path, "/system/bin/app_process64")) &&
++        check_argv(*argv, 1, "-Xzygote", buf, sizeof(buf)))
++        return ksu_run_boot_stage(true);
++    return 0;
++}
++
+ #ifdef CONFIG_KSU_SUSFS
+-extern int ksu_handle_execveat_init(struct filename *filename, struct user_arg_ptr *argv_user, struct user_arg_ptr *envp_user);
+-
+-// IMPORTANT NOTE: the call from execve_handler_pre WON'T provided correct value for envp and flags in GKI version
+ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
+                              struct user_arg_ptr *argv,
+                              struct user_arg_ptr *envp, int *flags)
+ {
+-    struct filename *filename;
+-    static const char app_process[] = "/system/bin/app_process";
+-
+-    /* This applies to versions Android 10+ */
+-    static const char system_bin_init[] = "/system/bin/init";
+-
+-    if (!filename_ptr)
++    if (!filename_ptr || IS_ERR_OR_NULL(*filename_ptr))
+         return 0;
+-
+-    filename = *filename_ptr;
+-    if (IS_ERR(filename)) {
+-        return 0;
+-    }
+-
+-    if (static_branch_unlikely(&is_init_second_stage_not_executed)) {
+-        // https://cs.android.com/android/platform/superproject/+/android-16.0.0_r2:system/core/init/main.cpp;l=77
+-        if (unlikely(!memcmp(filename->name, system_bin_init, sizeof(system_bin_init) - 1) && argv)) {
+-            char buf[16];
+-            if (check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
+-                /* Fail-stop: retain the attempted latch on every outcome. */
+-                if (atomic_cmpxchg(&ksu_second_stage_attempted, 0, 1) != 0) {
+-                    pr_warn("KernelSU second_stage already attempted; refusing replay\n");
+-                    return 0;
+-                }
+-                pr_info("/system/bin/init second_stage executed\n");
+-                ksu_selinux_hide_handle_second_stage();
+-                if (apply_kernelsu_rules()) {
+-                    pr_err("KernelSU policy setup failed; second_stage not ready\n");
+-                    return 0;
+-                }
+-                cache_sid();
+-                if (setup_ksu_cred()) {
+-                    pr_err("KernelSU shared credentials not ready; startup stage left pending\n");
+-                    return 0;
+-                }
+-                static_branch_disable(&is_init_second_stage_not_executed);
+-            }
+-        }
+-    }
+-
+-    if (static_branch_unlikely(&is_first_zygote)) {
+-        if (unlikely(!memcmp(filename->name, app_process, sizeof(app_process) - 1) && argv)) {
+-            char buf[16];
+-            if (check_argv(*argv, 1, "-Xzygote", buf, sizeof(buf))) {
+-                pr_info("exec zygote, /data prepared, second_stage: %d\n", !static_key_enabled(&is_init_second_stage_not_executed));
+-                on_post_fs_data();
+-                cache_sid();
+-                if (setup_ksu_cred()) {
+-                    pr_err("KernelSU shared credentials not ready; startup stage left pending\n");
+-                    return 0;
+-                }
+-                static_branch_disable(&is_first_zygote);
+-            }
+-        }
+-    }
+-
+-    return 0;
++    return ksu_handle_execveat_ksud_path((*filename_ptr)->name, argv);
+ }
+ #else
+-void ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)
+-{
+-    static const char app_process[] = "/system/bin/app_process";
+-
+-    /* This applies to versions Android 10+ */
+-    static const char system_bin_init[] = "/system/bin/init";
+-
+-    if (static_branch_unlikely(&is_init_second_stage_not_executed)) {
+-        // https://cs.android.com/android/platform/superproject/+/android-16.0.0_r2:system/core/init/main.cpp;l=77
+-        if (unlikely(!memcmp(path, system_bin_init, sizeof(system_bin_init) - 1) && argv)) {
+-            char buf[16];
+-            if (check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
+-                /* Fail-stop: retain the attempted latch on every outcome. */
+-                if (atomic_cmpxchg(&ksu_second_stage_attempted, 0, 1) != 0) {
+-                    pr_warn("KernelSU second_stage already attempted; refusing replay\n");
+-                    return;
+-                }
+-                pr_info("/system/bin/init second_stage executed\n");
+-                ksu_selinux_hide_handle_second_stage();
+-                if (apply_kernelsu_rules()) {
+-                    pr_err("KernelSU policy setup failed; second_stage not ready\n");
+-                    return;
+-                }
+-                cache_sid();
+-                if (setup_ksu_cred()) {
+-                    pr_err("KernelSU shared credentials not ready; startup stage left pending\n");
+-                    return;
+-                }
+-                static_branch_disable(&is_init_second_stage_not_executed);
+-            }
+-        }
+-    }
+-
+-    if (static_branch_unlikely(&is_first_zygote)) {
+-        if (unlikely(!memcmp(path, app_process, sizeof(app_process) - 1) && argv)) {
+-            char buf[16];
+-            if (check_argv(*argv, 1, "-Xzygote", buf, sizeof(buf))) {
+-                pr_info("exec zygote, /data prepared, second_stage: %d\n", !static_key_enabled(&is_init_second_stage_not_executed));
+-                on_post_fs_data();
+-                static_branch_disable(&is_first_zygote);
+-                ksu_stop_ksud_execve_hook();
+-            }
+-        }
+-    }
++static int ksu_handle_execveat_ksud(const char *path, struct user_arg_ptr *argv)
++{
++    return ksu_handle_execveat_ksud_path(path, argv);
+ }
+ #endif
+ 
+ static ssize_t (*orig_read)(struct file *, char __user *, size_t, loff_t *);
+ static ssize_t (*orig_read_iter)(struct kiocb *, struct iov_iter *);
+ static struct file_operations fops_proxy;
+ static ssize_t ksu_rc_pos = 0;
+ const size_t ksu_rc_len = sizeof(KERNEL_SU_RC) - 1;
+ 
+ // Prefer /metadata/watchdog/ when present, else /metadata.
+ #define MODULE_RC_PATH_WATCHDOG "/metadata/watchdog/ksu/modules.rc"
+ #define MODULE_RC_PATH_DEFAULT "/metadata/ksu/modules.rc"
+ static char *module_rc_buf;
+ static size_t module_rc_len;
+ static ssize_t module_rc_pos;
+ 
+@@ -675,41 +658,44 @@
+ static void ksu_execve_hook_ksud_common(const char __user *filename_user, const char __user *const __user *argv_user)
+ {
+     struct user_arg_ptr argv = { .ptr.native = argv_user };
+     char path[32];
+     long ret;
+     unsigned long addr;
+     const char __user *fn;
+ 
+     if (!filename_user)
+         return;
+ 
+     addr = untagged_addr((unsigned long)filename_user);
+     fn = (const char __user *)addr;
+ 
+     memset(path, 0, sizeof(path));
+     ret = strncpy_from_user(path, fn, 32);
+-    if (ret < 0) {
++    if (ret <= 0 || ret >= sizeof(path)) {
+         pr_err("Access filename failed for execve_handler_pre\n");
+         return;
+     }
+ 
+ #ifdef CONFIG_KSU_SUSFS
+     // Not supported in hook mode for SuSFS
+ #else
+-    ksu_handle_execveat_ksud(path, &argv);
++    ret = ksu_handle_execveat_ksud(path, &argv);
++    if (ret)
++        pr_err("KernelSU startup hook failed: %ld\n", ret);
++    /* This void bridge reports failure; it cannot abort the original exec. */
+ #endif
+ }
+ 
+ void ksu_execve_hook_ksud(const struct pt_regs *regs)
+ {
+     const char __user *filename_user = (const char __user *)PT_REGS_PARM1(regs);
+     const char __user *const __user *argv_user = (const char __user *const __user *)PT_REGS_PARM2(regs);
+ 
+     ksu_execve_hook_ksud_common(filename_user, argv_user);
+ }
+ 
+ void ksu_execveat_hook_ksud(const struct pt_regs *regs)
+ {
+     const char __user *filename_user = (const char __user *)PT_REGS_PARM2(regs);
+     const char __user *const __user *argv_user = (const char __user *const __user *)PT_REGS_PARM3(regs);
+ 
+diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
+--- a/kernel/selinux/selinux.c
++++ b/kernel/selinux/selinux.c
+@@ -236,70 +236,80 @@
+ {
+ #ifdef CONFIG_SECURITY_SELINUX_DISABLE
+     if (selinux_state.disabled) {
+         return false;
+     }
+ #endif
+ 
+ #ifdef CONFIG_SECURITY_SELINUX_DEVELOP
+     return selinux_state.enforcing;
+ #else
+     return true;
+ #endif
+ }
+ 
+ /*
+  * Initialize cached SID values for frequently checked SELinux contexts.
+- * Called once after SELinux policy is loaded (post-fs-data).
+- * This eliminates expensive string comparisons in hot paths.
++ * Called after SELinux policy is loaded. Resolve every required context
++ * before updating the cache; a failed lookup retains the previous values.
++ * These individual stores do not provide atomic multi-SID publication.
+  */
+-void cache_sid(void)
+-{
++int cache_sid(void)
++{
++    u32 su_sid = 0, zygote_sid = 0, init_sid = 0, file_sid = 0;
+     int err;
+ 
+-    err = security_secctx_to_secid(KERNEL_SU_CONTEXT, strlen(KERNEL_SU_CONTEXT), &cached_su_sid);
++    err = security_secctx_to_secid(KERNEL_SU_CONTEXT, strlen(KERNEL_SU_CONTEXT), &su_sid);
+     if (err) {
+         pr_warn("Failed to cache kernel su domain SID: %d\n", err);
+-        cached_su_sid = 0;
+-    } else {
+-        pr_info("Cached su SID: %u\n", cached_su_sid);
+-    }
+-
+-    err = security_secctx_to_secid(ZYGOTE_CONTEXT, strlen(ZYGOTE_CONTEXT), &cached_zygote_sid);
++        return err;
++    }
++    if (!su_sid)
++        return -EINVAL;
++
++    err = security_secctx_to_secid(ZYGOTE_CONTEXT, strlen(ZYGOTE_CONTEXT), &zygote_sid);
+     if (err) {
+         pr_warn("Failed to cache zygote SID: %d\n", err);
+-        cached_zygote_sid = 0;
+-    } else {
+-        pr_info("Cached zygote SID: %u\n", cached_zygote_sid);
+-    }
+-
+-    err = security_secctx_to_secid(INIT_CONTEXT, strlen(INIT_CONTEXT), &cached_init_sid);
++        return err;
++    }
++    if (!zygote_sid)
++        return -EINVAL;
++
++    err = security_secctx_to_secid(INIT_CONTEXT, strlen(INIT_CONTEXT), &init_sid);
+     if (err) {
+         pr_warn("Failed to cache init SID: %d\n", err);
+-        cached_init_sid = 0;
+-    } else {
+-        pr_info("Cached init SID: %u\n", cached_init_sid);
+-    }
+-
+-    err = security_secctx_to_secid(KSU_FILE_CONTEXT, strlen(KSU_FILE_CONTEXT), &ksu_file_sid);
++        return err;
++    }
++    if (!init_sid)
++        return -EINVAL;
++
++    err = security_secctx_to_secid(KSU_FILE_CONTEXT, strlen(KSU_FILE_CONTEXT), &file_sid);
+     if (err) {
+         pr_warn("Failed to cache ksu_file SID: %d\n", err);
+-        ksu_file_sid = 0;
+-    } else {
+-        pr_info("Cached ksu_file SID: %u\n", ksu_file_sid);
+-    }
++        return err;
++    }
++    if (!file_sid)
++        return -EINVAL;
++
++    cached_su_sid = su_sid;
++    cached_zygote_sid = zygote_sid;
++    cached_init_sid = init_sid;
++    ksu_file_sid = file_sid;
++    pr_info("Cached SIDs: su=%u zygote=%u init=%u file=%u\n",
++            su_sid, zygote_sid, init_sid, file_sid);
++    return 0;
+ }
+ 
+ #ifdef CONFIG_KSU_SUSFS
+ #define KERNEL_INIT_DOMAIN "u:r:init:s0"
+ #define KERNEL_ZYGOTE_DOMAIN "u:r:zygote:s0"
+ #define KERNEL_ZYGOTE_NEXT_DOMAIN "u:r:zygote_next:s0"
+ #define KERNEL_PRIV_APP_DOMAIN "u:r:priv_app:s0:c512,c768"
+ 
+ static inline void susfs_set_sid(const char *secctx_name, u32 *out_sid)
+ {
+     int err;
+     
+     if (!secctx_name || !out_sid) {
+         pr_err("secctx_name || out_sid is NULL\n");
+         return;
+     }
+diff --git a/kernel/selinux/selinux.h b/kernel/selinux/selinux.h
+--- a/kernel/selinux/selinux.h
++++ b/kernel/selinux/selinux.h
+@@ -6,33 +6,33 @@
+ #include <linux/cred.h>
+ 
+ #define KERNEL_SU_DOMAIN "ksu"
+ #define KERNEL_SU_FILE "ksu_file"
+ 
+ #define KERNEL_SU_CONTEXT "u:r:" KERNEL_SU_DOMAIN ":s0"
+ #define KSU_FILE_CONTEXT "u:object_r:" KERNEL_SU_FILE ":s0"
+ #define ZYGOTE_CONTEXT "u:r:zygote:s0"
+ #define INIT_CONTEXT "u:r:init:s0"
+ 
+ int setup_selinux(const char *, struct cred *);
+ 
+ void setenforce(bool);
+ 
+ bool getenforce();
+ 
+-void cache_sid(void);
++int cache_sid(void);
+ 
+ bool is_task_ksu_domain(const struct cred *cred);
+ 
+ bool is_ksu_domain();
+ 
+ bool is_zygote(const struct cred *cred);
+ 
+ bool is_init(const struct cred *cred);
+ 
+ int apply_kernelsu_rules(void);
+ 
+ int handle_sepolicy(void __user *user_data, u64 data_len);
+ 
+ int setup_ksu_cred(void);
+ /* Internal setup body; caller must hold the credential setup mutex. */
+ int ksu_setup_cred_domain_locked(void);
