@@ -1,0 +1,212 @@
+diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
+--- a/kernel/feature/sucompat.c
++++ b/kernel/feature/sucompat.c
+@@ -166,29 +166,31 @@
+ 
+     return false;
+ }
+ 
+ /*
+- * return 0 -> No further checks should be required afterwards
+- * return non-zero -> Further checks should be continued afterwards
++ * return 0 -> handled successfully
++ * return positive -> continue ordinary su checks
++ * return negative -> propagate the exact failure
+  */
+ int ksu_handle_execveat_init(struct filename *filename, struct user_arg_ptr *argv_user, struct user_arg_ptr *envp_user) {
+-    if (current->pid != 1 && is_init(get_current_cred())) {
++    if (current->pid != 1 && is_init(current_cred())) {
+         int ret;
+         if (unlikely(strcmp(filename->name, KSUD_PATH) == 0)) {
+             const char __user *argv_user_ptr = get_user_arg_ptr(*argv_user, 0);
+             struct ksu_sulog_pending_event *pending_sucompat = NULL;
+ 
++            /* Check user arguments before any credential transition. */
++            if (!argv_user_ptr || IS_ERR(argv_user_ptr)) {
++                pr_err("!argv_user_ptr || IS_ERR(argv_user_ptr)\n");
++                return -EFAULT;
++            }
+             pr_info("hook_manager: escape to root for init executing ksud: %d\n", current->pid);
+             ret = escape_to_root_for_init();
+             if (ret) {
+                 pr_err("escape_to_root_for_init() failed: %d\n", ret);
+                 return ret;
+-            }
+-            if (!argv_user_ptr || IS_ERR(argv_user_ptr)) {
+-                pr_err("!argv_user_ptr || IS_ERR(argv_user_ptr)\n");
+-                return -EFAULT;
+             }
+             pending_sucompat = ksu_sulog_capture_sucompat_kernel(filename->name, (const char __user *const __user *)argv_user->ptr.native, GFP_KERNEL);
+             ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
+             return 0;
+         } else {
+@@ -216,18 +218,18 @@
+             return ret;
+         }
+         return ret;
+     }
+ 
+-    return -EINVAL;
++    return 1; /* Not an init request: continue ordinary su checks. */
+ }
+ 
+ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
+                  void *argv_user, void *envp_user,
+                  int *__never_use_flags)
+ {
+-    struct filename *filename;
++    struct filename *filename, *replacement;
+     struct user_arg_ptr *argv_ptr = (struct user_arg_ptr *)argv_user;
+     struct ksu_sulog_pending_event *pending_sucompat = NULL;
+     int ret;
+ 
+     if (unlikely(!filename_ptr))
+@@ -235,12 +237,13 @@
+ 
+     filename = *filename_ptr;
+     if (IS_ERR(filename))
+         return 0;
+ 
+-    if (!ksu_handle_execveat_init(filename, (struct user_arg_ptr*)argv_user, (struct user_arg_ptr*)envp_user))
+-        return 0;
++    ret = ksu_handle_execveat_init(filename, (struct user_arg_ptr*)argv_user, (struct user_arg_ptr*)envp_user);
++    if (ret <= 0)
++        return ret;
+ 
+     if (likely(memcmp(filename->name, su_path, sizeof(su_path))))
+         return 0;
+ 
+     if (current_chrooted())
+@@ -257,17 +260,30 @@
+ 
+     pending_sucompat = ksu_sulog_capture_sucompat_kernel(filename->name,
+                                                          (const char __user *const __user *)argv_ptr->ptr.native,
+                                                          GFP_KERNEL);
+ 
+-    memcpy((void *)filename->name, ksud_path, sizeof(ksud_path));
++    /* Prepare replacement before granting the selected profile. */
++    replacement = getname_kernel(ksud_path);
++    if (IS_ERR(replacement)) {
++        ret = PTR_ERR(replacement);
++        ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
++        return ret;
++    }
+ 
+     ret = escape_with_root_profile();
+-    if (ret)
++    if (ret) {
+         pr_err("escape_with_root_profile() failed: %d\n", ret);
+-
+-    ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
++        putname(replacement);
++        ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
++        return ret;
++    }
++
++    /* Status zero now means the checked selected-profile commit succeeded. */
++    *filename_ptr = replacement;
++    putname(filename);
++    ksu_sulog_emit_pending(pending_sucompat, 0, GFP_KERNEL);
+ 
+     return 0;
+ }
+ 
+ extern struct static_key_true is_first_zygote;
+@@ -490,10 +506,11 @@
+ static long ksu_handle_execve_sucompat_common(const char __user **filename_user,
+ 					      const char __user *const __user *argv_user, unsigned long envp,
+ 					      bool execveat, int orig_nr, struct pt_regs *regs)
+ {
+ 	const char __user *fn;
++	char __user *empty_path;
+ 	struct ksu_sulog_pending_event *pending_sucompat = NULL;
+ 	char path[sizeof(su_path) + 1];
+ 	long ret, orig_regs[5];
+ 	unsigned long addr;
+ 	int tmp_fd;
+@@ -552,28 +569,40 @@
+ 	}
+ 
+ 	fd_install(tmp_fd, ksud_file);
+ 
+ 	pending_sucompat = ksu_sulog_capture_sucompat(*filename_user, argv_user, GFP_KERNEL);
++	/* All userspace writes/resources required for redirection precede escape. */
++	empty_path = empty_user_path();
++	if (!empty_path) {
++		ret = -EFAULT;
++		ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
++		ksu_close_fd(tmp_fd);
++		return ret;
++	}
++	ret = escape_with_root_profile();
++	if (ret) {
++		pr_err("escape_with_root_profile failed: %ld\n", ret);
++		ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
++		ksu_close_fd(tmp_fd);
++		return ret;
++	}
++
+ 	// execve(file, argv, environ)
+ 	// execveat(fd, file, argv, environ, flags)
+ 	orig_regs[0] = regs->__PT_PARM1_REG;
+ 	orig_regs[1] = regs->__PT_PARM2_REG;
+ 	orig_regs[2] = regs->__PT_PARM3_REG;
+ 	orig_regs[3] = regs->__PT_SYSCALL_PARM4_REG;
+ 	orig_regs[4] = regs->__PT_PARM5_REG;
+ 	regs->__PT_PARM5_REG = AT_EMPTY_PATH;
+ 	regs->__PT_SYSCALL_PARM4_REG = envp;
+ 	regs->__PT_PARM3_REG = (unsigned long)argv_user;
+-	regs->__PT_PARM2_REG = empty_user_path();
++	regs->__PT_PARM2_REG = empty_path;
+ 	regs->__PT_PARM1_REG = tmp_fd;
+ 
+-	ret = escape_with_root_profile();
+-	if (ret) {
+-		pr_err("escape_with_root_profile failed: %ld\n", ret);
+-	}
+-	ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
++	ksu_sulog_emit_pending(pending_sucompat, 0, GFP_KERNEL);
+ 
+ 	ret = ksu_syscall_table[__NR_execveat](regs);
+ 	if (ret < 0) {
+ 		ksu_close_fd(tmp_fd);
+ 		regs->__PT_PARM1_REG = orig_regs[0];
+diff --git a/kernel/hook/syscall_event_bridge.c b/kernel/hook/syscall_event_bridge.c
+--- a/kernel/hook/syscall_event_bridge.c
++++ b/kernel/hook/syscall_event_bridge.c
+@@ -36,11 +36,11 @@
+         return 0;
+ 
+     path[sizeof(path) - 1] = '\0';
+     if (unlikely(strcmp(path, KSUD_PATH) == 0)) {
+         pr_info("hook_manager: escape to root for init executing ksud: %d\n", current->pid);
+-        escape_to_root_for_init();
++        return escape_to_root_for_init();
+     } else if (likely(strstr(path, "/app_process") == NULL && strstr(path, "/adbd") == NULL &&
+                       strstr(path, "/stub_zygote") == NULL)) {
+         pr_info("hook_manager: unmark %d exec %s\n", current->pid, path);
+         ksu_clear_task_tracepoint_flag_if_needed(current);
+     }
+@@ -91,15 +91,21 @@
+ 
+ 	if (current_euid().val == 0)
+ 		pending_root_execve = ksu_sulog_capture_root_execve(*filename_user, argv_user, GFP_KERNEL);
+ 
+ 	if (current->pid != 1 && current_is_init) {
+-		ksu_handle_init_mark_tracker(filename_user);
++		ret = ksu_handle_init_mark_tracker(filename_user);
++		if (ret) {
++			ksu_sulog_emit_pending(pending_root_execve, ret, GFP_KERNEL);
++			return ret;
++		}
+ 		ret = execveat ? ksu_adb_root_handle_execveat((struct pt_regs *)regs) :
+ 				 ksu_adb_root_handle_execve((struct pt_regs *)regs);
+ 		if (ret) {
+ 			pr_err("adb root failed: %ld\n", ret);
++			ksu_sulog_emit_pending(pending_root_execve, ret, GFP_KERNEL);
++			return ret;
+ 		}
+ 	} else if (static_branch_likely(&ksu_su_compat_enabled)) {
+ 		ret = execveat ? ksu_handle_execveat_sucompat(filename_user, orig_nr, (struct pt_regs *)regs) :
+ 				 ksu_handle_execve_sucompat(filename_user, orig_nr, (struct pt_regs *)regs);
+ 		ksu_sulog_emit_pending(pending_root_execve, ret, GFP_KERNEL);

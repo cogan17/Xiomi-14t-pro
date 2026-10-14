@@ -1,0 +1,188 @@
+diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
+--- a/kernel/policy/app_profile.c
++++ b/kernel/policy/app_profile.c
+@@ -27,47 +27,48 @@
+ static struct group_info root_groups = { .usage = REFCOUNT_INIT(2) };
+ #else
+ static struct group_info root_groups = { .usage = ATOMIC_INIT(2) };
+ #endif
+ 
+-void setup_groups(struct root_profile *profile, struct cred *cred)
++static int setup_groups(struct root_profile *profile, struct cred *cred)
+ {
+     if (profile->groups_count > KSU_MAX_GROUPS) {
+         pr_warn("Failed to setgroups, too large group: %d!\n", profile->uid);
+-        return;
++        return -EINVAL;
+     }
+ 
+     if (profile->groups_count == 1 && profile->groups[0] == 0) {
+         // setgroup to root and return early.
+         if (cred->group_info)
+             put_group_info(cred->group_info);
+         cred->group_info = get_group_info(&root_groups);
+-        return;
++        return 0;
+     }
+ 
+     u32 ngroups = profile->groups_count;
+     struct group_info *group_info = groups_alloc(ngroups);
+     if (!group_info) {
+         pr_warn("Failed to setgroups, ENOMEM for: %d\n", profile->uid);
+-        return;
++        return -ENOMEM;
+     }
+ 
+     int i;
+     for (i = 0; i < ngroups; i++) {
+         gid_t gid = profile->groups[i];
+         kgid_t kgid = make_kgid(current_user_ns(), gid);
+         if (!gid_valid(kgid)) {
+             pr_warn("Failed to setgroups, invalid gid: %d\n", gid);
+             put_group_info(group_info);
+-            return;
++            return -EINVAL;
+         }
+         group_info->gid[i] = kgid;
+     }
+ 
+     groups_sort(group_info);
+     set_groups(cred, group_info);
+     put_group_info(group_info);
++    return 0;
+ }
+ 
+ void seccomp_filter_release(struct task_struct *tsk);
+ 
+ // https://cs.android.com/android/_/android/kernel/common/+/5346453405bf12d7ed6003f45dd47b71744fe1be
+@@ -79,20 +80,12 @@
+ 
+ #if NEED_BACKPORT_COMPAT
+ static bool has_call_to_spin_lock = false;
+ #endif
+ 
+-void disable_seccomp(void)
+-{
+-    struct task_struct *fake;
+-
+-    fake = kmalloc(sizeof(*fake), GFP_KERNEL);
+-    if (!fake) {
+-        pr_warn("failed to alloc fake task_struct\n");
+-        return;
+-    }
+-
++static void disable_seccomp_with_scratch(struct task_struct *fake)
++{
+     // Refer to kernel/seccomp.c: seccomp_set_mode_strict
+     // When disabling Seccomp, ensure that current->sighand->siglock is held during the operation.
+     spin_lock_irq(&current->sighand->siglock);
+     // disable seccomp
+ #if defined(CONFIG_GENERIC_ENTRY) &&                                           \
+@@ -122,10 +115,21 @@
+     // https://github.com/torvalds/linux/commit/0d8315dddd2899f519fe1ca3d4d5cdaf44ea421e#diff-45eb79a57536d8eccfc1436932f093eb5c0b60d9361c39edb46581ad313e8987R556-R558
+     fake->sighand = NULL;
+ #endif
+ 
+     seccomp_filter_release(fake);
++}
++
++void disable_seccomp(void)
++{
++    struct task_struct *fake = kmalloc(sizeof(*fake), GFP_KERNEL);
++
++    if (!fake) {
++        pr_warn("failed to alloc fake task_struct\n");
++        return;
++    }
++    disable_seccomp_with_scratch(fake);
+     kfree(fake);
+ }
+ 
+ int escape_with_root_profile(void)
+ {
+@@ -133,10 +137,11 @@
+     struct cred *cred;
+     struct task_struct *p = current;
+     struct task_struct *t;
+     struct root_profile *profile = NULL;
+     struct user_struct *new_user;
++    struct task_struct *seccomp_scratch = NULL;
+ 
+     cred = prepare_creds();
+     if (!cred) {
+         pr_warn("prepare_creds failed!\n");
+         return -ENOMEM;
+@@ -146,15 +151,17 @@
+     if (susfs_is_current_ksu_domain()) {
+ #else
+     if (cred->euid.val == 0) {
+ #endif
+         pr_warn("Already root, don't escape!\n");
++        ret = -EALREADY;
+         goto out_abort_creds;
+     }
+ 
+     if (test_thread_flag(TIF_KSU_DISABLE_ESCAPE_WITH_ROOT)) {
+         pr_warn("TIF_KSU_DISABLE_ESCAPE_WITH_ROOT found, don't escape!\n");
++        ret = -EPERM;
+         goto out_abort_creds;
+     }
+ 
+     profile = ksu_get_root_profile(cred->uid.val);
+ 
+@@ -198,28 +205,38 @@
+ 
+     // v5.14+ added cred->ucounts, so we must refresh it after changing uid/user:
+     // https://github.com/torvalds/linux/commit/905ae01c4ae2ae3df05bb141801b1db4b7d83c61#diff-ff6060da281bd9ef3f24e17b77a9b0b5b2ed2d7208bb69b29107bee69732bd31
+     // on older kernels, per-UID process accounting lives in user_struct.
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
+-    if (set_cred_ucounts(cred)) {
+-        goto out_abort_creds;
+-    }
++    ret = set_cred_ucounts(cred);
++    if (ret)
++        goto out_abort_creds;
+ #endif
+ 
+     memcpy(&cred->cap_effective, &profile->capabilities.effective, sizeof(cred->cap_effective));
+     memcpy(&cred->cap_permitted, &profile->capabilities.effective, sizeof(cred->cap_permitted));
+     memcpy(&cred->cap_bset, &profile->capabilities.effective, sizeof(cred->cap_bset));
+ 
+-    setup_groups(profile, cred);
++    ret = setup_groups(profile, cred);
++    if (ret)
++        goto out_abort_creds;
+     ret = setup_selinux(profile->selinux_domain, cred);
+     if (ret)
+         goto out_abort_creds;
+ 
++    /* Reserve scratch even if another thread adds a filter before commit. */
++    seccomp_scratch = kmalloc(sizeof(*seccomp_scratch), GFP_KERNEL);
++    if (!seccomp_scratch) {
++        ret = -ENOMEM;
++        goto out_abort_creds;
++    }
++
+     commit_creds(cred);
+ 
+     if (likely(test_thread_flag(TIF_SECCOMP)))
+-        disable_seccomp();
++        disable_seccomp_with_scratch(seccomp_scratch);
++    kfree(seccomp_scratch);
+ 
+     if (profile->flags & FLAG_KSU_NO_NEW_PRIVS) {
+         set_thread_flag(TIF_KSU_DISABLE_ESCAPE_WITH_ROOT);
+     }
+ 
+@@ -235,10 +252,11 @@
+ 
+ out_abort_creds:
+     if (profile)
+         ksu_put_root_profile(profile);
+     abort_creds(cred);
++    kfree(seccomp_scratch);
+     return ret;
+ }
+ 
+ int escape_to_root_for_init(void)
+ {
