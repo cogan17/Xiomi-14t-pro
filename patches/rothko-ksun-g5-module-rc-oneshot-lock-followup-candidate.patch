@@ -6,7 +6,7 @@ diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration
  {
      static bool loaded = false;
 +    static DEFINE_MUTEX(load_lock);
-@@ -281,8 +282,11 @@
+@@ -282,7 +283,10 @@
      if (loaded)
          return;
 +    mutex_lock(&load_lock);
@@ -18,14 +18,14 @@ diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration
 -        return;
 +        goto out_unlock;
      }
-@@ -291,5 +295,6 @@
+@@ -291,5 +295,5 @@
      borrowed = ksu_borrow_ready_cred();
      if (!borrowed)
 -        return;
 +        goto out_unlock;
      loaded = true;
      old_cred = override_creds(borrowed);
-@@ -333,5 +338,7 @@
+@@ -333,4 +338,6 @@
  out_revert_creds:
      revert_creds(old_cred);
      ksu_return_cred(borrowed);
