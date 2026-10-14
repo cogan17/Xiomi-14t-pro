@@ -1,0 +1,100 @@
+diff --git a/kernel/infra/su_mount_ns.c b/kernel/infra/su_mount_ns.c
+--- a/kernel/infra/su_mount_ns.c
++++ b/kernel/infra/su_mount_ns.c
+@@ -154,16 +154,34 @@
+     int pm_ret = path_mount(NULL, &root_path, NULL, MS_PRIVATE | MS_REC, NULL);
+     path_put(&root_path);
+ 
+     if (pm_ret < 0) {
+         pr_err("failed to make root private, err: %d\n", pm_ret);
+     }
+ }
+ 
++/*
++ * Source-only admission: setns/unshare can leave namespace side effects on
++ * failure. Reject modes requiring that unproven transaction before root
++ * credentials are committed. Existing namespace implementation stays staged.
++ */
++int ksu_mount_ns_precommit_status(int32_t ns_mode)
++{
++    switch (ns_mode) {
++    case KSU_NS_INHERITED:
++        return 0;
++    case KSU_NS_GLOBAL:
++    case KSU_NS_INDIVIDUAL:
++        return -EOPNOTSUPP;
++    default:
++        return -EINVAL;
++    }
++}
++
+ void setup_mount_ns(int32_t ns_mode)
+ {
+     // inherit mode
+     if (ns_mode == KSU_NS_INHERITED) {
+         // do nothing
+         return;
+     }
+ 
+diff --git a/kernel/infra/su_mount_ns.h b/kernel/infra/su_mount_ns.h
+--- a/kernel/infra/su_mount_ns.h
++++ b/kernel/infra/su_mount_ns.h
+@@ -7,11 +7,14 @@
+ #define KSU_NS_GLOBAL 1
+ #define KSU_NS_INDIVIDUAL 2
+ 
+ struct ksu_mns_tw {
+     struct callback_head cb;
+     int32_t ns_mode;
+ };
+ 
++/* Admission only; this does not perform or roll back namespace changes. */
++int ksu_mount_ns_precommit_status(int32_t ns_mode);
++
+ void setup_mount_ns(int32_t ns_mode);
+ 
+ #endif
+diff --git a/kernel/policy/app_profile.c b/kernel/policy/app_profile.c
+--- a/kernel/policy/app_profile.c
++++ b/kernel/policy/app_profile.c
+@@ -152,16 +152,21 @@
+     }
+ 
+     if (test_thread_flag(TIF_KSU_DISABLE_ESCAPE_WITH_ROOT)) {
+         pr_warn("TIF_KSU_DISABLE_ESCAPE_WITH_ROOT found, don't escape!\n");
+         goto out_abort_creds;
+     }
+ 
+     profile = ksu_get_root_profile(cred->uid.val);
++
++    /* Only the no-op inherited mode is admitted until namespace rollback is proven. */
++    ret = ksu_mount_ns_precommit_status(profile->namespaces);
++    if (ret)
++        goto out_abort_creds;
+ 
+     cred->uid.val = profile->uid;
+     cred->suid.val = profile->uid;
+     cred->euid.val = profile->uid;
+     cred->fsuid.val = profile->uid;
+ 
+     cred->gid.val = profile->gid;
+     cred->fsgid.val = profile->gid;
+@@ -219,17 +224,17 @@
+     }
+ 
+ #ifndef CONFIG_KSU_SUSFS
+     for_each_thread (p, t) {
+         ksu_set_task_tracepoint_flag(t);
+     }
+ #endif
+ 
+-    setup_mount_ns(profile->namespaces);
++    /* The admitted inherited mode needs no post-commit namespace operation. */
+     ksu_put_root_profile(profile);
+     return 0;
+ 
+ out_abort_creds:
+     if (profile)
+         ksu_put_root_profile(profile);
+     abort_creds(cred);
+     return ret;

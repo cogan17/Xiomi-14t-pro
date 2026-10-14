@@ -2,7 +2,19 @@
 
 Updated: 2026-10-14. This is the **single current handoff index**, not a new deployment authorization. Earlier emergency/history checkpoints remain archival references; do not duplicate their audits.
 
-## Current milestone — KSUN G5 consumer/status composition (2026-10-14)
+## Current milestone — KSUN app-profile SELinux and namespace admission (2026-10-14)
+
+Parent: `7421b71439d77b9355d257bdef58181b40f853b3`. **KSUN only; BakaSU excluded. Draft / BUILD HOLD.** This section supersedes older next-action notes.
+
+- Added `patches/rothko-ksun-app-profile-selinux-status-candidate.patch`, limited to app-profile callers. Both profile and init `setup_selinux` failures abort prepared credentials before `commit_creds`; profile reference cleanup and exact SELinux error status are preserved. Existing SELinux API/status candidates remain unchanged, with no duplicate API hunks added.
+- Added `patches/rothko-ksun-namespace-precommit-admission-candidate.patch`. Pure `ksu_mount_ns_precommit_status` accepts INHERITED, rejects GLOBAL/INDIVIDUAL with `-EOPNOTSUPP`, and rejects unknown modes with `-EINVAL`. App-profile checks immediately after acquiring its referenced profile, before UID/GID changes, SELinux transition, credential commit, seccomp or task-flag changes. Failure goes through existing profile-put/credential-abort cleanup. The postcommit namespace call is removed because only the no-op inherited mode is admitted.
+- This intentionally blocks custom GLOBAL/INDIVIDUAL profile requests in this candidate. Default profile mode at pinned `allowlist.c:49` is INHERITED. Their implementation/borrow candidates are preserved for future transactional work; they are not silently enabled. Moving current namespace operations before commit is unsafe as a proposed transaction: successful setns followed by cwd failure, or unshare followed by failed remount, can leave namespace side effects with no rollback. The existing void namespace helpers still have these unresolved semantics.
+- `tests/test_rothko_ksun_app_profile_precommit.py` extends the verified 16-stage G5 composition with the app-profile status candidate, then namespace admission. Local source-only validation passed all 18 forward/reverse checks/applications, 12 negative mutations, rejection of duplicate application for both new patches, and exact pinned-byte restoration of twelve source files at `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161`. New hunks use standard contextual `git apply --check --whitespace=error`; only legacy G1 remains zero-context. No kernel build, separate green-audit rerun, or CI/runtime approval.
+- The profile getter holds a kref on custom profiles; profile updates replace nodes rather than altering the selected referenced object. The admitted inherited mode performs no namespace mutation. This source reasoning is not runtime or module-lifetime proof.
+- Remaining KSUN blockers: namespace transactions/rollback remain unsupported; some SU/ADB callers ignore escape status; late-load caller still ignores `escape_to_root_for_init` return and can continue boot-complete on errors. `set_cred_ucounts` failure currently loses its status; group setup errors and postcommit seccomp allocation failures need composition with existing candidates. G2 snapshot/replay/rollback, private owner/API boundaries, callback/proxy/module lifetime and SU_SESSION authorization remain HOLD.
+- Next focused work: compose existing group/seccomp precommit candidates without API duplication, preserve nonzero status from credential preparation, and guard callers of root escape against continuing success paths after failure. Continue only source-level validation; build/flash/release/merge/force push remain prohibited.
+
+## Prior milestone — KSUN G5 consumer/status composition (2026-10-14)
 
 Parent: `a0da8f333ce87a0141a8359ab9f15d2aea1e0e5b`. Current user scope is **KSUN only; BakaSU excluded**. This section supersedes the older next-action notes below. Draft / BUILD HOLD remains unchanged.
 
