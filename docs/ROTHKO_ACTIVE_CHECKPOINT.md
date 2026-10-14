@@ -2,6 +2,19 @@
 
 Updated: 2026-10-14. This is the **single current handoff index**, not a new deployment authorization. Earlier emergency/history checkpoints remain archival references; do not duplicate their audits.
 
+## Current milestone — G5 initial setup serialization (2026-10-14)
+
+Parent branch HEAD verified: `dd98db16d49db128944e953838b429cb1705281f`.
+Older progress/next-action sections below are historical; this milestone supersedes their G5 setup instructions.
+
+- Added separate source-only candidate `patches/rothko-ksun-g5-initial-setup-serialization-candidate.patch`; existing passing patches are preserved unchanged. Apply after G1 SELinux return contract -> shared cred status -> G5 cred borrow API -> READY repeat setup guard -> SELinux READY publication, against `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161`.
+- Public `setup_ksu_cred()` now holds a statically initialized mutex across status check, credential mutation, domain verification and publication. The internal domain helper has one call site, inside that wrapper. A second setup waits and then sees READY without mutating the published credential. Failure releases the mutex without publication; a later serialized retry remains possible (policy rollback is not proven).
+- `ksu_unpublish_cred()` uses the same mutex before the existing spinlock, draining setup before setting STOPPING. It moves to the beginning of `kernelsu_exit()`, before teardown dismantles dependencies. A queued setup after STOPPING returns `-ESHUTDOWN` before touching the owner. Borrow/get remains under the spinlock; no sleepable operation occurs under it. Existing borrowed references retain their own credential reference after owner release, but this does not prove callback/module-code quiescence.
+- Lifetime reasoning: setup wins mutex -> publish -> teardown drains and closes borrowing; teardown wins -> STOPPING -> setup denied; two initial setups -> one mutates, second returns READY status. Static locks support normal builtin initialization and a fresh module load; same-image repeated init after STOPPING is deliberately not re-enabled. No runtime/module unload approval follows.
+- Validation: `python tests/test_rothko_ksun_g5_setup_serialization.py /path/to/pinned/KernelSU-Next` passed six sequential `git apply --check --whitespace=error` / apply stages, seven negative source mutations, reverse checks, and exact pinned-byte restoration of all four touched source files. Legacy G1 header is zero-context, requiring `--unidiff-zero` for that patch only; no recount, reject, whitespace relaxation, kernel build or workflow rerun. New candidate uses ordinary contextual hunks. Windows temporary Git checkout explicitly disables CRLF conversion for byte validation.
+- Remaining blockers: this sequence is isolated and does not apply all caller/late-load guards. Pinned init/boot-stage callers ignore `setup_ksu_cred()` status and app_profile callers ignore the new `setup_selinux()` status; existing separate candidates must be composed and checked before integration. The mutable global and direct consumers remain in this isolated tree. External publication bypass prevention, full caller migration/composition, sleepable hook-context validation, callback/workqueue/module quiescence, policy rollback and runtime locking remain unproven. SU_SESSION FD, SUSFS/RCU, compile/link/ABI/KMI and NoMount blockers remain unchanged.
+- Next: focused composition of existing consumer/status candidates with this lifecycle candidate, and explicit hook-context/quiescence verification. Do not repeat already-green SUSFS audits or invent a runtime-success claim. PR #9 remains Draft; **BUILD HOLD** remains in effect.
+
 ## Scope and hard limits
 
 - Repository: `cogan17/Xiomi-14t-pro`; working branch: `feat/rothko-ksun-susfs-compat-audit`; target PR: [#9](https://github.com/cogan17/Xiomi-14t-pro/pull/9) **Draft**; [issue #12](https://github.com/cogan17/Xiomi-14t-pro/issues/12) **BUILD HOLD**.

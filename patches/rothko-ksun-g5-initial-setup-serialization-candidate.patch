@@ -1,0 +1,91 @@
+diff --git a/kernel/core/init.c b/kernel/core/init.c
+--- a/kernel/core/init.c
++++ b/kernel/core/init.c
+@@ -6,6 +6,7 @@
+ #include <linux/sched.h>
+ #include <linux/workqueue.h>
+ #include <linux/spinlock.h>
++#include <linux/mutex.h>
+ #include <linux/errno.h>
+ 
+ #include "policy/allowlist.h"
+@@ -86,9 +87,22 @@
+  * setup succeeds; unpublish before owner put during teardown.
+  * NOT WIRED until all direct ksu_cred readers have migrated.
+  */
++/* Lock order: setup mutex -> credential spinlock. Never sleep under spinlock. */
++static DEFINE_MUTEX(ksu_cred_setup_lock);
+ static DEFINE_SPINLOCK(ksu_cred_lock);
+ static bool ksu_cred_ready;
+ static bool ksu_cred_stopping;
++
++/* Serialize initial mutation, validation and publication with teardown. */
++int setup_ksu_cred(void)
++{
++    int ret;
++
++    mutex_lock(&ksu_cred_setup_lock);
++    ret = ksu_setup_cred_domain_locked();
++    mutex_unlock(&ksu_cred_setup_lock);
++    return ret;
++}
+ 
+ /* READY implies domain validation succeeded before publication. */
+ int ksu_ready_cred_setup_status(void)
+@@ -150,10 +164,13 @@
+ {
+     unsigned long flags;
+ 
++    /* Drain an in-flight setup before STOPPING and owner release. */
++    mutex_lock(&ksu_cred_setup_lock);
+     spin_lock_irqsave(&ksu_cred_lock, flags);
+     ksu_cred_ready = false;
+     ksu_cred_stopping = true;
+     spin_unlock_irqrestore(&ksu_cred_lock, flags);
++    mutex_unlock(&ksu_cred_setup_lock);
+ }
+ 
+ bool ksu_late_loaded;
+@@ -302,6 +319,9 @@
+ 
+ void __exit kernelsu_exit(void)
+ {
++	/* Drain setup and deny new borrowers before dismantling dependencies. */
++	ksu_unpublish_cred();
++
+ 	// Phase 1: Stop all hooks first to prevent new callbacks
+ #if !defined(CONFIG_KSU_SUSFS) && defined(CONFIG_KPROBES)
+ 	ksu_syscall_hook_manager_exit();
+@@ -340,7 +360,6 @@
+ 
+ 	ksu_sulog_exit();
+ 
+-	ksu_unpublish_cred();
+ 	ksu_feature_exit();
+ 
+ 	put_cred(ksu_cred);
+diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
+--- a/kernel/selinux/selinux.c
++++ b/kernel/selinux/selinux.c
+@@ -159,7 +159,8 @@
+     return 0;
+ }
+ 
+-int setup_ksu_cred(void)
++/* Internal: called only by core/init.c with ksu_cred_setup_lock held. */
++int ksu_setup_cred_domain_locked(void)
+ {
+     int ret;
+ 
+diff --git a/kernel/selinux/selinux.h b/kernel/selinux/selinux.h
+--- a/kernel/selinux/selinux.h
++++ b/kernel/selinux/selinux.h
+@@ -34,6 +34,8 @@
+ int handle_sepolicy(void __user *user_data, u64 data_len);
+ 
+ int setup_ksu_cred(void);
++/* Internal setup body; caller must hold the credential setup mutex. */
++int ksu_setup_cred_domain_locked(void);
+ 
+ void escape_to_root_for_adb_root();
+ 
