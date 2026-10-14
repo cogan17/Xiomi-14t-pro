@@ -1,0 +1,680 @@
+diff --git a/kernel/feature/selinux_hide.c b/kernel/feature/selinux_hide.c
+--- a/kernel/feature/selinux_hide.c
++++ b/kernel/feature/selinux_hide.c
+@@ -33,223 +33,263 @@
+ static DEFINE_MUTEX(selinux_hide_mutex);
+ bool ksu_selinux_hide_enabled __read_mostly = false;
+ bool ksu_selinux_hide_running __read_mostly = false;
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+ static int security_context_to_sid_with_policy(struct selinux_policy *policy, const char *scontext, u32 scontext_len,
+                                                u32 *sid, u32 def_sid, gfp_t gfp_flags);
+ static int security_sid_to_context_with_policy(struct selinux_policy *policy, u32 sid, char **scontext,
+                                                u32 *scontext_len);
+ static void security_compute_av_user_with_policy(struct selinux_policy *policy, u32 ssid, u32 tsid, u16 tclass,
+                                                  struct av_decision *avd);
+ static void (*security_dump_masked_av_fn)(struct policydb *policydb, struct context *scontext, struct context *tcontext,
+                                           u16 tclass, u32 permissions, const char *reason) = NULL;
+ static void (*context_struct_compute_av_fn)(struct policydb *policydb, struct context *scontext,
+                                             struct context *tcontext, u16 tclass, struct av_decision *avd,
+                                             struct extended_perms *xperms) = NULL;
+-#else
+-struct selinux_state fake_state = {0};
+ #endif
+ 
+ #ifndef CONFIG_KSU_SUSFS
+ enum sel_inos {
+     SEL_ROOT_INO = 2,
+     SEL_LOAD, /* load policy */
+     SEL_ENFORCE, /* get or set enforcing status */
+     SEL_CONTEXT, /* validate context */
+     SEL_ACCESS, /* compute access decision */
+     SEL_CREATE, /* compute create labeling decision */
+     SEL_RELABEL, /* compute relabeling decision */
+     SEL_USER, /* compute reachable user contexts */
+     SEL_POLICYVERS, /* return policy version for this kernel */
+     SEL_COMMIT_BOOLS, /* commit new boolean values */
+     SEL_MLS, /* return if MLS policy is enabled */
+     SEL_DISABLE, /* disable SELinux until next reboot */
+     SEL_MEMBER, /* compute polyinstantiation membership decision */
+     SEL_CHECKREQPROT, /* check requested protection, not kernel-applied one */
+     SEL_COMPAT_NET, /* whether to use old compat network packet controls */
+     SEL_REJECT_UNKNOWN, /* export unknown reject handling to userspace */
+     SEL_DENY_UNKNOWN, /* export unknown deny handling to userspace */
+     SEL_STATUS, /* export current status using mmap() */
+     SEL_POLICY, /* allow userspace to read the in kernel policy */
+     SEL_VALIDATE_TRANS, /* compute validatetrans decision */
+     SEL_INO_NEXT, /* The next inode number to use */
+ };
+ 
++/* Serialize the legacy alias with the same owner borrow as all policy use. */
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
++static struct selinux_state fake_state;
++#endif
++
++static struct selinux_policy *ksu_hide_policy_get(void)
++{
++    struct selinux_policy *policy = ksu_borrow_selinux_backup();
++
++    if (!policy)
++        return NULL;
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
++    fake_state.initialized = true;
++    fake_state.policy = policy;
++#endif
++    return policy;
++}
++
++static void ksu_hide_policy_put(void)
++{
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
++    fake_state.policy = NULL;
++    fake_state.initialized = false;
++#endif
++    ksu_return_selinux_backup();
++}
++
+ typedef ssize_t (*write_op_fn)(struct file *, char *, size_t);
+ 
+ static write_op_fn *selinux_write_op;
+ static write_op_fn *context_write, *access_write;
+ static write_op_fn orig_context_write, orig_access_write;
+ 
+ static int my_setprocattr(const char *name, void *value, size_t size);
+ struct ksu_lsm_hook selinux_setprocattr_hook = KSU_LSM_HOOK_INIT(setprocattr, "selinux_setprocattr", my_setprocattr, 0);
+ 
+ typedef int (*setprocattr_fn)(const char *name, void *value, size_t size);
+ 
+ static ssize_t my_write_context(struct file *file, char *buf, size_t size)
+ {
+     // apply to all app uids
+     if (likely(current_uid().val < 10000)) {
+         return orig_context_write(file, buf, size);
+     }
+     char *canon = NULL;
+     u32 sid, len;
+     ssize_t length;
++    struct selinux_policy *policy = ksu_hide_policy_get();
++
++    if (!policy)
++        return -EAGAIN;
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+     length = avc_has_perm(current_sid(), SECINITSID_SECURITY, SECCLASS_SECURITY, SECURITY__CHECK_CONTEXT, NULL);
+     if (length)
+         goto out;
+-    length = security_context_to_sid_with_policy(backup_sepolicy, buf, size, &sid, SECSID_NULL, GFP_KERNEL);
++    length = security_context_to_sid_with_policy(policy, buf, size, &sid, SECSID_NULL, GFP_KERNEL);
+     if (length)
+         goto out;
+ 
+-    length = security_sid_to_context_with_policy(backup_sepolicy, sid, &canon, &len);
++    length = security_sid_to_context_with_policy(policy, sid, &canon, &len);
+     if (length)
+         goto out;
+ 
+     length = -ERANGE;
+     if (len > SIMPLE_TRANSACTION_LIMIT) {
+         pr_err("SELinux: %s:  context size (%u) exceeds "
+                "payload max\n",
+                __func__, len);
+         goto out;
+     }
+ #else
+     length = avc_has_perm(&selinux_state, current_sid(), SECINITSID_SECURITY, SECCLASS_SECURITY,
+                           SECURITY__CHECK_CONTEXT, NULL);
+     if (length)
+         goto out;
+ 
+     length = security_context_to_sid(&fake_state, buf, size, &sid, GFP_KERNEL);
+     if (length)
+         goto out;
+ 
+     length = security_sid_to_context(&fake_state, sid, &canon, &len);
+     if (length)
+         goto out;
+ #endif
+ 
+     memcpy(buf, canon, len);
+     length = len;
+ out:
+     kfree(canon);
++    ksu_hide_policy_put();
+     return length;
+ }
+ 
+ static ssize_t my_write_access(struct file *file, char *buf, size_t size)
+ {
+     // apply to all app uids
+     if (likely(current_uid().val < 10000)) {
+         return orig_access_write(file, buf, size);
+     }
+     char *scon = NULL, *tcon = NULL;
+     u32 ssid, tsid;
+     u16 tclass;
+     struct av_decision avd;
+     ssize_t length;
++    struct selinux_policy *policy = ksu_hide_policy_get();
++
++    if (!policy)
++        return -EAGAIN;
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+     length = avc_has_perm(current_sid(), SECINITSID_SECURITY, SECCLASS_SECURITY, SECURITY__COMPUTE_AV, NULL);
+ #else
+     length =
+         avc_has_perm(&selinux_state, current_sid(), SECINITSID_SECURITY, SECCLASS_SECURITY, SECURITY__COMPUTE_AV, NULL);
+ #endif
+     if (length)
+         goto out;
+ 
+     length = -ENOMEM;
+     scon = kzalloc(size + 1, GFP_KERNEL);
+     if (!scon)
+         goto out;
+ 
+     length = -ENOMEM;
+     tcon = kzalloc(size + 1, GFP_KERNEL);
+     if (!tcon)
+         goto out;
+ 
+     length = -EINVAL;
+     if (sscanf(buf, "%s %s %hu", scon, tcon, &tclass) != 3)
+         goto out;
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+-    length = security_context_to_sid_with_policy(backup_sepolicy, scon, strlen(scon), &ssid, SECSID_NULL, GFP_KERNEL);
++    length = security_context_to_sid_with_policy(policy, scon, strlen(scon), &ssid, SECSID_NULL, GFP_KERNEL);
+     if (length)
+         goto out;
+ 
+-    length = security_context_to_sid_with_policy(backup_sepolicy, tcon, strlen(tcon), &tsid, SECSID_NULL, GFP_KERNEL);
++    length = security_context_to_sid_with_policy(policy, tcon, strlen(tcon), &tsid, SECSID_NULL, GFP_KERNEL);
+     if (length)
+         goto out;
+ 
+-    security_compute_av_user_with_policy(backup_sepolicy, ssid, tsid, tclass, &avd);
++    security_compute_av_user_with_policy(policy, ssid, tsid, tclass, &avd);
+ #else
+     length = security_context_str_to_sid(&fake_state, scon, &ssid, GFP_KERNEL);
+     if (length)
+         goto out;
+ 
+     length = security_context_str_to_sid(&fake_state, tcon, &tsid, GFP_KERNEL);
+     if (length)
+         goto out;
+ 
+     security_compute_av_user(&fake_state, ssid, tsid, tclass, &avd);
+ #endif
+ 
+     // stock reads 1; a loader load_policy may have bumped the backup before we load
+     avd.seqno = 1;
+     length = scnprintf(buf, SIMPLE_TRANSACTION_LIMIT, "%x %x %x %x %u %x", avd.allowed, 0xffffffff, avd.auditallow,
+                        avd.auditdeny, avd.seqno, avd.flags);
+ out:
+     kfree(tcon);
+     kfree(scon);
++    ksu_hide_policy_put();
+     return length;
+ }
+ 
+ static int __nocfi my_setprocattr(const char *name, void *value, size_t size)
+ {
+     int error;
+     u32 mysid, sid;
+     char *str = value;
+     if (likely(current_uid().val < 10000)) {
+         goto call_orig;
+     }
+ 
+     if (strcmp(name, "current")) {
+         goto call_orig;
+     }
+     mysid = current_sid();
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+     error = avc_has_perm(mysid, mysid, SECCLASS_PROCESS, PROCESS__SETCURRENT, NULL);
+ #else
+     error = avc_has_perm(&selinux_state, mysid, mysid, SECCLASS_PROCESS, PROCESS__SETCURRENT, NULL);
+ #endif
+     if (error) {
+         return error;
+     }
+ 
+     if (size && str[0] && str[0] != '\n') {
++        struct selinux_policy *policy = ksu_hide_policy_get();
++
++        if (!policy)
++            return -EAGAIN;
+         if (str[size - 1] == '\n') {
+             str[size - 1] = 0;
+             size--;
+         }
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+-        error = security_context_to_sid_with_policy(backup_sepolicy, str, size, &sid, SECSID_NULL, GFP_KERNEL);
++        error = security_context_to_sid_with_policy(policy, str, size, &sid, SECSID_NULL, GFP_KERNEL);
+ #else
+         error = security_context_to_sid(&fake_state, str, size, &sid, GFP_KERNEL);
+ #endif
++        ksu_hide_policy_put();
+         if (error) {
+             return error;
+         }
+     }
+ 
+ call_orig:
+     return ((setprocattr_fn)selinux_setprocattr_hook.original)(name, value, size);
+ }
+ #endif // #ifndef CONFIG_KSU_SUSFS
+ 
+ DEFINE_STATIC_KEY_FALSE(fake_status_initialize_key);
+ struct page *fake_status = NULL;
+ 
+ void initialize_fake_status()
+ {
+     mutex_lock(&selinux_state.status_lock);
+@@ -350,49 +390,49 @@
+         orig_sel_open_handle_status = NULL;
+         if (ret) {
+             pr_err("selinux_hide: exit: patch_text sel_open_handle_status err: %d\n", ret);
+         }
+     }
+ }
+ 
+ static void ksu_selinux_hide_disable()
+ {
+     pr_info("selinux_hide: exit selinux hide\n");
+     ksu_selinux_hide_unhook();
+ }
+ 
+ static int ksu_selinux_hide_enable()
+ {
+     pr_info("selinux_hide: init selinux hide\n");
+-    if (!backup_sepolicy) {
++    struct selinux_policy *policy = ksu_borrow_selinux_backup();
++
++    if (!policy) {
+         pr_err("no backup sepolicy available, please save feature and reboot to retry!\n");
+         return -EAGAIN;
+     }
++    ksu_return_selinux_backup();
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+     security_dump_masked_av_fn = find_kernel_symbol_exact("security_dump_masked_av");
+     if (!security_dump_masked_av_fn) {
+         pr_warn("security_dump_masked_av not found!\n");
+     }
+     context_struct_compute_av_fn = find_kernel_symbol_exact("context_struct_compute_av");
+     if (!context_struct_compute_av_fn) {
+         pr_warn("context_struct_compute_av not found!\n");
+     }
+-#else
+-    fake_state.initialized = true;
+-    fake_state.policy = backup_sepolicy;
+ #endif
+ 
+ #ifndef CONFIG_KSU_SUSFS
+     int ret;
+     selinux_write_op = find_kernel_symbol_exact("write_op");
+     if (!selinux_write_op) {
+         pr_err("selinux_hide: no write_op found!\n");
+         return -ENOSYS;
+     }
+ 
+     context_write = &selinux_write_op[SEL_CONTEXT];
+     pr_info("selinux_hide: context_write: 0x%lx [%pSb]\n", (unsigned long)*context_write, *context_write);
+     write_op_fn my = my_write_context;
+     orig_context_write = *context_write;
+     ret = ksu_patch_text(context_write, &my, sizeof(my), KSU_PATCH_TEXT_FLUSH_DCACHE);
+     if (ret) {
+@@ -515,51 +555,48 @@
+     }
+     if (ksu_late_loaded) {
+         initialize_fake_status();
+     } else {
+         static_key_enable(&fake_status_initialize_key.key);
+     }
+     hook_selinux_status_open();
+ }
+ 
+ void __exit ksu_selinux_hide_exit()
+ {
+     mutex_lock(&selinux_hide_mutex);
+     if (ksu_selinux_hide_running) {
+         ksu_selinux_hide_disable();
+         ksu_selinux_hide_running = false;
+     }
++    /* Backup data drain is independent of the still-unproven hook/page teardown. */
++    ksu_drop_selinux_backup();
+     mutex_unlock(&selinux_hide_mutex);
+     ksu_unregister_feature_handler(KSU_FEATURE_SELINUX_HIDE);
+     mutex_lock(&selinux_state.status_lock);
+     if (fake_status)
+         __free_page(fake_status);
+     fake_status = NULL;
+     mutex_unlock(&selinux_state.status_lock);
+ }
+ 
+ void ksu_selinux_hide_drop_backup_if_unused()
+ {
+     mutex_lock(&selinux_hide_mutex);
+-    if (!ksu_selinux_hide_running && backup_sepolicy) {
+-        pr_info("selinux_hide is not enabled - drop backup_sepolicy\n");
+-        sidtab_destroy(backup_sepolicy->sidtab);
+-        kfree(backup_sepolicy->sidtab);
+-        ksu_destroy_sepolicy(backup_sepolicy);
+-        backup_sepolicy = NULL;
+-    }
++    if (!ksu_selinux_hide_running)
++        ksu_drop_selinux_backup();
+     mutex_unlock(&selinux_hide_mutex);
+ }
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+ /*
+  * Caveat:  Mutates scontext.
+  */
+ static int string_to_context_struct(struct policydb *pol, struct sidtab *sidtabp, char *scontext, struct context *ctx,
+                                     u32 def_sid)
+ {
+     struct role_datum *role;
+     struct type_datum *typdatum;
+     struct user_datum *usrdatum;
+     char *scontextp, *p, oldc;
+     int rc = 0;
+ 
+diff --git a/kernel/feature/selinux_hide.h b/kernel/feature/selinux_hide.h
+--- a/kernel/feature/selinux_hide.h
++++ b/kernel/feature/selinux_hide.h
+@@ -6,20 +6,17 @@
+ void ksu_selinux_hide_init();
+ void ksu_selinux_hide_exit();
+ void ksu_selinux_hide_drop_backup_if_unused();
+ void ksu_selinux_hide_handle_second_stage();
+ void ksu_selinux_hide_handle_post_fs_data();
+ 
+ extern bool ksu_selinux_hide_running;
+ extern bool ksu_selinux_hide_enabled;
+ extern void initialize_fake_status(void);
+ 
+ struct page;
+ extern struct page *fake_status;
+ 
+ struct static_key_false;
+ extern struct static_key_false fake_status_initialize_key;
+ 
+-struct selinux_state;
+-extern struct selinux_state fake_state;
+-
+ #endif
+diff --git a/kernel/include/ksu.h b/kernel/include/ksu.h
+--- a/kernel/include/ksu.h
++++ b/kernel/include/ksu.h
+@@ -4,33 +4,32 @@
+ #include <linux/types.h>
+ #include <linux/cred.h>
+ #include <linux/workqueue.h>
+ 
+ #define KERNEL_SU_VERSION KSU_VERSION
+ #define KERNEL_SU_VERSION_TAG KSU_VERSION_TAG
+ 
+ extern struct cred *ksu_cred;
+ /* G5 candidate API: consumers must migrate before this can be enabled. */
+ const struct cred *ksu_borrow_ready_cred(void);
+ void ksu_return_cred(const struct cred *cred);
+ void ksu_unpublish_cred(void);
+ int ksu_ready_cred_setup_status(void);
+ int ksu_publish_ready_cred(void);
+ extern bool ksu_late_loaded;
+ extern bool allow_shell;
+-extern struct selinux_policy *backup_sepolicy;
+ extern bool ksu_no_custom_rc;
+ 
+ static inline int startswith(char *s, char *prefix)
+ {
+ 	return strncmp(s, prefix, strlen(prefix));
+ }
+ 
+ static inline int endswith(const char *s, const char *t)
+ {
+ 	size_t slen = strlen(s);
+ 	size_t tlen = strlen(t);
+ 	if (tlen > slen)
+ 		return 1;
+ 	return strcmp(s + slen - tlen, t);
+ }
+ 
+diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
+--- a/kernel/selinux/rules.c
++++ b/kernel/selinux/rules.c
+@@ -1,34 +1,118 @@
+ #include "linux/rcupdate.h"
+ #include "security.h"
+ #include <linux/uaccess.h>
+ #include <linux/types.h>
+ #include <linux/version.h>
+ #include <linux/lockdep.h>
+ #include <linux/slab.h>
+ #include <linux/string.h>
++#include <linux/mutex.h>
++#include <linux/errno.h>
+ 
+ #include "uapi/selinux.h"
+ #include "klog.h" // IWYU pragma: keep
+ #include "selinux.h"
+ #include "sepolicy.h"
+ #include "ss/services.h"
+ #include "linux/lsm_audit.h" // IWYU pragma: keep
+ #include "xfrm.h"
+ 
+-struct selinux_policy *backup_sepolicy;
++/* Lock order: live policy_mutex or hide mutex -> backup mutex, never reverse.
++ * All backup operations may sleep. A successful borrow holds the mutex until
++ * return; NULL has already released it. This is not a live rollback snapshot.
++ */
++static DEFINE_MUTEX(ksu_backup_mutex);
++static struct selinux_policy *backup_sepolicy;
++static bool ksu_backup_closed;
++
++struct selinux_policy *ksu_borrow_selinux_backup(void)
++{
++    mutex_lock(&ksu_backup_mutex);
++    if (!backup_sepolicy) {
++        mutex_unlock(&ksu_backup_mutex);
++        return NULL;
++    }
++    return backup_sepolicy;
++}
++
++void ksu_return_selinux_backup(void)
++{
++    mutex_unlock(&ksu_backup_mutex);
++}
++
++static void ksu_destroy_owned_backup(struct selinux_policy *backup)
++{
++    sidtab_destroy(backup->sidtab);
++    kfree(backup->sidtab);
++    ksu_destroy_sepolicy(backup);
++}
++
++void ksu_drop_selinux_backup(void)
++{
++    struct selinux_policy *backup;
++
++    mutex_lock(&ksu_backup_mutex);
++    /* Wait for borrowers and permanently close admission before destruction. */
++    ksu_backup_closed = true;
++    backup = backup_sepolicy;
++    backup_sepolicy = NULL;
++    if (backup)
++        ksu_destroy_owned_backup(backup);
++    mutex_unlock(&ksu_backup_mutex);
++}
++
++static int ksu_create_selinux_backup(struct selinux_policy *old_pol)
++{
++    struct selinux_policy *backup;
++    struct sidtab *sidtab;
++    int ret;
++
++    lockdep_assert_held(&selinux_state.policy_mutex);
++    backup = ksu_dup_sepolicy(old_pol);
++    if (IS_ERR(backup))
++        return PTR_ERR(backup);
++    sidtab = kzalloc(sizeof(*sidtab), GFP_KERNEL);
++    if (!sidtab) {
++        ret = -ENOMEM;
++        goto out_destroy_clone;
++    }
++    /* policydb_load_isids cleans its partial SID table on failure. */
++    ret = policydb_load_isids(&backup->policydb, sidtab);
++    if (ret) {
++        kfree(sidtab);
++        goto out_destroy_clone;
++    }
++    /* Only this fully initialized table is owned; the clone's old one was borrowed. */
++    backup->sidtab = sidtab;
++    mutex_lock(&ksu_backup_mutex);
++    if (ksu_backup_closed || backup_sepolicy) {
++        ret = ksu_backup_closed ? -ESHUTDOWN : -EALREADY;
++        mutex_unlock(&ksu_backup_mutex);
++        ksu_destroy_owned_backup(backup);
++        return ret;
++    }
++    backup_sepolicy = backup;
++    mutex_unlock(&ksu_backup_mutex);
++    return 0;
++
++out_destroy_clone:
++    /* ksu_destroy_sepolicy does not destroy the borrowed live SID table. */
++    ksu_destroy_sepolicy(backup);
++    return ret;
++}
+ 
+ #define SELINUX_POLICY_INSTEAD_SELINUX_SS
+ 
+ #define ALL NULL
+ 
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0))
+ extern int avc_ss_reset(u32 seqno);
+ #else
+ extern int avc_ss_reset(struct selinux_avc *avc, u32 seqno);
+ #endif
+ // reset avc cache table, otherwise the new rules will not take effect if already denied
+ static void reset_avc_cache()
+ {
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0))
+     avc_ss_reset(0);
+     selnl_notify_policyload(0);
+@@ -158,68 +242,35 @@
+     }
+ 
+     mutex_lock(&selinux_state.policy_mutex);
+     /* One attempt per module lifetime, including failure; no backup replay. */
+     if (policy_attempted) {
+         ret = -EALREADY;
+         goto out_unlock;
+     }
+     policy_attempted = true;
+ 
+     old_pol = rcu_dereference_protected(selinux_state.policy,
+         lockdep_is_held(&selinux_state.policy_mutex));
+     if (!old_pol) {
+         ret = -EAGAIN;
+         goto out_unlock;
+     }
+-    backup_sepolicy =
+-        ksu_dup_sepolicy(rcu_dereference_protected(old_pol, lockdep_is_held(&selinux_state.policy_mutex)));
+-    if (IS_ERR(backup_sepolicy)) {
+-        ret = PTR_ERR(backup_sepolicy);
+-        pr_err("failed to create backup sepolicy: %ld\n", PTR_ERR(backup_sepolicy));
+-        backup_sepolicy = NULL;
+-    } else {
+-        backup_sepolicy->sidtab = kzalloc(sizeof(*backup_sepolicy->sidtab), GFP_KERNEL);
+-        if (!backup_sepolicy->sidtab) {
+-            pr_err("failed to alloc backup sidtab\n");
+-            ret = -ENOMEM;
+-            ksu_destroy_sepolicy(backup_sepolicy);
+-            backup_sepolicy = NULL;
+-        } else {
+-            int err = policydb_load_isids(&backup_sepolicy->policydb, backup_sepolicy->sidtab);
+-            if (err) {
+-                ret = err;
+-                pr_err("failed to load isids for backup sepolicy: %d!\n", err);
+-                kfree(backup_sepolicy->sidtab);
+-                ksu_destroy_sepolicy(backup_sepolicy);
+-                backup_sepolicy = NULL;
+-            } else {
+-                pr_info("backup sepolicy success! latest_granting=%d\n", backup_sepolicy->latest_granting);
+-            }
+-        }
+-    }
+-    /*
+-     * Partial G2 fail-closed barrier: never publish modified SELinux
+-     * policy when the rollback snapshot failed to materialize.
+-     * The caller is still void; this is NOT a complete startup
+-     * transaction, READY publication, or guaranteed rollback.
+-     */
+-    if (!backup_sepolicy) {
+-        pr_err("KSUN: refusing policy update without rollback backup\n");
+-        if (!ret)
+-            ret = -ENOMEM;
++    ret = ksu_create_selinux_backup(old_pol);
++    if (ret) {
++        pr_err("KSUN: refusing policy update without initialized hide backup: %d\n", ret);
+         goto out_unlock;
+     }
+     pol = ksu_dup_sepolicy(rcu_dereference_protected(
+         old_pol, lockdep_is_held(&selinux_state.policy_mutex)));
+     if (IS_ERR(pol)) {
+         pr_err("failed to dup selinux_policy: %ld\n", PTR_ERR(pol));
+         ret = PTR_ERR(pol);
+         goto out_unlock;
+     }
+ 
+     db = &pol->policydb;
+ 
+     if (!ksu_build_boot_policy(db)) {
+         ret = -EIO;
+         goto out_drop_new_policy;
+     }
+diff --git a/kernel/selinux/sepolicy.h b/kernel/selinux/sepolicy.h
+--- a/kernel/selinux/sepolicy.h
++++ b/kernel/selinux/sepolicy.h
+@@ -1,26 +1,35 @@
+ #ifndef __KSU_H_SEPOLICY
+ #define __KSU_H_SEPOLICY
+ 
+ #include <linux/types.h>
+ 
+ #include "ss/policydb.h"
+ 
+ struct selinux_policy *ksu_dup_sepolicy(struct selinux_policy *old_pol);
+ 
+ void ksu_destroy_sepolicy(struct selinux_policy *orig);
++
++/* Process context only. Non-NULL borrow holds an exclusive sleeping mutex.
++ * Return exactly once, after the final policy/SID-table use. NULL holds no lock.
++ * Do not take the live policy or hide mutex from inside a borrow.
++ */
++struct selinux_policy *ksu_borrow_selinux_backup(void);
++void ksu_return_selinux_backup(void);
++/* Closes admission permanently and drains borrowers before freeing the owner. */
++void ksu_drop_selinux_backup(void);
+ 
+ // Operation on types
+ bool ksu_type(struct policydb *db, const char *name, const char *attr);
+ bool ksu_attribute(struct policydb *db, const char *name);
+ bool ksu_permissive(struct policydb *db, const char *type);
+ bool ksu_enforce(struct policydb *db, const char *type);
+ bool ksu_typeattribute(struct policydb *db, const char *type, const char *attr);
+ bool ksu_exists(struct policydb *db, const char *type);
+ 
+ // Access vector rules
+ bool ksu_allow(struct policydb *db, const char *src, const char *tgt,
+                const char *cls, const char *perm);
+ bool ksu_deny(struct policydb *db, const char *src, const char *tgt,
+               const char *cls, const char *perm);
+ bool ksu_auditallow(struct policydb *db, const char *src, const char *tgt,
+                     const char *cls, const char *perm);
