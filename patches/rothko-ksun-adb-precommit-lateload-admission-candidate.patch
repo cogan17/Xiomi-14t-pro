@@ -1,0 +1,665 @@
+diff --git a/kernel/core/init.c b/kernel/core/init.c
+--- a/kernel/core/init.c
++++ b/kernel/core/init.c
+@@ -175,32 +175,37 @@
+ }
+ 
+ bool ksu_late_loaded;
+ 
+ #ifdef CONFIG_KSU_DEBUG
+ bool allow_shell = true;
+ #else
+ bool allow_shell = false;
+ #endif
+ module_param(allow_shell, bool, 0);
+ 
+ bool ksu_no_custom_rc = false;
+ module_param_named(norc, ksu_no_custom_rc, bool, 0);
+ 
+ int __init kernelsu_init(void)
+ {
++#ifdef MODULE
++    /* No late-load until startup and partial-init unwind have a proven contract. */
++    if (current->pid != 1)
++        return -EOPNOTSUPP;
++#endif
+ #ifdef CONFIG_KSU_SUSFS
+ 	susfs_init();
+ #endif // #ifdef KSU_SUSFS
+ 
+ #if defined(__x86_64__) && !defined(CONFIG_KSU_X86_PATCH_SYSCALL_DISPATCHER)
+     // If the kernel has the hardening patch, X86_FEATURE_INDIRECT_SAFE must be set
+     if (!boot_cpu_has(X86_FEATURE_INDIRECT_SAFE)) {
+         pr_alert("*************************************************************");
+         pr_alert("**     NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE    **");
+         pr_alert("**                                                         **");
+         pr_alert("**        X86_FEATURE_INDIRECT_SAFE is not enabled!        **");
+         pr_alert("**      KernelSU will abort initialization to prevent      **");
+         pr_alert("**                     kernel panic.                       **");
+         pr_alert("**                                                         **");
+         pr_alert("**     NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE    **");
+         pr_alert("*************************************************************");
+diff --git a/kernel/feature/adb_root.c b/kernel/feature/adb_root.c
+--- a/kernel/feature/adb_root.c
++++ b/kernel/feature/adb_root.c
+@@ -1,36 +1,39 @@
+ 
+ #include <asm/ptrace.h>
++#include <linux/compat.h>
++#include <linux/cred.h>
++#include <linux/errno.h>
++#include <linux/overflow.h>
+ #include <linux/namei.h>
+ #include <linux/path.h>
+ #include <linux/printk.h>
+ #include <linux/types.h>
+ #include <linux/string.h>
+ #include <linux/uaccess.h>
+ #include <linux/ptrace.h>
+ #include <linux/static_key.h>
+ #include <linux/slab.h>
+ #include <linux/sched/task_stack.h>
+ 
+ #ifdef CONFIG_KSU_SUSFS
+ #include <linux/susfs_def.h>
+ #endif
+ 
+ #include "adb_root.h"
+ #include "arch.h"
+-#include "policy/app_profile.h"
+ #include "policy/feature.h"
+ #include "selinux/selinux.h"
+ 
+ #include "klog.h" // IWYU pragma: keep
+ 
+ DEFINE_STATIC_KEY_FALSE(ksu_adb_root);
+ 
+ #ifdef CONFIG_KSU_SUSFS
+ static inline long is_exec_adbd(const char *filename)
+ {
+     if (strstr(filename, "adbd"))
+         pr_info("is_exec_adbd() => filename: %s\n", filename);
+ 
+     return (susfs_starts_with(filename, "/apex/") &&
+                 susfs_ends_with(filename, "/adbd"));
+ }
+@@ -68,269 +71,177 @@
+     long ret = kern_path(kLibAdbRoot, 0, &path);
+     if (ret < 0) {
+         if (ret == -ENOENT) {
+             pr_err("libadbroot.so not exists, skip adb root. Please run `ksud install`\n");
+             ret = 0;
+         } else {
+             pr_err("access libadbroot.so failed: %ld, skip adb root\n", ret);
+         }
+         return ret;
+     } else {
+         ret = 1;
+     }
+     path_put(&path);
+     return ret;
+ }
+ 
+-#ifdef CONFIG_KSU_SUSFS
+-static long setup_ld_preload(void ***envp_user_ptr)
++/* Native envp only; COMPAT callers must fail before entering this builder. */
++#define KSU_ADB_MAX_ENVS 4096
++
++static long prepare_ld_preload(unsigned long envp, unsigned long stackp,
++                               unsigned long *new_envp)
+ {
+     static const char kLdPreload[] = "LD_PRELOAD=/data/adb/ksu/lib/libadbroot.so";
+     static const char kLdLibraryPath[] = "LD_LIBRARY_PATH=/data/adb/ksu/lib";
+-    static const size_t kReadEnvBatch = 16;
+-    static const size_t kPtrSize = sizeof(unsigned long);
+-    unsigned long stackp = current_user_stack_pointer();
+-    unsigned long envp, ld_preload_p, ld_library_path_p;
+-    unsigned long *envp_p = (unsigned long *)envp_user_ptr;
+-    unsigned long *tmp_env_p = NULL, *tmp_env_p2 = NULL;
+-    size_t env_count = 0, total_size;
+-    long ret;
+-
+-    envp = (unsigned long)untagged_addr((unsigned long)*envp_p);
+-
+-    ld_preload_p = stackp = ALIGN_DOWN(stackp - sizeof(kLdPreload), 8);
+-    ret = copy_to_user((void __user *)ld_preload_p, kLdPreload, sizeof(kLdPreload));
+-    if (ret != 0) {
+-        pr_warn("write ld_preload when adb_root_handle_execve failed: %ld\n", ret);
+-        return -EFAULT;
+-    }
+-
+-    ld_library_path_p = stackp = ALIGN_DOWN(stackp - sizeof(kLdLibraryPath), 8);
+-    ret = copy_to_user((void __user *)ld_library_path_p, kLdLibraryPath, sizeof(kLdLibraryPath));
+-    if (ret != 0) {
+-        pr_warn("write ld_library_path when adb_root_handle_execve failed: %ld\n", ret);
+-        return -EFAULT;
+-    }
+-
+-    for (;;) {
+-        tmp_env_p2 = krealloc(tmp_env_p, (env_count + kReadEnvBatch + 2) * kPtrSize, GFP_KERNEL);
+-        if (tmp_env_p2 == NULL) {
+-            pr_err("alloc tmp env failed\n");
+-            ret = -ENOMEM;
+-            goto out_release_env_p;
++    unsigned long ld_preload_p, ld_library_path_p, entry_addr;
++    unsigned long *tmp_env_p;
++    size_t env_count, total_size;
++    long ret = -E2BIG;
++
++    tmp_env_p = kcalloc(KSU_ADB_MAX_ENVS + 3, sizeof(unsigned long), GFP_KERNEL);
++    if (!tmp_env_p)
++        return -ENOMEM;
++
++    envp = untagged_addr(envp);
++    for (env_count = 0; envp && env_count <= KSU_ADB_MAX_ENVS; env_count++) {
++        if (check_add_overflow(envp, env_count * sizeof(unsigned long),
++                               &entry_addr))
++            goto out_free;
++        if (get_user(tmp_env_p[env_count], (unsigned long __user *)entry_addr)) {
++            ret = -EFAULT;
++            goto out_free;
+         }
+-        tmp_env_p = tmp_env_p2;
+-        ret = copy_from_user(&tmp_env_p[env_count], (void __user *)(envp + env_count * kPtrSize), kReadEnvBatch * kPtrSize);
+-        if (ret < 0) {
+-            pr_warn("Access envp when adb_root_handle_execve failed: %ld\n", ret);
+-            ret = -EFAULT;
+-            goto out_release_env_p;
+-        }
+-        size_t read_count = kReadEnvBatch * kPtrSize - ret;
+-        size_t max_new_env_count = read_count / kPtrSize, new_env_count = 0;
+-        bool meet_zero = false;
+-        for (; new_env_count < max_new_env_count; new_env_count++) {
+-            if (!tmp_env_p[new_env_count + env_count]) {
+-                meet_zero = true;
+-                break;
+-            }
+-        }
+-        if (!meet_zero) {
+-            if (read_count % kPtrSize != 0) {
+-                pr_err("unaligned envp array!\n");
+-                ret = -EFAULT;
+-                goto out_release_env_p;
+-            } else if (ret != 0) {
+-                pr_err("truncated envp array!\n");
+-                ret = -EFAULT;
+-                goto out_release_env_p;
+-            }
+-        }
+-        env_count += new_env_count;
+-        if (meet_zero)
++        if (!tmp_env_p[env_count])
+             break;
+     }
++    if (env_count > KSU_ADB_MAX_ENVS)
++        goto out_free;
++
++    /* Check every subtraction before aligning down the staged user frame. */
++    if (stackp < sizeof(kLdPreload))
++        goto out_free;
++    ld_preload_p = stackp = ALIGN_DOWN(stackp - sizeof(kLdPreload), 16);
++    if (stackp < sizeof(kLdLibraryPath))
++        goto out_free;
++    ld_library_path_p = stackp = ALIGN_DOWN(stackp - sizeof(kLdLibraryPath), 16);
+ 
+     tmp_env_p[env_count++] = ld_preload_p;
+     tmp_env_p[env_count++] = ld_library_path_p;
+     tmp_env_p[env_count++] = 0;
+-    total_size = env_count * kPtrSize;
+-
+-    stackp -= total_size;
+-    ret = copy_to_user((void __user *)stackp, tmp_env_p, total_size);
+-    if (ret != 0) {
+-        pr_err("copy new env failed: %ld\n", ret);
++    total_size = env_count * sizeof(unsigned long);
++    if (stackp < total_size)
++        goto out_free;
++    stackp = ALIGN_DOWN(stackp - total_size, 16);
++
++    if (copy_to_user((void __user *)ld_preload_p, kLdPreload,
++                     sizeof(kLdPreload)) ||
++        copy_to_user((void __user *)ld_library_path_p, kLdLibraryPath,
++                     sizeof(kLdLibraryPath)) ||
++        copy_to_user((void __user *)stackp, tmp_env_p, total_size)) {
+         ret = -EFAULT;
+-        goto out_release_env_p;
+-    }
+-
+-    *envp_p = stackp;
++        goto out_free;
++    }
++
++    /* This output is a caller-local value, never a published exec pointer. */
++    *new_envp = stackp;
+     ret = 0;
+-
+-out_release_env_p:
+-    if (tmp_env_p) {
+-        kfree(tmp_env_p);
+-    }
+-
++out_free:
++    kfree(tmp_env_p);
+     return ret;
+ }
+ 
+-static long do_ksu_adb_root_handle_execveat(const char *filename, void ***envp_user_ptr)
+-{
+-    if (likely(is_exec_adbd(filename) != 1)) {
+-        return 0;
+-    }
+-
+-    if (!is_libadbroot_ok()) {
+-        pr_info("libadbroot.so is not ready\n");
+-        return 0;
+-    }
+-
+-    long ret = setup_ld_preload(envp_user_ptr);
++/* Commit only after all fallible credential and user-frame preparation. */
++static long commit_adb_root_exec(unsigned long envp, unsigned long stackp,
++                                 unsigned long *new_envp)
++{
++    struct cred *cred;
++    unsigned long staged_envp;
++    long ret;
++
++    ret = ksu_prepare_adb_root_cred(&cred);
++    if (ret)
++        return ret;
++    ret = prepare_ld_preload(envp, stackp, &staged_envp);
+     if (ret) {
+-        return ret;
+-    }
+-
+-    pr_info("escape to root for adb\n");
+-    escape_to_root_for_adb_root();
+-
+-    ret = escape_with_root_profile();
++        abort_creds(cred);
++        return ret;
++    }
++
++    commit_creds(cred);
++    *new_envp = staged_envp;
++    return 0;
++}
++
++#ifdef CONFIG_KSU_SUSFS
++static long do_ksu_adb_root_handle_execveat(const char *filename,
++                                           void __user ***envp_user_ptr,
++                                           bool is_compat)
++{
++    unsigned long new_envp;
++    long ret;
++
++    ret = is_exec_adbd(filename);
++    if (ret != 1)
++        return ret;
++    if (is_compat)
++        return -EOPNOTSUPP;
++
++    ret = is_libadbroot_ok();
++    if (ret != 1)
++        return ret;
++    ret = commit_adb_root_exec((unsigned long)*envp_user_ptr,
++                               current_user_stack_pointer(), &new_envp);
+     if (ret)
+-        pr_err("escape_with_root_profile() failed: %d\n", (int)ret);
+-
+-    return 0;
+-}
+-
+-long ksu_adb_root_handle_execveat(const char *filename, void __user ***envp_user_ptr)
+-{
+-    if (static_branch_unlikely(&ksu_adb_root)) {
+-        return do_ksu_adb_root_handle_execveat(filename, (void ***)envp_user_ptr);
+-    }
+-    return 0;
+-}
+-
++        return ret;
++
++    *envp_user_ptr = (void __user **)new_envp;
++    return 0;
++}
++
++long ksu_adb_root_handle_execveat(const char *filename,
++                                 void __user ***envp_user_ptr,
++                                 bool is_compat)
++{
++    if (static_branch_unlikely(&ksu_adb_root))
++        return do_ksu_adb_root_handle_execveat(filename, envp_user_ptr, is_compat);
++    return 0;
++}
+ #else
+-
+-static long setup_ld_preload(struct pt_regs *regs, unsigned long *envp_p)
+-{
+-    static const char kLdPreload[] = "LD_PRELOAD=/data/adb/ksu/lib/libadbroot.so";
+-    static const char kLdLibraryPath[] = "LD_LIBRARY_PATH=/data/adb/ksu/lib";
+-    static const size_t kReadEnvBatch = 16;
+-    static const size_t kPtrSize = sizeof(unsigned long);
+-    unsigned long stackp = user_stack_pointer(regs);
+-    unsigned long envp, ld_preload_p, ld_library_path_p;
+-    unsigned long *tmp_env_p = NULL, *tmp_env_p2 = NULL;
+-    size_t env_count = 0, total_size;
+-    long ret;
+-
+-    envp = (unsigned long)untagged_addr((unsigned long)*envp_p);
+-
+-    ld_preload_p = stackp = ALIGN_DOWN(stackp - sizeof(kLdPreload), 8);
+-    ret = copy_to_user((void __user *)ld_preload_p, kLdPreload, sizeof(kLdPreload));
+-    if (ret != 0) {
+-        pr_warn("write ld_preload when adb_root_handle_execve failed: %ld\n", ret);
+-        return -EFAULT;
+-    }
+-
+-    ld_library_path_p = stackp = ALIGN_DOWN(stackp - sizeof(kLdLibraryPath), 8);
+-    ret = copy_to_user((void __user *)ld_library_path_p, kLdLibraryPath, sizeof(kLdLibraryPath));
+-    if (ret != 0) {
+-        pr_warn("write ld_library_path when adb_root_handle_execve failed: %ld\n", ret);
+-        return -EFAULT;
+-    }
+-
+-    for (;;) {
+-        tmp_env_p2 = krealloc(tmp_env_p, (env_count + kReadEnvBatch + 2) * kPtrSize, GFP_KERNEL);
+-        if (tmp_env_p2 == NULL) {
+-            pr_err("alloc tmp env failed\n");
+-            ret = -ENOMEM;
+-            goto out_release_env_p;
+-        }
+-        tmp_env_p = tmp_env_p2;
+-        ret = copy_from_user(&tmp_env_p[env_count], (void __user *)(envp + env_count * kPtrSize), kReadEnvBatch * kPtrSize);
+-        if (ret < 0) {
+-            pr_warn("Access envp when adb_root_handle_execve failed: %ld\n", ret);
+-            ret = -EFAULT;
+-            goto out_release_env_p;
+-        }
+-        size_t read_count = kReadEnvBatch * kPtrSize - ret;
+-        size_t max_new_env_count = read_count / kPtrSize, new_env_count = 0;
+-        bool meet_zero = false;
+-        for (; new_env_count < max_new_env_count; new_env_count++) {
+-            if (!tmp_env_p[new_env_count + env_count]) {
+-                meet_zero = true;
+-                break;
+-            }
+-        }
+-        if (!meet_zero) {
+-            if (read_count % kPtrSize != 0) {
+-                pr_err("unaligned envp array!\n");
+-                ret = -EFAULT;
+-                goto out_release_env_p;
+-            } else if (ret != 0) {
+-                pr_err("truncated envp array!\n");
+-                ret = -EFAULT;
+-                goto out_release_env_p;
+-            }
+-        }
+-        env_count += new_env_count;
+-        if (meet_zero)
+-            break;
+-    }
+-
+-    tmp_env_p[env_count++] = ld_preload_p;
+-    tmp_env_p[env_count++] = ld_library_path_p;
+-    tmp_env_p[env_count++] = 0;
+-    total_size = env_count * kPtrSize;
+-
+-    stackp -= total_size;
+-    ret = copy_to_user((void __user *)stackp, tmp_env_p, total_size);
+-    if (ret != 0) {
+-        pr_err("copy new env failed: %ld\n", ret);
+-        ret = -EFAULT;
+-        goto out_release_env_p;
+-    }
+-
+-    *envp_p = stackp;
+-    ret = 0;
+-
+-out_release_env_p:
+-    if (tmp_env_p) {
+-        kfree(tmp_env_p);
+-    }
+-
+-    return ret;
+-}
+-
+-static long do_ksu_adb_root_handle_execve(const char __user *filename_user, struct pt_regs *regs, unsigned long *envp_p)
+-{
+-    if (likely(is_exec_adbd(filename_user) != 1)) {
+-        return 0;
+-    }
+-
+-    if (unlikely(is_libadbroot_ok() != 1)) {
+-        return 0;
+-    }
+-
+-    long ret = setup_ld_preload(regs, envp_p);
+-    if (ret) {
+-        return ret;
+-    }
+-
+-    pr_info("escape to root for adb\n");
+-    escape_to_root_for_adb_root();
++static long do_ksu_adb_root_handle_execve(const char __user *filename_user,
++                                         struct pt_regs *regs,
++                                         unsigned long *envp_p)
++{
++    unsigned long new_envp;
++    long ret;
++
++    ret = is_exec_adbd(filename_user);
++    if (ret != 1)
++        return ret;
++#ifdef CONFIG_COMPAT
++    if (in_compat_syscall())
++        return -EOPNOTSUPP;
++#endif
++
++    ret = is_libadbroot_ok();
++    if (ret != 1)
++        return ret;
++    ret = commit_adb_root_exec(*envp_p, user_stack_pointer(regs), &new_envp);
++    if (ret)
++        return ret;
++
++    *envp_p = new_envp;
+     return 0;
+ }
+ 
+ long ksu_adb_root_handle_execve(struct pt_regs *regs)
+ {
+     if (static_branch_unlikely(&ksu_adb_root)) {
+         return do_ksu_adb_root_handle_execve((const char __user *)PT_REGS_PARM1(regs), regs,
+                                              (unsigned long *)&PT_REGS_PARM3(regs));
+     }
+     return 0;
+ }
+ 
+ long ksu_adb_root_handle_execveat(struct pt_regs *regs)
+ {
+     if (static_branch_unlikely(&ksu_adb_root)) {
+         return do_ksu_adb_root_handle_execve((const char __user *)PT_REGS_PARM2(regs), regs,
+diff --git a/kernel/feature/adb_root.h b/kernel/feature/adb_root.h
+--- a/kernel/feature/adb_root.h
++++ b/kernel/feature/adb_root.h
+@@ -1,16 +1,17 @@
+ #ifndef __KSU_H_ADB_ROOT
+ #define __KSU_H_ADB_ROOT
+ #include <asm/ptrace.h>
++#include <linux/types.h>
+ 
+ #ifdef CONFIG_KSU_SUSFS
+-long ksu_adb_root_handle_execveat(const char *filename, void __user ***envp_user_ptr);
++long ksu_adb_root_handle_execveat(const char *filename, void __user ***envp_user_ptr, bool is_compat);
+ #else
+ long ksu_adb_root_handle_execve(struct pt_regs *regs);
+ long ksu_adb_root_handle_execveat(struct pt_regs *regs);
+ #endif
+ 
+ void ksu_adb_root_init(void);
+ 
+ void ksu_adb_root_exit(void);
+ 
+ #endif
+diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
+--- a/kernel/feature/sucompat.c
++++ b/kernel/feature/sucompat.c
+@@ -193,37 +193,37 @@
+             pending_sucompat = ksu_sulog_capture_sucompat_kernel(filename->name, (const char __user *const __user *)argv_user->ptr.native, GFP_KERNEL);
+             ksu_sulog_emit_pending(pending_sucompat, ret, GFP_KERNEL);
+             return 0;
+         } else {
+             size_t len = strlen(filename->name);
+             if (likely(!ksu_is_zygote_or_adbd(filename->name, len)) &&
+                         !susfs_is_current_proc_no_su())
+             {
+                 pr_info("susfs: mark no sucompat checks for pid: '%d', exec: '%s'\n", current->pid, filename->name);
+                 susfs_set_current_proc_no_su();
+                 return 0;
+             }
+         }
+ 
+ #ifdef CONFIG_COMPAT
+         if (unlikely(envp_user->is_compat))
+-            ret = ksu_adb_root_handle_execveat(filename->name, (void ***)&envp_user->ptr.compat);
++            ret = ksu_adb_root_handle_execveat(filename->name, (void ***)&envp_user->ptr.compat, true);
+         else
+-            ret = ksu_adb_root_handle_execveat(filename->name, (void ***)&envp_user->ptr.native);
++            ret = ksu_adb_root_handle_execveat(filename->name, (void ***)&envp_user->ptr.native, false);
+ #else
+-        ret = ksu_adb_root_handle_execveat(filename->name, (void ***)&envp_user->ptr.native);
++        ret = ksu_adb_root_handle_execveat(filename->name, (void ***)&envp_user->ptr.native, false);
+ #endif
+ 
+         if (ret) {
+             pr_err("adb root failed: %d\n", ret);
+             return ret;
+         }
+         return ret;
+     }
+ 
+     return 1; /* Not an init request: continue ordinary su checks. */
+ }
+ 
+ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
+                  void *argv_user, void *envp_user,
+                  int *__never_use_flags)
+ {
+diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
+--- a/kernel/selinux/selinux.c
++++ b/kernel/selinux/selinux.c
+@@ -180,46 +180,62 @@
+     if (ret) {
+         return ret;
+     }
+ 
+     if (!is_task_ksu_domain(ksu_cred)) {
+         return -EACCES;
+     }
+ 
+     /* Repeated boot-stage setup is allowed only while READY. */
+     ret = ksu_publish_ready_cred();
+     if (ret && ret != -EALREADY)
+         return ret;
+ 
+     return 0;
+ }
+ 
+-void escape_to_root_for_adb_root(void)
+-{
+-    struct cred *cred = prepare_creds();
+-    if (!cred) {
+-        pr_err("Failed to prepare adbd's creds!\n");
+-        return;
+-    }
+-
+-    if (transive_to_domain(KERNEL_SU_CONTEXT, cred, true)) {
+-        pr_err("transive domain failed.\n");
+-        abort_creds(cred);
+-        return;
+-    }
+-    commit_creds(cred);
++/* Prepare only: the caller owns this unpublished credential until commit/abort. */
++int ksu_prepare_adb_root_cred(struct cred **out)
++{
++    struct cred *cred;
++    int ret;
++
++    if (!out)
++        return -EINVAL;
++    *out = NULL;
++    cred = prepare_creds();
++    if (!cred)
++        return -ENOMEM;
++    /* ADB startup is an init-domain root child, not an arbitrary profile escape. */
++    if (!uid_eq(cred->euid, GLOBAL_ROOT_UID) || !is_init(cred)) {
++        ret = -EACCES;
++        goto out_abort;
++    }
++    ret = transive_to_domain(KERNEL_SU_CONTEXT, cred, true);
++    if (ret)
++        goto out_abort;
++    if (!is_task_ksu_domain(cred)) {
++        ret = -EACCES;
++        goto out_abort;
++    }
++    *out = cred;
++    return 0;
++
++out_abort:
++    abort_creds(cred);
++    return ret;
+ }
+ 
+ void setenforce(bool enforce)
+ {
+ #ifdef CONFIG_SECURITY_SELINUX_DEVELOP
+     selinux_state.enforcing = enforce;
+ #endif
+ }
+ 
+ bool getenforce(void)
+ {
+ #ifdef CONFIG_SECURITY_SELINUX_DISABLE
+     if (selinux_state.disabled) {
+         return false;
+     }
+ #endif
+diff --git a/kernel/selinux/selinux.h b/kernel/selinux/selinux.h
+--- a/kernel/selinux/selinux.h
++++ b/kernel/selinux/selinux.h
+@@ -24,32 +24,32 @@
+ bool is_task_ksu_domain(const struct cred *cred);
+ 
+ bool is_ksu_domain();
+ 
+ bool is_zygote(const struct cred *cred);
+ 
+ bool is_init(const struct cred *cred);
+ 
+ int apply_kernelsu_rules(void);
+ 
+ int handle_sepolicy(void __user *user_data, u64 data_len);
+ 
+ int setup_ksu_cred(void);
+ /* Internal setup body; caller must hold the credential setup mutex. */
+ int ksu_setup_cred_domain_locked(void);
+ 
+-void escape_to_root_for_adb_root();
++int ksu_prepare_adb_root_cred(struct cred **out);
+ 
+ extern u32 ksu_file_sid;
+ 
+ #ifdef CONFIG_KSU_SUSFS
+ bool susfs_is_sid_equal(const struct cred *cred, u32 sid2);
+ u32 susfs_get_sid_from_name(const char *secctx_name);
+ u32 susfs_get_current_sid(void);
+ void susfs_set_batch_sid(void);
+ bool susfs_is_current_zygote_domain(void);
+ bool susfs_is_current_zygote_next_domain(void);
+ bool susfs_is_current_ksu_domain(void);
+ bool susfs_is_current_init_domain(void);
+ #endif
+ 
+ #endif
