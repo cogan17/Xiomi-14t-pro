@@ -1,0 +1,41 @@
+diff --git a/kernel/infra/su_mount_ns.c b/kernel/infra/su_mount_ns.c
+--- a/kernel/infra/su_mount_ns.c
++++ b/kernel/infra/su_mount_ns.c
+@@ -49,7 +49,7 @@
+ }
+ 
+ // global mode , need CAP_SYS_ADMIN and CAP_SYS_CHROOT to perform setns
+-static void ksu_mnt_ns_global(void)
++static void ksu_mnt_ns_global(const struct cred *borrowed)
+ {
+     // save current working directory as absolute path before setns
+     char *pwd_path = NULL;
+@@ -99,7 +99,7 @@
+         pr_warn("failed get path for init mount namespace: %ld\n", ret);
+         goto out;
+     }
+-    struct file *ns_file = dentry_open(&ns_path, O_RDONLY, ksu_cred);
++    struct file *ns_file = dentry_open(&ns_path, O_RDONLY, borrowed);
+ 
+     path_put(&ns_path);
+     if (IS_ERR(ns_file)) {
+@@ -173,11 +173,17 @@
+         return;
+     }
+ 
+-    const struct cred *old_cred = override_creds(ksu_cred);
++    const struct cred *borrowed = ksu_borrow_ready_cred();
++    if (!borrowed) {
++        pr_warn("shared credential unavailable, skipping mount namespace setup\n");
++        return;
++    }
++    const struct cred *old_cred = override_creds(borrowed);
+     if (ns_mode == KSU_NS_GLOBAL) {
+-        ksu_mnt_ns_global();
++        ksu_mnt_ns_global(borrowed);
+     } else {
+         ksu_mnt_ns_individual();
+     }
+     revert_creds(old_cred);
++    ksu_return_cred(borrowed);
+ }

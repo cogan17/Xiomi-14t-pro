@@ -1,0 +1,112 @@
+diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration.c
+--- a/kernel/runtime/ksud_integration.c
++++ b/kernel/runtime/ksud_integration.c
+@@ -1,6 +1,7 @@
+ #include "feature/selinux_hide.h"
+ #include <linux/rcupdate.h>
+ #include <linux/slab.h>
++#include <linux/mutex.h>
+ #include <linux/mm.h>
+ #include <asm/current.h>
+ #include <linux/compat.h>
+@@ -268,25 +269,34 @@
+     return f;
+ }
+ 
+-static void load_module_rc_once(void)
++static bool load_module_rc_once(void)
+ {
+     static bool loaded = false;
++    static DEFINE_MUTEX(load_lock);
++    bool accepted = false;
+     struct file *f;
+     const char *path = NULL;
+     loff_t pos = 0;
+     ssize_t r;
+     size_t fsize;
+-    const struct cred *old_cred;
+-
++    const struct cred *old_cred, *borrowed;
++
++    /* Every loaded observation waits for the first IO attempt to finish. */
++    mutex_lock(&load_lock);
++    borrowed = ksu_borrow_ready_cred();
++    if (!borrowed)
++        goto out_unlock;
+     if (loaded)
+-        return;
++        goto out_return_cred;
++    if (ksu_no_custom_rc) {
++        loaded = true;
++        pr_info("custom rc is disabled\n");
++        goto out_return_cred;
++    }
++
++    /* Preserve the existing one-attempt IO policy after READY is borrowed. */
+     loaded = true;
+-    if (ksu_no_custom_rc) {
+-        pr_info("custom rc is disabled\n");
+-        return;
+-    }
+-
+-    old_cred = override_creds(ksu_cred);
++    old_cred = override_creds(borrowed);
+ 
+     f = open_module_rc(&path);
+     if (IS_ERR(f)) {
+@@ -328,6 +338,12 @@
+ 
+ out_revert_creds:
+     revert_creds(old_cred);
++out_return_cred:
++    ksu_return_cred(borrowed);
++    accepted = true;
++out_unlock:
++    mutex_unlock(&load_lock);
++    return accepted;
+ }
+ 
+ static void free_module_rc(void)
+@@ -481,17 +497,20 @@
+ 
+ static void ksu_install_rc_hook(struct file *file)
+ {
++    static DEFINE_MUTEX(rc_hook_lock);
+     if (!is_init_rc(file)) {
+         return;
+     }
+ 
+     // we only process the first read
+     static bool rc_hooked = false;
++    mutex_lock(&rc_hook_lock);
+     if (rc_hooked) {
+-        // we don't need these hooks, unregister it!
+-
+-        return;
+-    }
++        goto out_unlock;
++    }
++    /* Failed READY borrowing must leave the init.rc hook pending. */
++    if (!load_module_rc_once())
++        goto out_unlock;
+     rc_hooked = true;
+ #ifdef CONFIG_KSU_SUSFS
+     if (static_key_enabled(&ksu_is_init_rc_hook_enabled)) {
+@@ -504,8 +523,6 @@
+ 
+     // now we can sure that the init process is reading
+     // `/system/etc/init/init.rc`
+-
+-    load_module_rc_once();
+ 
+     pr_info("read init.rc, comm: %s, rc_count: %zu, module_rc: %zu\n", current->comm, ksu_rc_len, module_rc_len);
+ 
+@@ -523,6 +540,8 @@
+     }
+     // replace the file_operations
+     file->f_op = &fops_proxy;
++out_unlock:
++    mutex_unlock(&rc_hook_lock);
+ }
+ 
+ void ksu_handle_sys_read(unsigned int fd, char __user **buf_ptr, size_t *count_ptr)
