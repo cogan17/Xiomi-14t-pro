@@ -1,0 +1,51 @@
+name: Rothko KSUN SUSFS prerequisites (source-only)
+
+on:
+  push:
+    branches:
+      - feat/rothko-ksun-susfs-compat-audit
+    paths:
+      - .github/workflows/rothko-ksun-susfs-prerequisites.yml
+      - tests/test_rothko_ksun_susfs_prerequisites.py
+      - tests/test_rothko_ksun_boot_status.py
+      - patches/rothko-ksun-susfs-builtin-only-mode-guard-candidate.patch
+      - patches/rothko-ksun-susfs-core-dependency-candidate.patch
+      - patches/rothko-ksun-susfs-lsm-kbuild-exclusion-candidate.patch
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prerequisites:
+    name: Existing 25-stage KSUN chain + 3 SUSFS prerequisites
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Fetch exact immutable KSUN source (no kernel build)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pin=3438d6aa431f96a23f9e625bec3d53ce1fb14161
+          git init -q "$RUNNER_TEMP/ksun"
+          git -C "$RUNNER_TEMP/ksun" remote add origin https://github.com/pershoot/KernelSU-Next.git
+          git -C "$RUNNER_TEMP/ksun" -c http.version=HTTP/1.1 fetch --quiet --depth=1 origin "$pin"
+          git -C "$RUNNER_TEMP/ksun" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/ksun" rev-parse HEAD)" = "$pin"
+
+      - name: Verify focused prerequisite composition and reversal
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -c 'import pycparser' || python3 -m pip install --disable-pip-version-check 'pycparser>=2.21,<4'
+          python3 tests/test_rothko_ksun_susfs_prerequisites.py "$RUNNER_TEMP/ksun"
+          {
+            echo '### KSUN + SUSFS source-only prerequisites'
+            echo 'Focused 28-stage forward/reverse and negative contract checks only.'
+            echo 'This does NOT validate kernel build, KMI/ABI, flash or runtime.'
+            echo 'PR #9 remains DRAFT / BUILD HOLD.'
+          } >> "$GITHUB_STEP_SUMMARY"
