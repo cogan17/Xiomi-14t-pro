@@ -9,6 +9,13 @@ import tempfile
 BSP_BLOB = "ef93a4d5911b48f2052f5130092e9c46b2d0262b"
 PIN = "3438d6aa431f96a23f9e625bec3d53ce1fb14161"
 PATCH = "patches/rothko-susfs-ksun-exec-prehook-candidate.patch"
+INCLUDE_PATCH = "patches/rothko-susfs-exec-include-candidate.patch"
+INCLUDE_GUARD = (
+    "#ifdef CONFIG_KSU_SUSFS\n"
+    "#include <linux/susfs_def.h>\n"
+    "#endif\n\n"
+    "#include <linux/uaccess.h>"
+)
 
 
 def require(ok, reason):
@@ -59,6 +66,48 @@ def contract(src, header):
             "native/COMPAT entry selection changed")
 
 
+def composition_contract(src, header):
+    """Only new assertions for the additional, already-existing include patch."""
+    contract(src, header)  # Recheck once on the combined source, not each old mutation.
+    require(src.count(INCLUDE_GUARD) == 1,
+            "SUSFS include guard missing, repeated, or moved")
+    require(src.count("#include <linux/susfs_def.h>") == 1,
+            "duplicate SUSFS include or unsafe extra configuration path")
+    require(src.find(INCLUDE_GUARD) < src.find("struct user_arg_ptr {"),
+            "include must precede typed native/COMPAT user argument structure")
+    require(src.count("ksu_rothko_pre_execveat(&fd, &filename, &argv, &envp, &flags)") == 1,
+            "duplicate pre-exec consumer detected")
+    require("ksu_handle_post_execveat_sucompat" not in src,
+            "unsupported post-exec session FD hook introduced")
+    # No dependency claim for generated kernel header, provider link or module lifecycle.
+    return True
+
+
+def composition_mutations(src, header):
+    cases = (
+        ("include guard dropped", INCLUDE_GUARD,
+         "#include <linux/susfs_def.h>\\n#include <linux/uaccess.h>"),
+        ("include omitted", INCLUDE_GUARD, "#include <linux/uaccess.h>"),
+        ("duplicate include", INCLUDE_GUARD,
+         INCLUDE_GUARD.replace("#include <linux/uaccess.h>",
+                               "#include <linux/susfs_def.h>\\n#include <linux/uaccess.h>")),
+        ("wrong configuration", INCLUDE_GUARD,
+         INCLUDE_GUARD.replace("#ifdef CONFIG_KSU_SUSFS", "#ifdef CONFIG_KSU")),
+        ("extra pre-exec dispatch",
+         "\\tretval = ksu_rothko_pre_execveat(&fd, &filename, &argv, &envp, &flags);",
+         "\\tretval = ksu_rothko_pre_execveat(&fd, &filename, &argv, &envp, &flags);\\n"
+         "\\tretval = ksu_rothko_pre_execveat(&fd, &filename, &argv, &envp, &flags);"),
+    )
+    for label, old, new in cases:
+        require(old in src, "negative composition target missing: " + label)
+        try:
+            composition_contract(src.replace(old, new, 1), header)
+        except RuntimeError:
+            continue
+        raise RuntimeError("unsafe composition mutation accepted: " + label)
+    return len(cases)
+
+
 def mutations(src, header):
     cases = (
         ("swallow error", "\tif (retval < 0)\n\t\tgoto out_ret;",
@@ -93,29 +142,45 @@ def main():
     original = (bsp / "fs/exec.c").read_bytes()
     header = (ksun / "kernel/feature/sucompat.h").read_text()
     patch_data = (project / PATCH).read_bytes()
-    require(patch_data.count(b"diff --git ") == 1, "patch touches other files")
-    with tempfile.TemporaryDirectory(prefix="rothko-exec-consumer-") as t:
+    include_data = (project / INCLUDE_PATCH).read_bytes()
+    for data, name in ((include_data, "SUSFS include"), (patch_data, "KSUN prehook")):
+        require(data.count(b"diff --git ") == 1
+                and data.count(b"--- a/fs/exec.c") == 1
+                and data.count(b"+++ b/fs/exec.c") == 1,
+                name + " patch scope changed")
+    with tempfile.TemporaryDirectory(prefix="rothko-exec-composition-") as t:
         root = Path(t)
         git(root, "init", "-q")
         target = root / "fs/exec.c"
         target.parent.mkdir()
         target.write_bytes(original)
-        patch = root / "candidate.patch"
-        patch.write_bytes(patch_data)
-        git(root, "apply", "--check", "--whitespace=error", str(patch))
-        git(root, "apply", "--whitespace=error", str(patch))
-        src = target.read_text()
-        contract(src, header)
-        count = mutations(src, header)
-        duplicate = subprocess.run(["git", "apply", "--check", str(patch)],
-                                   cwd=root, capture_output=True, timeout=25)
-        require(duplicate.returncode != 0, "duplicate patch accepted")
-        git(root, "apply", "--reverse", "--check", "--whitespace=error", str(patch))
-        git(root, "apply", "--reverse", "--whitespace=error", str(patch))
-        require(target.read_bytes() == original, "reverse failed to restore source")
-    print("PASS: pinned Rothko BSP / KSUN prehook signature; typed native/COMPAT errno cleanup")
-    print("PASS:", count, "negative mutations, duplicate rejected, byte-identical reverse")
-    print("SOURCE-ONLY PASS: no compile, ABI/KMI, FD lifetime, device, or release proof")
+        included = root / "existing-include.patch"
+        prehook = root / "existing-prehook.patch"
+        included.write_bytes(include_data)
+        prehook.write_bytes(patch_data)
+        for candidate in (included, prehook):
+            git(root, "apply", "--check", "--whitespace=error", str(candidate))
+            git(root, "apply", "--whitespace=error", str(candidate))
+        combined = target.read_text(encoding="utf-8")
+        composition_contract(combined, header)
+        count = composition_mutations(combined, header)
+        # Prior seven prehook-only negative cases passed in run 38560101717;
+        # they are not rerun because that source candidate is byte-identical.
+        for candidate in (included, prehook):
+            duplicate = subprocess.run(["git", "apply", "--check", str(candidate)],
+                                       cwd=root, capture_output=True, timeout=25)
+            require(duplicate.returncode != 0, "duplicate candidate accepted")
+        for candidate in (prehook, included):
+            git(root, "apply", "--reverse", "--check", "--whitespace=error",
+                str(candidate))
+            git(root, "apply", "--reverse", "--whitespace=error", str(candidate))
+        require(target.read_bytes() == original, "composed reverse changed BSP")
+    print("PASS: existing SUSFS include + pinned KSUN typed prehook strict composition")
+    print("PASS:", count, "new composition negative mutations; both duplicates rejected")
+    print("PASS: both reverse patches restore immutable Rothko fs/exec.c byte-for-byte")
+    print("SOURCE-ONLY PASS: KSUN provider linking, header availability, ABI/KMI,"
+          " FD lifecycle and device runtime still unverified")
+
 
 
 if __name__ == "__main__":

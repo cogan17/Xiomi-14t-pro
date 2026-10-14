@@ -1,4 +1,4 @@
-name: Rothko KSUN SUSFS exec prehook (source-only)
+name: Rothko KSUN SUSFS exec include + prehook (source-only)
 on:
   push:
     branches:
@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/rothko-susfs-ksun-exec-prehook.yml
       - patches/rothko-susfs-ksun-exec-prehook-candidate.patch
+      - patches/rothko-susfs-exec-include-candidate.patch
       - tests/test_rothko_susfs_ksun_exec_prehook.py
   workflow_dispatch:
 permissions:
@@ -28,13 +29,13 @@ jobs:
           git -C "$RUNNER_TEMP/ksun" -c http.version=HTTP/1.1 fetch --quiet --depth=1 origin "$pin"
           git -C "$RUNNER_TEMP/ksun" checkout --quiet --detach FETCH_HEAD
           test "$(git -C "$RUNNER_TEMP/ksun" rev-parse HEAD)" = "$pin"
-      - name: Verify isolated pre-hook patch and negative contracts
+      - name: Verify composed include and pre-hook contracts
         shell: bash
         run: |
           set -Eeuo pipefail
           python3 tests/test_rothko_susfs_ksun_exec_prehook.py "$GITHUB_WORKSPACE" "$RUNNER_TEMP/ksun"
           {
             echo "### Rothko fs/exec.c source-only consumer"
-            echo "Pinned BSP/KSUN prehook signature, apply/reverse, error cleanup, native/COMPAT."
+            echo "Pinned BSP/KSUN include + prehook composition, negative checks, exact reversal."
             echo "No kernel build, ABI/KMI, runtime, merge or flash authorization."
           } >> "$GITHUB_STEP_SUMMARY"
