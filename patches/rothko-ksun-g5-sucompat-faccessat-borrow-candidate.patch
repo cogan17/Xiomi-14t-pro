@@ -1,13 +1,13 @@
 diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
 --- a/kernel/feature/sucompat.c
 +++ b/kernel/feature/sucompat.c
-@@ -401,7 +401,7 @@
+@@ -401,4 +401,4 @@
  {
  	const char __user **filename_user, *orig_filename;
  	long ret;
 -	const struct cred *old_cred;
 +	const struct cred *old_cred, *borrowed;
-@@ -418,7 +418,10 @@
+@@ -418,5 +418,8 @@
  			pr_err("ksu_handle_faccessat_sucompat: su found but NOT allowed! Because current process is running in chrooted environment\n");
  			goto do_orig_facessat;
  		}
@@ -17,7 +17,7 @@ diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
 +			goto do_orig_facessat;
 +		old_cred = override_creds(borrowed);
  		if (is_ksud_exists()) {
-@@ -426,10 +429,12 @@
+@@ -426,8 +429,10 @@
  			*filename_user = ksud_user_path();
  			ret = ksu_syscall_table[orig_nr](regs);
  			revert_creds(old_cred);
