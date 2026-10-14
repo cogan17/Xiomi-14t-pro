@@ -1,0 +1,34 @@
+diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration.c
+--- a/kernel/runtime/ksud_integration.c
++++ b/kernel/runtime/ksud_integration.c
+@@ -271,3 +271,4 @@
+ static void load_module_rc_once(void)
+ {
+     static bool loaded = false;
++    static DEFINE_MUTEX(load_lock);
+@@ -281,8 +282,11 @@
+     if (loaded)
+         return;
++    mutex_lock(&load_lock);
++    if (loaded)
++        goto out_unlock;
+     if (ksu_no_custom_rc) {
+         loaded = true;
+         pr_info("custom rc is disabled\n");
+-        return;
++        goto out_unlock;
+     }
+@@ -291,5 +295,6 @@
+     borrowed = ksu_borrow_ready_cred();
+     if (!borrowed)
+-        return;
++        goto out_unlock;
+     loaded = true;
+     old_cred = override_creds(borrowed);
+@@ -333,5 +338,7 @@
+ out_revert_creds:
+     revert_creds(old_cred);
+     ksu_return_cred(borrowed);
++out_unlock:
++    mutex_unlock(&load_lock);
+ }
