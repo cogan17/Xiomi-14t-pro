@@ -18,6 +18,15 @@ Updated: 2026-10-14. This is the **single current handoff index**, not a new dep
 5. SUSFS isolated proc/memory, exact hunk, BSP anchor and source-only KSUN checks have green results. Full SUSFS conflicts, RCU lookup path, workqueue teardown, Kconfig/compile/link/ABI/KMI and post-exec hooks remain unresolved.
 6. GitLab transport/source verification passed earlier; no reason to repeat absent a changed upstream dependency. NoMount integration not complete.
 
+## 2026-10-14 pause handoff — G5 progress and immediate blocker
+
+- All six direct shared-credential caller sites now have isolated borrow candidates: kernel_umount, allowlist, module-rc, and sucompat faccessat/stat/execve. Source-text hunk checks passed individually; the three sucompat patches passed sequential structural application. None is wired, compiled, or runtime-proven.
+- G1 status, G5 borrow API, and READY publication candidates passed sequential structural matching (3 + 4 + 1 hunks), **but the pinned upstream setup_selinux() returns void while G1 expects int**.
+- New prerequisite candidate: `patches/rothko-ksun-g1-selinux-return-contract-candidate.patch` (commit `0bf454ef`, header correction `882e0dac`). It changes setup_selinux() to return error status. **Must test sequential application of this prerequisite before G1/G5 and inspect other callers**.
+- Outstanding blockers: repeated setup can mutate a published READY cred; module-rc static loaded flag has no concurrency synchronization; teardown quiescence, SU_SESSION FD and SUSFS integration remain unproven.
+- **Next action on "Lanjutkan":** verify prerequisite -> G1 -> G5 API -> READY publication sequentially, then resolve actual return-signature/caller and READY lifecycle issues. Avoid repeated inventories.
+- This pause does not change BUILD HOLD or Draft PR #9; no build, flash, release, or merge is authorized. Prior passing work must be preserved.
+
 ## Latest CI observation
 
 At checkpoint creation, latest runs on `6e0bd452`: **SUCCESS** for SUSFS isolated proc/memory, SUSFS exact hunk comparison, KSUN independent candidate audit, root installer unit tests, SUSFS BSP anchors, documentation guard and KSUN root driver source integration (no build). **FAILURE** for `Rothko SUSFS source audit (read-only)`. This full-audit failure is a known blocker, **not** proof other isolated tests failed. CI status is a point-in-time observation; inspect new run IDs before asserting new results.
