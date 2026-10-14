@@ -1,14 +1,15 @@
 diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
 --- a/kernel/selinux/selinux.c
 +++ b/kernel/selinux/selinux.c
-@@ -172,6 +172,10 @@
+@@ -172,6 +172,11 @@
      if (!is_task_ksu_domain(ksu_cred)) {
          return -EACCES;
      }
 +
-+    /* A second successful setup must not reopen a stopped credential. */
-+    if (!ksu_publish_ready_cred())
-+        return -EALREADY;
++    /* Repeated boot-stage setup is allowed only while READY. */
++    ret = ksu_publish_ready_cred();
++    if (ret && ret != -EALREADY)
++        return ret;
  
      return 0;
  }
