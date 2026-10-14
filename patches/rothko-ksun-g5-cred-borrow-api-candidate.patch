@@ -23,7 +23,7 @@ diff --git a/kernel/core/init.c b/kernel/core/init.c
  
  #include "policy/allowlist.h"
  #include "policy/app_profile.h"
-@@ -79,3 +80,49 @@
+@@ -80,3 +81,38 @@
  
  struct cred *ksu_cred;
 +/*
@@ -58,17 +58,6 @@ diff --git a/kernel/core/init.c b/kernel/core/init.c
 +
 +    spin_lock_irqsave(&ksu_cred_lock, flags);
 +    ksu_cred_ready = false;
-+    spin_unlock_irqrestore(&ksu_cred_lock, flags);
-+}
-+
-+/* Caller must verify SELinux domain before declaring READY. */
-+static void ksu_publish_cred_after_selinux(void)
-+{
-+    unsigned long flags;
-+
-+    spin_lock_irqsave(&ksu_cred_lock, flags);
-+    if (ksu_cred)
-+        ksu_cred_ready = true;
 +    spin_unlock_irqrestore(&ksu_cred_lock, flags);
 +}
 +
