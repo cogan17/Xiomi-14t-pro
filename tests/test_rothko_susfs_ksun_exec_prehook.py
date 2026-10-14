@@ -86,17 +86,17 @@ def composition_contract(src, header):
 def composition_mutations(src, header):
     cases = (
         ("include guard dropped", INCLUDE_GUARD,
-         "#include <linux/susfs_def.h>\\n#include <linux/uaccess.h>"),
+         "#include <linux/susfs_def.h>\n#include <linux/uaccess.h>"),
         ("include omitted", INCLUDE_GUARD, "#include <linux/uaccess.h>"),
         ("duplicate include", INCLUDE_GUARD,
          INCLUDE_GUARD.replace("#include <linux/uaccess.h>",
-                               "#include <linux/susfs_def.h>\\n#include <linux/uaccess.h>")),
+                               "#include <linux/susfs_def.h>\n#include <linux/uaccess.h>")),
         ("wrong configuration", INCLUDE_GUARD,
          INCLUDE_GUARD.replace("#ifdef CONFIG_KSU_SUSFS", "#ifdef CONFIG_KSU")),
         ("extra pre-exec dispatch",
-         "\\tretval = ksu_rothko_pre_execveat(&fd, &filename, &argv, &envp, &flags);",
-         "\\tretval = ksu_rothko_pre_execveat(&fd, &filename, &argv, &envp, &flags);\\n"
-         "\\tretval = ksu_rothko_pre_execveat(&fd, &filename, &argv, &envp, &flags);"),
+         "\tretval = ksu_rothko_pre_execveat(&fd, &filename, &argv, &envp, &flags);",
+         "\tretval = ksu_rothko_pre_execveat(&fd, &filename, &argv, &envp, &flags);\n"
+         "\tretval = ksu_rothko_pre_execveat(&fd, &filename, &argv, &envp, &flags);"),
     )
     for label, old, new in cases:
         require(old in src, "negative composition target missing: " + label)
