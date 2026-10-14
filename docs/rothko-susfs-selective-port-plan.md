@@ -20,7 +20,27 @@ Status: **SOURCE-ONLY / DRAFT / RELEASE BLOCKED**. This plan supersedes repetiti
 
 **Provider-selection decision:** `scripts/rothko_install_root_driver.py` and `.github/workflows/rothko-root-integration.yml` intentionally retain official vanilla `KernelSU-Next@02a9e1c5fb2c4fd8117429fe004136332788c1b6` for non-SUSFS root integration. That source has no matching pinned pershoot prehook symbol. The SUSFS audit pin `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161` has the prehook but lacks the official posthook. **Do not change the vanilla installer pin or add an unvalidated SUSFS mode yet.** An eventual dedicated `SUSFS` route must explicitly verify exact remote+SHA, `CONFIG_KSU=y`, `KSU_SUSFS` built-in with SUSFS core/header manifest, `feature/sucompat.o` provider selection, complete entry/post/FD contract, and rejection of mixed roots before one checked temporary source integration.
 
-**Next single actionable gate:** design and source-check a **fail-closed SUSFS-specific provider selection contract**, without changing default vanilla installer behavior or creating a build/flash artifact. A separate post-exec FD design must first fix false session detection and verify successful exec/ownership, UID/domain, rollback and cleanup. No KMI/build/merge/flash approval.
+**Provider gate is already committed:** `scripts/rothko_susfs_provider_gate.py` reads only pinned sources and always refuses promotion; vanilla installer remains unchanged. **Next closing work:** use the exact dependency inventory below to verify vendor flag ownership, 24-hunk semantic dependencies and source-level provider/FD authorization contracts. No KMI/build/merge/flash approval.
+
+## Pinned SUSFS core dependency inventory — source-only (2026-10-14)
+
+**Evidence/provenance:** identical Git commit `5192aa2d33b381b58c1051532f9e1dfa5de6e8d3` and tree `b39cd4117178ce73d2973f7bcdae5c74defc8f68` were verified read-only at `ShirkNeko/susfs4ksu`. Simonpunk GitLab remains authoritative; no moving branch/pin change. This inventory closes **file provenance discovery only**, not source installation, complete semantic porting, or linkage.
+
+| Required destination in Rothko BSP | Source on exact upstream Git tree (blob SHA) | Verified working-branch state |
+| --- | --- | --- |
+| `fs/susfs.c` | `kernel_patches/fs/susfs.c` — `1e70f7f2487d1a4c3072f861c7725f733eb59d46` (1,539 source lines) | **Absent**; do not copy without functional dependencies |
+| `include/linux/susfs.h` | `kernel_patches/include/linux/susfs.h` — `1e0ae04060839e1adba1db19b4d07638eaae0f95` | **Absent** |
+| `include/linux/susfs_def.h` | `kernel_patches/include/linux/susfs_def.h` — `a021078ceaaaf6dc098dfdbed592c268c81f85b3` | **Absent** |
+| `fs/Makefile` object reference | `kernel_patches/50_add_susfs_in_gki-android14-6.1.patch` — `b7b223bbe7aa33602b3a3b341568dd9d0606b11a` | Existing BSP blob `102e4cd2bf6976c24192ed4eb9de62249f8f2968` **lacks** `obj-$(CONFIG_KSU_SUSFS) += susfs.o` |
+| Root/Kconfig selection | pinned `pershoot/KernelSU-Next@3438d6aa431f96a23f9e625bec3d53ce1fb14161` `kernel/Kconfig` and `kernel/Kbuild` | Source provider has `KSU_SUSFS` dependencies on `KSU` and `THREAD_INFO_IN_TASK`, plus `feature/sucompat.o`; **not installed in working BSP** |
+
+**Other official patch scope:** the exact `50_add_susfs_in_gki-android14-6.1.patch` changes **24 existing kernel paths**: `drivers/input/input.c`; `fs/Makefile`, `fs/exec.c`, `fs/namei.c`, `fs/namespace.c`, `fs/notify/fdinfo.c`, `fs/open.c`, `fs/proc/base.c`, `fs/proc/bootconfig.c`, `fs/proc/fd.c`, `fs/proc/task_mmu.c`, `fs/proc_namespace.c`, `fs/read_write.c`, `fs/readdir.c`, `fs/stat.c`, `fs/statfs.c`, `fs/super.c`; `kernel/kallsyms.c`, `kernel/reboot.c`, `kernel/sys.c`; `mm/memory.c`; `security/selinux/avc.c`, `hooks.c`, `selinuxfs.c`. **Not all hunks are ported or proved compatible**; the existing two `exec.c` candidates cover only the documented source-only subset. The three new source/header payloads above are **separate files**, not automatically supplied by this diff.
+
+**Core C link dependencies:** pinned `fs/susfs.c` includes `<linux/susfs.h>` and private `"fuse/fuse_i.h"` plus `"mount.h"`. The two private headers **exist** in current Rothko BSP (blobs `9dc3b8636061c4bd61d0620390d37f7488c75dd5` and `130c07c2f8d258165b7056646dee76dd4c1e7d13`), but presence does not establish ABI/struct equivalence. It declares `susfs_is_current_ksu_domain`, `setup_selinux`, `ksu_cred`, `susfs_get_non_sus_mnt_id_from_mnt`, `susfs_get_non_sus_vfsmnt_from_vfsmnt`, `calculate_f_flags_wrapper` and `statfs_by_dentry_wrapper` as external dependencies. The four VFS/mount helpers have definitions in added hunks of the **same official kernel patch**; KSUN credential and SELinux ownership must be verified against the pinned provider and correct build configuration. Source declarations alone do not prove a linkable implementation.
+
+**Thread and address-space flags:** pinned `susfs_def.h` reserves `TIF_PROC_UMOUNTED=33`, `TIF_PROC_NO_SU=34`, `TIF_PROC_UMOUNTED_FOR_ZYGOTE_NEXT=35`, plus address-space flags `AS_FLAGS_SUS_PATH=33`, `SUS_MOUNT=34`, `SUS_KSTAT=35`, `OPEN_REDIRECT=36`, `SUS_MAP=39`. The checked ARM64 `arch/arm64/include/asm/thread_info.h` (blob `848739c15de8274e098af57dae60bda1423a1509`) explicitly defines TIF bits through 28 and shows **no direct 33–35 collision in that one file**. A complete vendor/config/architecture flag ownership audit (including `address_space.flags`) **has not been completed**; do not declare these bits safe or enable them.
+
+**Fail-closed integration order:** (1) retain immutable pin and source inventory; (2) review all mandatory 24-path feature and VFS/SELinux dependencies; (3) verify `CONFIG_KSU=y`, `CONFIG_KSU_SUSFS=y`, exact object/header wiring and one sole provider without mixing vanilla KSUN/BakaSU; (4) separately prove authenticated `su` session selection, success-only post-exec FD ownership and unwind/cleanup; (5) keep ABI/KMI/runtime checks pending until explicitly authorized. `scripts/rothko_susfs_provider_gate.py` **must keep `integration_ready: false`**. No source patch, compile or GitHub Actions run was made for this inventory.
 
 ## Ordered implementation slices
 1. **Provenance and exact BSP base:** independently verify pinned commits/tree and actual Rothko BSP source revision; never silently follow upstream HEAD.
@@ -48,7 +68,7 @@ The public MiCode kernel index identifies `bsp-rothko-u-oss` with Redmi K70 Ultr
 
 **Gate PATCH-01:** for each upstream rejected hunk, capture both its original upstream function and its Rothko function counterpart before authoring a change. A passing textual apply check is not sufficient for VFS, VMA, exec, or privilege behavior.
 
-**Evidence state:** source identity and complete upstream header manifest still need exact-tree verification; neither is claimed as passed here.
+**Evidence state:** the exact upstream core/header **file and blob inventory is now verified above**. Vendor flag ownership, required adaptations, generated Kconfig/object/linkage, device identity and ABI/KMI are **not passed**.
 
 
 ## Verified upstream header provenance — CI run 38324010643
