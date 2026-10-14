@@ -1,0 +1,40 @@
+name: Rothko KSUN SUSFS exec prehook (source-only)
+on:
+  push:
+    branches:
+      - feat/rothko-ksun-susfs-compat-audit
+    paths:
+      - .github/workflows/rothko-susfs-ksun-exec-prehook.yml
+      - patches/rothko-susfs-ksun-exec-prehook-candidate.patch
+      - tests/test_rothko_susfs_ksun_exec_prehook.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  prehook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Fetch pinned KSUN (no kernel build)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pin=3438d6aa431f96a23f9e625bec3d53ce1fb14161
+          git init -q "$RUNNER_TEMP/ksun"
+          git -C "$RUNNER_TEMP/ksun" remote add origin https://github.com/pershoot/KernelSU-Next.git
+          git -C "$RUNNER_TEMP/ksun" -c http.version=HTTP/1.1 fetch --quiet --depth=1 origin "$pin"
+          git -C "$RUNNER_TEMP/ksun" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/ksun" rev-parse HEAD)" = "$pin"
+      - name: Verify isolated pre-hook patch and negative contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 tests/test_rothko_susfs_ksun_exec_prehook.py "$GITHUB_WORKSPACE" "$RUNNER_TEMP/ksun"
+          {
+            echo "### Rothko fs/exec.c source-only consumer"
+            echo "Pinned BSP/KSUN prehook signature, apply/reverse, error cleanup, native/COMPAT."
+            echo "No kernel build, ABI/KMI, runtime, merge or flash authorization."
+          } >> "$GITHUB_STEP_SUMMARY"
