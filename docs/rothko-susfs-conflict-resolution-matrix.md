@@ -14,3 +14,14 @@ The mapper passed syntax/execution checks and verified the BSP checkout remained
 ## Next narrow deliverable
 
 Generate an **upstream-vs-BSP per-hunk comparison** for `mm/memory.c` and `fs/proc/task_mmu.c` at these exact commits, with expected symbols and dependencies listed. Author a candidate patch only when the corresponding semantics are understood and the patch can be checked in an isolated checkout. No source deletion or overwrite of existing successful KSUN work.
+
+## Existing integration candidates — scope correction (2026-10-14)
+
+The original per-hunk comparison remains a provenance gate, **not** a request to recreate patches: existing candidates are `patches/rothko-susfs-memory-integrated-candidate.patch` and `patches/rothko-susfs-task-mmu-integrated-candidate.patch`. Neither is approved for build or runtime. Reuse these exact artifacts and do not duplicate their implementation.
+
+- `mm/memory.c`: candidate checks `vma_lookup(mm, addr)` before `get_user_pages_remote()`. Verify mmap-lock lifetime, address progression and whether a missing/changed VMA can bypass the intended guard; confirm `susfs_def.h` and Kconfig dependencies.
+- `fs/proc/task_mmu.c`: candidate covers `show_map_vma`, smaps, rollup and pagemap. The pagemap masking block derives `covered_end = start_vaddr + ((unsigned long)pm.pos << PAGE_SHIFT)` and indexes `pm.buffer` by `(mask_start - start_vaddr) >> PAGE_SHIFT`. **Open gate:** prove the unit and maximum of `pm.pos`, checked addition/shift bounds, alignment, buffer capacity, gaps between VMAs, and preservation of output entry count on the pinned BSP. The current source inspection alone does not establish these invariants.
+- For both files, run the existing `scripts/rothko_susfs_hunk_compare.py` against the exact pinned official patch and pristine BSP first; treat nonunique/absent matches as semantic-port blockers, not permission to force a patch.
+- Acceptance requires targeted isolated source-level evidence and negative boundary cases. No duplicate G2/G5 audit, no CI rerun without a specific unanswered gate, and no promotion of these candidates until dependencies and ownership are proven.
+
+**Disposition:** candidate discovery complete; SUSFS memory/pagemap semantic verification remains OPEN. PR #9 Draft / BUILD HOLD unchanged.
