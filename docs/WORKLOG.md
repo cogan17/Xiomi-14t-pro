@@ -570,3 +570,31 @@ bukan menghapus jejak kejadian.
 - **Pengaman:** SHA harus berbentuk 40 digit heksadesimal, commit terpin harus tersedia, dan pemeriksaan `setup.sh`, `Kconfig`, `Makefile` tetap fail-closed. Tidak ada eksekusi setup, integrasi kernel, maupun perubahan KSU/Mama.
 - **Bukti:** PR #13 https://github.com/cogan17/Xiomi-14t-pro/pull/13 ; commit awal `b1fdb31508eebd28144c501e5ad36cb395085fc5`.
 - **Batas:** hasil kedua matrix audit dan Documentation Guard harus diverifikasi setelah commit ini; perubahan upstream belum dinilai kompatibel, dan tidak ada izin build/merge kernel atau flashing.
+
+---
+
+## 2026-10-16 — Builder kernel rothko: GKI 6.1 + acuan BSP Xiaomi (D-017)
+
+- **Tujuan (owner):** kernel khusus rothko di repo ini dengan root KSUN & BakaSU, SUSFS, BBG, LTO, BBRv3 (`bbr`/`bbr3`), NoMount, kernel 6.1 dikunci, sublevel bisa dipilih, Build Revision, Build Time. Prinsipnya "kompatibel dulu, flash belakangan".
+- **Sebelumnya:** jalur BSP `6.1.57` (PR #8/#9) tertahan di audit source-only. Versi itu lebih tua dari kernel stock HP (`6.1.138-android14-11`), sublevel-nya tetap, dan root + SUSFS belum pernah terkompilasi. Sementara itu kernel GKI Cogan 6.1.177 (KSUN + SUSFS dan BakaSU + SUSFS) sudah boot di rothko.
+- **Tindakan:**
+  - workflow baru `Cogan Rothko Kernel Builder (GKI 6.1 + BSP check)`, yang diletakkan di branch default (D-018);
+  - `rothko/engine.lock` = cogan17/Cogan `22c90da` (squash merge cogan17/Cogan#84; mesin `build.sh`, `TARGET_DEVICE=rothko`);
+  - BSP repo ini di-*checkout* sparse sebagai `ROTHKO_BSP_SRC`;
+  - dokumen [ROTHKO_GKI_BUILD.md](ROTHKO_GKI_BUILD.md).
+- **Gate kompatibilitas setiap build:**
+  - KMI generation 11;
+  - semua simbol `abi_gki_aarch64` / `_mtk` / `_xiaomi` (versi GKID **dan** versi BSP) diekspor;
+  - *force-load* modul ada;
+  - `abi_gki_protected_exports_*` hilang;
+  - opsi `=y` di `gki_defconfig` BSP aktif (3 pengecualian ditinjau).
+
+  Untuk sublevel ≠ 177: paritas GKID.
+- **Bukti lokal (container sesi; `docs/validation/ksun-susfs-6.1-sublevels.json` di Cogan):**
+  - semua simbol BSP ada di daftar GKID (MTK 3353 ⊂ 3705, Xiaomi 308 ⊂ 477);
+  - KSUN + SUSFS 6.1.167 + paritas GKID, Full LTO: 0 error, 0 undefined, gate KMI + acuan BSP lolos;
+  - kalibrasi 6.1.177 (kernel yang boot di HP) lolos gate yang sama;
+  - CRC berbeda 167 (561) ⊂ 177 (568);
+  - validasi form diuji lokal: 4 input sah diterima, 8 input salah ditolak.
+- **Tidak dilakukan:** flash, run workflow build (owner), perubahan `bsp-rothko-u-oss`.
+- **Berikutnya:** owner menjalankan builder ini (mis. `KSUN + SUSFS & BakaSU + SUSFS`, sublevel `lts`, revisi `r4`); ringkasan run harus `KMI …: OK; … BSP: …`. Uji HP hanya setelah itu.
