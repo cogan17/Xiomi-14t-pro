@@ -1,0 +1,350 @@
+name: Cogan Rothko Kernel Builder (GKI 6.1 + BSP check)
+
+# Builds the Xiaomi 14T Pro (rothko) kernel: GKI 6.1 (GKID) as the base, the Xiaomi BSP of
+# this repository as the compatibility reference (KMI symbol lists, KMI generation,
+# gki_defconfig, vendor hooks). The build engine is cogan17/Cogan's build.sh at the commit
+# pinned in rothko/engine.lock (TARGET_DEVICE=rothko): one place for patches and pins.
+#
+# This file lives on the default branch only because GitHub shows "Run workflow" for
+# workflow_dispatch workflows of the default branch. The engine lock and the BSP
+# reference are read from dev/rothko (D-018): update them there through pull requests.
+# Owner-only (kernel compilation). Compatible first, flash later.
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      ROOT_MANAGER:
+        description: "Root Manager"
+        type: choice
+        default: "KernelSU Next + SUSFS"
+        options:
+          - "KernelSU Next + SUSFS"
+          - "BakaSU + SUSFS"
+          - "KSUN + SUSFS & BakaSU + SUSFS"
+
+      LTO:
+        description: "LTO Package (KernelSU Next + SUSFS: fullLTO)"
+        type: choice
+        default: "fullLTO + NoMount + Clean LTO"
+        options:
+          - "noneLTO + NoMount + Clean LTO"
+          - "thinLTO + NoMount + Clean LTO"
+          - "fullLTO + NoMount + Clean LTO"
+
+      KERNEL_VERSION:
+        description: "Kernel Version (dikunci 6.1)"
+        type: choice
+        default: "6.1"
+        options:
+          - "6.1"
+
+      BUILD_REVISION:
+        description: "Build Revision: r + angka, mis. r4 (kosong = nomor run)"
+        type: string
+        default: ""
+
+      KERNEL_SUBLEVEL:
+        description: "Kernel Sublevel: lts = terbaru, atau angka 167–177 (bukan 6.1.177)"
+        type: string
+        default: "lts"
+
+      BUILD_TIME:
+        description: "Build Time: N = waktu build, atau mis. Thu Jan 1 00:00:00 UTC 2026"
+        type: string
+        default: "N"
+
+      NETWORKING:
+        description: "Networking (BBRv3 bbr/bbr3 + paket jaringan; KSUN + SUSFS selalu aktif)"
+        type: boolean
+        default: true
+
+      BBG:
+        description: "BBG (Baseband Guard; wajib untuk KernelSU Next + SUSFS)"
+        type: boolean
+        default: true
+
+env:
+  # Branch that holds rothko/engine.lock and the Xiaomi BSP reference (D-002, D-018).
+  ROTHKO_BRANCH: dev/rothko
+
+concurrency:
+  group: rothko-gki-builder-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Validate inputs and pick the engine
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      engine: ${{ steps.engine.outputs.commit }}
+    steps:
+      - name: Checkout the engine lock (dev/rothko)
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ env.ROTHKO_BRANCH }}
+          fetch-depth: 1
+          sparse-checkout: |
+            rothko
+          sparse-checkout-cone-mode: true
+
+      - name: Read rothko/engine.lock
+        id: engine
+        run: |
+          set -euo pipefail
+          repo="$(sed -n 's/^COGAN_REPO=//p' rothko/engine.lock)"
+          commit="$(sed -n 's/^COGAN_COMMIT=//p' rothko/engine.lock)"
+          [[ "$repo" == "cogan17/Cogan" && "$commit" =~ ^[0-9a-f]{40}$ ]] \
+            || { echo "::error::rothko/engine.lock needs COGAN_REPO=cogan17/Cogan and a 40-hex COGAN_COMMIT"; exit 1; }
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "Engine: $repo@$commit"
+
+      - name: Checkout the Cogan build engine
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: cogan17/Cogan
+          ref: ${{ steps.engine.outputs.commit }}
+          path: engine
+          fetch-depth: 1
+
+      - name: Validate sublevel, build time and root choice
+        env:
+          ROOT_MANAGER_INPUT: ${{ inputs.ROOT_MANAGER }}
+          KERNEL_SUBLEVEL_INPUT: ${{ inputs.KERNEL_SUBLEVEL }}
+          BUILD_TIME_INPUT: ${{ inputs.BUILD_TIME }}
+          BUILD_REVISION_INPUT: ${{ inputs.BUILD_REVISION }}
+          LTO_INPUT: ${{ inputs.LTO }}
+          BBG_INPUT: ${{ inputs.BBG }}
+        working-directory: engine
+        run: |
+          set -euo pipefail
+          sublevel="${KERNEL_SUBLEVEL_INPUT:-lts}"
+          case "${sublevel,,}" in
+            lts|auto|"") ;;
+            *)
+              [[ "$sublevel" =~ ^[0-9]+$ ]] || { echo "::error::Sublevel: lts or a number such as 177 (not 6.1.177)"; exit 1; }
+              grep -q "^KERNEL_COMMIT_6_1_${sublevel}=" configs/upstream.lock \
+                || { echo "::error::Sublevel 6.1.${sublevel} is not pinned in the engine"; exit 1; }
+              (( sublevel >= 167 )) || { echo "::error::SUSFS needs kernel 6.1.167 or newer"; exit 1; } ;;
+          esac
+          if [[ "$ROOT_MANAGER_INPUT" != "BakaSU + SUSFS" ]]; then
+            [[ "${LTO_INPUT}" == fullLTO* && "${BBG_INPUT}" == "true" ]] \
+              || { echo "::error::KernelSU Next + SUSFS needs a fullLTO package and BBG enabled"; exit 1; }
+            python3 scripts/ksun_susfs_sublevel.py resolve "$sublevel" \
+              || { echo "::error::KernelSU Next + SUSFS is not verified for sublevel $sublevel"; exit 1; }
+          fi
+          if [[ -n "$BUILD_REVISION_INPUT" && ! "$BUILD_REVISION_INPUT" =~ ^r[0-9]+$ ]]; then
+            echo "::error::Build Revision: r followed by digits (e.g. r4)"; exit 1
+          fi
+          if [[ "$BUILD_TIME_INPUT" != "N" ]]; then
+            [[ "$BUILD_TIME_INPUT" =~ ^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[[:space:]](Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[[:space:]][0-9]{1,2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}[[:space:]]UTC[[:space:]][0-9]{4}$ ]] \
+              || { echo "::error::Invalid BUILD_TIME format"; exit 1; }
+            [[ "$(LC_ALL=C date -u -d "$BUILD_TIME_INPUT" +%a)" == "${BUILD_TIME_INPUT%% *}" ]] \
+              || { echo "::error::BUILD_TIME weekday mismatch"; exit 1; }
+          fi
+
+      - name: Build matrix
+        id: matrix
+        env:
+          KERNEL_VERSION: "6.1"
+          ROOT_MANAGER: ${{ inputs.ROOT_MANAGER }}
+        working-directory: engine
+        run: python3 py/generate-matrix.py >> "$GITHUB_OUTPUT"
+
+  build:
+    name: build (${{ matrix.name }})
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    steps:
+      - name: Checkout the Xiaomi BSP reference from dev/rothko (symbol lists, gki_defconfig, KMI generation, vendor hooks)
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ env.ROTHKO_BRANCH }}
+          path: bsp
+          fetch-depth: 1
+          sparse-checkout: |
+            android
+            arch/arm64/configs
+            build.config.common
+            include/trace/hooks
+          sparse-checkout-cone-mode: false
+
+      - name: Check the BSP reference is complete
+        run: |
+          set -euo pipefail
+          for path in bsp/build.config.common bsp/arch/arm64/configs/gki_defconfig \
+              bsp/android/abi_gki_aarch64_mtk bsp/android/abi_gki_aarch64_xiaomi; do
+            [ -s "$path" ] || { echo "::error::BSP reference missing $path"; exit 1; }
+          done
+          hooks=$(cat bsp/include/trace/hooks/*.h | grep -cE 'DECLARE_(RESTRICTED_)?HOOK\(' || true)
+          [ "$hooks" -gt 0 ] || { echo "::error::BSP reference has no vendor hooks"; exit 1; }
+          echo "BSP reference: $(grep KMI_GENERATION bsp/build.config.common), $hooks vendor hook declarations"
+
+      - name: Checkout the Cogan build engine
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: cogan17/Cogan
+          ref: ${{ needs.prepare.outputs.engine }}
+          path: engine
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdw-dev ccache gh bc bison flex libssl-dev libelf-dev dwarves cpio zstd
+
+      - name: Restore ccache from Cogan (read-only)
+        uses: ./engine/.github/actions/ccache-restore
+        with:
+          repo: cogan17/Cogan
+          token: ${{ github.token }}
+          variant: ${{ matrix.name }}
+
+      - name: Run the Cogan build engine (TARGET_DEVICE=rothko)
+        id: kernel-build
+        working-directory: engine
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KERNEL_REPO: https://github.com/ahmed-alnassif/GKI-Duchamp-6.1
+          KERNEL_VERSION: ${{ matrix.kernel_version }}
+          KSU: ${{ matrix.KSU }}
+          KSU_COMPAT: ${{ matrix.KSU_COMPAT }}
+          KSU_SUSFS: ${{ matrix.KSU_SUSFS }}
+          C_LTO: ${{ matrix.C_LTO }}
+          No_DS: ${{ matrix.No_DS }}
+          TODO: kernel
+          TEST: no
+          LTO: ${{ startsWith(inputs.LTO, 'noneLTO') && 'noneLTO' || startsWith(inputs.LTO, 'thinLTO') && 'thinLTO' || 'fullLTO' }}
+          CLEAN_LTO_CACHE: 'true'
+          NETWORKING: ${{ inputs.NETWORKING }}
+          BBG: ${{ inputs.BBG }}
+          DROIDSPACES: 'false'
+          NM: 'true'
+          KERNEL_SUBLEVEL: ${{ inputs.KERNEL_SUBLEVEL }}
+          BUILD_TIME: ${{ inputs.BUILD_TIME }}
+          BUILD_NAME: ${{ matrix.name }}
+          RUN_NUM: -r${{ github.run_number }}
+          BUILD_REVISION: ${{ inputs.BUILD_REVISION }}
+          CUSTOM_VERSION_NAME: Cogan
+          TARGET_DEVICE: rothko
+          ROTHKO_BSP_SRC: ${{ github.workspace }}/bsp
+        run: |
+          export GIT_CLONE_PROTECTION_ACTIVE=false
+          chmod +x *.sh py/*.py
+          ./build.sh
+
+      - name: Build summary
+        if: always()
+        env:
+          BUILD_OUTCOME: ${{ steps.kernel-build.outcome }}
+          ROOT_MANAGER_INPUT: ${{ inputs.ROOT_MANAGER }}
+          ENGINE: ${{ needs.prepare.outputs.engine }}
+        run: |
+          {
+            echo "## Cogan Rothko — Build Summary"
+            echo ""
+            echo "- Perangkat / device: Xiaomi 14T Pro (rothko)"
+            echo "- Root manager: ${ROOT_MANAGER_INPUT} (${{ matrix.name }})"
+            echo "- Kernel: ${LINUX_VERSION:-belum terbaca / not read}"
+            echo "- Mesin / engine: cogan17/Cogan@${ENGINE:0:12}"
+            echo "- Fitur / features: ${KERNEL_FEATURES:-tidak terbaca / unreadable}"
+            echo "- KMI: ${KMI_COMPAT:-belum dicek / not checked}"
+            echo "- Hasil / result: ${BUILD_OUTCOME}"
+            echo ""
+            if [ "${BUILD_OUTCOME}" != "success" ]; then
+              echo "**Build gagal / failed.** Jangan flash. Periksa error pertama di *Run the Cogan build engine*."
+            else
+              echo "**Build berhasil dan gate KMI lolos.** Ini bukti kompatibilitas offline, bukan uji HP: flash hanya setelah owner memutuskan (kompatibel dulu, flash belakangan)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save environment
+        if: always()
+        working-directory: engine
+        run: |
+          {
+            echo "RELEASE_REPO=${RELEASE_REPO:-}"
+            echo "KERNEL_NAME=${KERNEL_NAME:-}"
+            echo "RELEASE_NAME=${RELEASE_NAME:-}"
+            echo "RELEASE=${RELEASE:-}"
+            echo "LINUX_VERSION=${LINUX_VERSION:-}"
+            echo "COMPILER_STRING=${COMPILER_STRING:-}"
+            echo "SUSFS_VERSION=${SUSFS_VERSION:-}"
+            echo "KSU=${{ matrix.KSU }}"
+            echo "KSU_SUSFS=${{ matrix.KSU_SUSFS }}"
+            echo "ROOT_MANAGER_REPO=${ROOT_MANAGER_REPO:-}"
+            echo "ROOT_MANAGER_REF=${ROOT_MANAGER_REF:-}"
+            echo "ROOT_MANAGER_SHA=${ROOT_MANAGER_SHA:-}"
+            echo "SUSFS_SHA=${SUSFS_SHA:-}"
+            echo "KERNEL_FEATURES=${KERNEL_FEATURES:-}"
+            echo "KMI_COMPAT=${KMI_COMPAT:-}"
+            echo "KERNEL_SOURCE_REPO=${KERNEL_SOURCE_REPO:-}"
+            echo "KERNEL_SOURCE_BRANCH=${KERNEL_SOURCE_BRANCH:-}"
+            echo "TARGET_DEVICE=${TARGET_DEVICE:-}"
+            echo "ENGINE=cogan17/Cogan@${{ needs.prepare.outputs.engine }}"
+            echo "BUILD_VARIANT=${{ matrix.name }}"
+          } > "build-env-${{ matrix.name }}.txt"
+
+      - name: Upload environment and build log
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: build-env-${{ matrix.name }}-${{ github.run_number }}
+          path: |
+            engine/build-env-${{ matrix.name }}.txt
+            engine/artifacts/build.log
+            engine/artifacts/kmi-compat-rothko.json
+          retention-days: 7
+
+      - name: Prepare downloads
+        id: downloads
+        if: success()
+        working-directory: engine
+        env:
+          KSU_INPUT: ${{ matrix.KSU }}
+          KSU_SUSFS_INPUT: ${{ matrix.KSU_SUSFS }}
+          COGAN_MIRROR_REPO: cogan17/Cogan
+          NAME_SUFFIX: ${{ strategy.job-total > 1 && format('_{0}', matrix.name) || '' }}
+        run: |
+          python3 scripts/prepare_downloads.py --ksu "$KSU_INPUT" --susfs "$KSU_SUSFS_INPUT" \
+            --variant "$VARIANT" --release "$RELEASE" --linux-version "$LINUX_VERSION" \
+            --artifacts artifacts --out downloads --suffix "$NAME_SUFFIX" --name "${KERNEL_LABEL:-Cogan-Rothko}" \
+            --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload 1 - kernel
+        if: always() && steps.downloads.outputs.kernel != ''
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          path: engine/${{ steps.downloads.outputs.kernel }}
+          archive: false
+          retention-days: 7
+
+      - name: Upload 2 - root manager
+        if: always() && steps.downloads.outputs.manager != ''
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          path: engine/${{ steps.downloads.outputs.manager }}
+          archive: false
+          retention-days: 7
+
+      - name: Upload 3 - spoofed root manager
+        if: always() && steps.downloads.outputs.spoofed != ''
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          path: engine/${{ steps.downloads.outputs.spoofed }}
+          archive: false
+          retention-days: 7
+
+      - name: Upload 4 - NoMount module
+        if: always() && steps.downloads.outputs.nomount != ''
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          path: engine/${{ steps.downloads.outputs.nomount }}
+          archive: false
+          retention-days: 7
