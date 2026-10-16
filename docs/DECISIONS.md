@@ -17,6 +17,7 @@ yang merupakan perintah untuk flashing.
 | D-009 | 2026-10-12 | Audit **read-only**, validasi module vermagic/CRC dan kompatibilitas root/SUSFS/NoMount sebelum build perangkat/flash. | Masih menunggu bukti; tidak menonaktifkan `CONFIG_MODVERSIONS`. |
 | D-010 | 2026-10-12 | Setiap pekerjaan terdahulu dan selanjutnya perlu dokumentasi yang dapat ditelusuri. | Diterapkan dengan indeks, log, status, dan template kontribusi. |
 | D-016 | 2026-10-14 | **KSU/Mama diarsipkan hanya di dalam repository**. Root aktif **KSUN + BakaSU**, tanpa All. | Arsip internal dan snapshot Git disimpan untuk fork. CI/fitur root KSU/Mama dinonaktifkan. BUILD HOLD kernel tetap berlaku. |
+| D-017 | 2026-10-16 | **Kernel rothko dibangun di repo ini dari GKI 6.1 (GKID) dengan BSP Xiaomi sebagai acuan kompatibilitas** (pilihan owner: "kalau bisa dikombinasikan"). Mesin build = `build.sh` cogan17/Cogan pada commit yang dipin (`rothko/engine.lock`). | Diterapkan (CI). BSP `6.1.57` < stock `6.1.138` dan root+SUSFS belum pernah terkompilasi di BSP; GKI 6.1.177 sudah boot di rothko. BSP tetap wajib: daftar simbol, generasi KMI dan `gki_defconfig`-nya dicek setiap build. Flash tetap keputusan owner. |
 
 ### D-011 — Tetap tahan flashing setelah identifikasi init_boot Degas
 
