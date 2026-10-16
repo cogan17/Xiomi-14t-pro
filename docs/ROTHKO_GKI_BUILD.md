@@ -70,7 +70,7 @@ HP GKI seperti rothko memisahkan kernel dan driver: partisi `boot` hanya berisi 
 | Sublevel | Tetap | Bisa dipilih |
 | Root + SUSFS | Belum pernah terkompilasi (kompilasi PR #8 gagal) | KSUN + SUSFS dan BakaSU + SUSFS **sudah boot di rothko** (uji HP owner 2026-10-16) |
 
-Karena itu kernel dibangun dari GKI. BSP tetap dipakai sebagai acuan wajib di setiap build: gate KMI memeriksa bahwa kernel GKI mengekspor **semua** simbol dari daftar MTK/Xiaomi milik BSP (cek 2026-10-16: MTK 3353/3353, Xiaomi 308/308), generasi KMI-nya sama (11), dan semua opsi `=y` di `gki_defconfig` BSP juga aktif. Ada tiga pengecualian yang sudah ditinjau: `DEBUG_STACK_USAGE`, `MEDIA_CEC_RC`, `UAPI_HEADER_TEST`.
+Karena itu kernel dibangun dari GKI. BSP tetap dipakai sebagai acuan wajib di setiap build: gate KMI memeriksa bahwa kernel GKI mengekspor **semua** simbol dari daftar MTK/Xiaomi milik BSP (cek 2026-10-16: MTK 3353/3353, Xiaomi 308/308), generasi KMI-nya sama (11), dan semua opsi `=y` di `gki_defconfig` BSP juga aktif. Ada empat pengecualian yang sudah ditinjau: `DEBUG_STACK_USAGE`, `MEDIA_CEC_RC`, `UAPI_HEADER_TEST` dan `MODULE_SCMVERSION`. Opsi terakhir hanya atribut modinfo/sysfs `scmversion`, dan mati karena mesin mematikan `LOCALVERSION_AUTO` demi nama versi Cogan; temuan run pertama 38934173981.
 
 ---
 
