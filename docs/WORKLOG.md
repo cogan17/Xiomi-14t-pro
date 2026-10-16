@@ -620,6 +620,6 @@ bukan menghapus jejak kejadian.
 - **Sumber kernel bawaan rothko (D-020):** mesin Cogan bisa membangun dari sumber kernel HP sendiri (ACK resmi 6.1.138). Bukti lokal: Image KSUN + SUSFS Full LTO (`92d892d4…`) lolos gate tiga acuan. CRC yang berbeda terhadap ABI stok (538) adalah himpunan yang sama dengan GKID 6.1.177.
 - **Tidak dilakukan:** flash, perubahan `bsp-rothko-u-oss`.
 - **Berikutnya:**
-  - naikkan `rothko/engine.lock` setelah cogan17/Cogan#87 ter-merge, lalu owner menjalankan ulang builder (GKID);
+  - `rothko/engine.lock` = cogan17/Cogan `d9cbc9f` (squash cogan17/Cogan#87); owner menjalankan ulang builder (GKID);
   - input *Sumber kernel* di workflow menyusul setelah compile BakaSU + SUSFS dari sumber stok lolos.
 
