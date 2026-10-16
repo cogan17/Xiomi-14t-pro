@@ -54,6 +54,23 @@ Karena itu kernel dibangun dari GKI. BSP tetap dipakai sebagai acuan wajib di se
 
 ---
 
+## Fitur yang digabung (GKI + BSP)
+
+| Dari | Fitur | Cara masuk ke HP |
+|---|---|---|
+| Cogan (GKI 6.1) | KernelSU Next / BakaSU, SUSFS, NoMount, Baseband Guard, BBRv3 (`bbr`/`bbr3`) + paket jaringan, Full/Thin LTO, patch performa GKID | Di dalam `Image` (partisi `boot`) |
+| Xiaomi / MediaTek | Semua driver dan fitur HP: kamera, layar, modem, audio, termal, sensor, charging, dll (268 modul `vendor_dlkm` + 60 `system_dlkm`) | Tetap modul stock di HP; kernel Cogan wajib cocok KMI-nya (gate di bawah) |
+| BSP Xiaomi (repo ini) | Daftar simbol MTK/Xiaomi, generasi KMI, `gki_defconfig`, hook vendor | Dicek otomatis setiap build sebagai acuan |
+
+Hasil penelusuran isi BSP terhadap GKID 6.1.177 (2026-10-16):
+- **Tidak ada fitur Xiaomi/MediaTek di inti kernel BSP yang hilang dan dibutuhkan.** File yang hanya ada di BSP adalah kode lama yang sudah dihapus upstream: staging `rtl8712`, `a2mp`, qdisc `atm`/`cbq`/`dsmark`, berkas `OWNERS`.
+- **8 hook vendor** hanya ada di BSP (mis. `android_vh_allow_domain_state`, yang di ACK sudah di-*revert* Google). Tidak satu pun dipakai modul vendor, karena tidak ada di daftar simbol mana pun.
+- Trace event `mtk_fuse` di `fs/fuse` hanya instrumentasi debug, juga sudah dihapus di ACK yang lebih baru, dan tidak dipakai modul vendor.
+
+Gate KMI memeriksa ketiga hal ini setiap build. Bila kelak ada hook BSP yang **dipakai** modul vendor tetapi tidak ada di kernel GKI, build berhenti.
+
+---
+
 ## Kompatibilitas dengan modul vendor rothko
 
 Driver MediaTek/Xiaomi di HP adalah modul `vendor_dlkm` (versi stock `6.1.138-android14-11`). Kernel Cogan hanya layak dicoba di HP bila modul itu tetap bisa dimuat. Prinsipnya **kompatibel dulu, flash belakangan**.
