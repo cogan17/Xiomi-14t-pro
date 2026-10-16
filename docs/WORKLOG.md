@@ -598,3 +598,14 @@ bukan menghapus jejak kejadian.
   - validasi form diuji lokal: 4 input sah diterima, 8 input salah ditolak.
 - **Tidak dilakukan:** flash, run workflow build (owner), perubahan `bsp-rothko-u-oss`.
 - **Berikutnya:** owner menjalankan builder ini (mis. `KSUN + SUSFS & BakaSU + SUSFS`, sublevel `lts`, revisi `r4`); ringkasan run harus `KMI …: OK; … BSP: …`. Uji HP hanya setelah itu.
+
+## 2026-10-16 — Acuan kernel bawaan rothko di gate KMI (D-019)
+
+- **Tujuan (owner):** acuan kernel rothko = kernel bawaan rothko, GKID dan GKI 2.0 (6.1); tidak terlalu bergantung pada GKID (kredit GKID tetap).
+- **Temuan:** kernel bawaan `6.1.138-android14-11-g6ab8c9a86a33-ab14396278` = ACK resmi tag `android14-6.1-2025-06_r11` (commit `6ab8c9a8`, publik di `aosp-mirror/kernel_common`). Satu-satunya opsi `=y` bawaan yang tidak ada di GKID adalah `MEMFD_ASHMEM_SHIM`, dan opsi itu sudah dicabut Google dari android14-6.1 (ACK `8e481acd`, hanya untuk 6.12+). Karena itu tidak dipasang ulang.
+- **Tindakan:**
+  - `rothko/engine.lock` = cogan17/Cogan `a406e33` (cogan17/Cogan#86). Mesin mengambil sumber ACK kernel bawaan (sparse, commit dipin) sebelum compile, dan gate KMI memeriksanya seperti BSP: generasi KMI dan versi, simbol MTK/Xiaomi versi stok, `gki_defconfig` stok, hook vendor khusus stok, serta CRC terhadap ABI beku stok;
+  - dokumen [ROTHKO_GKI_BUILD.md](ROTHKO_GKI_BUILD.md) (bagian *Acuan kernel bawaan rothko*) dan D-019.
+- **Bukti lokal (container sesi; `docs/validation/ksun-susfs-6.1-sublevels.json` → `stock_kernel_comparison` di Cogan):** 6.1.167 + paritas dan 6.1.177 lolos ketiga acuan. Simbol stok MTK 3596/3596 dan Xiaomi 455/455; 6 hook khusus stok tidak dipakai; CRC berbeda 538, himpunannya sama persis di 167 dan 177 (kernel yang sudah boot di HP).
+- **Tidak dilakukan:** flash, run workflow build (owner), perubahan workflow di branch default.
+- **Berikutnya:** owner menjalankan builder; ringkasan run harus `KMI …: OK; … BSP: …; stock 6.1.138: …`. Uji HP hanya setelah itu. Cogan W52: ACK resmi sebagai sumber kernel pilihan.
