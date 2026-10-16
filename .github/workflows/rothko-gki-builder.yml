@@ -1,9 +1,11 @@
 name: Cogan Rothko Kernel Builder (GKI 6.1 + BSP check)
 
-# Builds the Xiaomi 14T Pro (rothko) kernel: GKI 6.1 (GKID) as the base, the Xiaomi BSP of
-# this repository as the compatibility reference (KMI symbol lists, KMI generation,
-# gki_defconfig, vendor hooks). The build engine is cogan17/Cogan's build.sh at the commit
-# pinned in rothko/engine.lock (TARGET_DEVICE=rothko): one place for patches and pins.
+# Builds the Xiaomi 14T Pro (rothko) kernel from GKI 6.1 (GKID, sublevels 167-177) or from
+# the rothko stock kernel source (official ACK android14-6.1-2025-06_r11, 6.1.138; D-019).
+# Every build is held against the stock kernel and the Xiaomi BSP of this repository (KMI
+# symbol lists, KMI generation, gki_defconfig, vendor hooks). The build engine is
+# cogan17/Cogan's build.sh at the commit pinned in rothko/engine.lock (TARGET_DEVICE=rothko):
+# one place for patches and pins.
 #
 # This file lives on the default branch only because GitHub shows "Run workflow" for
 # workflow_dispatch workflows of the default branch. The engine lock and the BSP
@@ -41,13 +43,21 @@ on:
         options:
           - "6.1"
 
+      KERNEL_SOURCE:
+        description: "Sumber kernel: GKID 6.1 (sublevel 167–177) atau kernel bawaan rothko (ACK resmi 6.1.138)"
+        type: choice
+        default: "GKID 6.1 (Ahmed Al-Nassif)"
+        options:
+          - "GKID 6.1 (Ahmed Al-Nassif)"
+          - "Kernel bawaan rothko (ACK resmi 6.1.138)"
+
       BUILD_REVISION:
         description: "Build Revision: r + angka, mis. r4 (kosong = nomor run)"
         type: string
         default: ""
 
       KERNEL_SUBLEVEL:
-        description: "Kernel Sublevel: lts = terbaru, atau angka 167–177 (bukan 6.1.177)"
+        description: "Kernel Sublevel: lts = terbaru (kernel bawaan: 138), atau angka 167–177 untuk GKID (bukan 6.1.177)"
         type: string
         default: "lts"
 
@@ -113,6 +123,7 @@ jobs:
       - name: Validate sublevel, build time and root choice
         env:
           ROOT_MANAGER_INPUT: ${{ inputs.ROOT_MANAGER }}
+          KERNEL_SOURCE_INPUT: ${{ inputs.KERNEL_SOURCE }}
           KERNEL_SUBLEVEL_INPUT: ${{ inputs.KERNEL_SUBLEVEL }}
           BUILD_TIME_INPUT: ${{ inputs.BUILD_TIME }}
           BUILD_REVISION_INPUT: ${{ inputs.BUILD_REVISION }}
@@ -122,18 +133,30 @@ jobs:
         run: |
           set -euo pipefail
           sublevel="${KERNEL_SUBLEVEL_INPUT:-lts}"
-          case "${sublevel,,}" in
-            lts|auto|"") ;;
-            *)
-              [[ "$sublevel" =~ ^[0-9]+$ ]] || { echo "::error::Sublevel: lts or a number such as 177 (not 6.1.177)"; exit 1; }
-              grep -q "^KERNEL_COMMIT_6_1_${sublevel}=" configs/upstream.lock \
-                || { echo "::error::Sublevel 6.1.${sublevel} is not pinned in the engine"; exit 1; }
-              (( sublevel >= 167 )) || { echo "::error::SUSFS needs kernel 6.1.167 or newer"; exit 1; } ;;
-          esac
+          stock=()
+          if [[ "$KERNEL_SOURCE_INPUT" == "Kernel bawaan rothko"* ]]; then
+            # An older engine would silently build GKID instead: require its stock source support.
+            grep -q 'KERNEL_SOURCE="${KERNEL_SOURCE:-gkid}"' build.sh \
+              || { echo "::error::The pinned engine has no stock kernel source; raise rothko/engine.lock"; exit 1; }
+            case "${sublevel,,}" in
+              lts|auto|""|138) ;;
+              *) echo "::error::Kernel bawaan rothko is 6.1.138: sublevel lts or 138"; exit 1 ;;
+            esac
+            stock=(--stock rothko)
+          else
+            case "${sublevel,,}" in
+              lts|auto|"") ;;
+              *)
+                [[ "$sublevel" =~ ^[0-9]+$ ]] || { echo "::error::Sublevel: lts or a number such as 177 (not 6.1.177)"; exit 1; }
+                grep -q "^KERNEL_COMMIT_6_1_${sublevel}=" configs/upstream.lock \
+                  || { echo "::error::Sublevel 6.1.${sublevel} is not pinned in the engine"; exit 1; }
+                (( sublevel >= 167 )) || { echo "::error::SUSFS needs kernel 6.1.167 or newer"; exit 1; } ;;
+            esac
+          fi
           if [[ "$ROOT_MANAGER_INPUT" != "BakaSU + SUSFS" ]]; then
             [[ "${LTO_INPUT}" == fullLTO* && "${BBG_INPUT}" == "true" ]] \
               || { echo "::error::KernelSU Next + SUSFS needs a fullLTO package and BBG enabled"; exit 1; }
-            python3 scripts/ksun_susfs_sublevel.py resolve "$sublevel" \
+            python3 scripts/ksun_susfs_sublevel.py resolve "$sublevel" "${stock[@]}" \
               || { echo "::error::KernelSU Next + SUSFS is not verified for sublevel $sublevel"; exit 1; }
           fi
           if [[ -n "$BUILD_REVISION_INPUT" && ! "$BUILD_REVISION_INPUT" =~ ^r[0-9]+$ ]]; then
@@ -233,6 +256,7 @@ jobs:
           BUILD_REVISION: ${{ inputs.BUILD_REVISION }}
           CUSTOM_VERSION_NAME: Cogan
           TARGET_DEVICE: rothko
+          KERNEL_SOURCE: ${{ startsWith(inputs.KERNEL_SOURCE, 'Kernel bawaan') && 'stock' || 'gkid' }}
           ROTHKO_BSP_SRC: ${{ github.workspace }}/bsp
         run: |
           export GIT_CLONE_PROTECTION_ACTIVE=false
@@ -251,6 +275,7 @@ jobs:
             echo ""
             echo "- Perangkat / device: Xiaomi 14T Pro (rothko)"
             echo "- Root manager: ${ROOT_MANAGER_INPUT} (${{ matrix.name }})"
+            echo "- Sumber kernel / kernel source: ${{ inputs.KERNEL_SOURCE }}"
             echo "- Kernel: ${LINUX_VERSION:-belum terbaca / not read}"
             echo "- Mesin / engine: cogan17/Cogan@${ENGINE:0:12}"
             echo "- Fitur / features: ${KERNEL_FEATURES:-tidak terbaca / unreadable}"
@@ -287,6 +312,7 @@ jobs:
             echo "KERNEL_SOURCE_REPO=${KERNEL_SOURCE_REPO:-}"
             echo "KERNEL_SOURCE_BRANCH=${KERNEL_SOURCE_BRANCH:-}"
             echo "TARGET_DEVICE=${TARGET_DEVICE:-}"
+            echo "KERNEL_SOURCE=${KERNEL_SOURCE:-}"
             echo "ENGINE=cogan17/Cogan@${{ needs.prepare.outputs.engine }}"
             echo "BUILD_VARIANT=${{ matrix.name }}"
           } > "build-env-${{ matrix.name }}.txt"
