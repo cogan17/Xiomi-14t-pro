@@ -609,3 +609,17 @@ bukan menghapus jejak kejadian.
 - **Bukti lokal (container sesi; `docs/validation/ksun-susfs-6.1-sublevels.json` → `stock_kernel_comparison` di Cogan):** 6.1.167 + paritas dan 6.1.177 lolos ketiga acuan. Simbol stok MTK 3596/3596 dan Xiaomi 455/455; 6 hook khusus stok tidak dipakai; CRC berbeda 538, himpunannya sama persis di 167 dan 177 (kernel yang sudah boot di HP).
 - **Tidak dilakukan:** flash, run workflow build (owner), perubahan workflow di branch default.
 - **Berikutnya:** owner menjalankan builder; ringkasan run harus `KMI …: OK; … BSP: …; stock 6.1.138: …`. Uji HP hanya setelah itu. Cogan W52: ACK resmi sebagai sumber kernel pilihan.
+
+## 2026-10-16 — Run builder pertama + sumber kernel bawaan rothko (D-020)
+
+- **Run owner** [38934173981](https://github.com/cogan17/Xiomi-14t-pro/actions/runs/38934173981) (KSUN + SUSFS, 6.1.177, mesin `22c90da`):
+  - kernel ter-compile;
+  - gate KMI menolak satu opsi, `CONFIG_MODULE_SCMVERSION` (=y di `gki_defconfig` BSP); semua cek simbol lolos (MTK 3705/3705, Xiaomi 638/638, BSP 3353/3353 + 308/308).
+  - Penyebab: opsi itu bergantung pada `LOCALVERSION_AUTO`, yang dimatikan mesin demi nama versi Cogan. Efeknya hanya atribut modinfo/sysfs `scmversion`; layout `struct module` tidak berubah, dan kernel r2/r3 yang boot di HP dibangun sama.
+  - Perbaikan: pengecualian yang ditinjau di mesin Cogan (cogan17/Cogan#87).
+- **Sumber kernel bawaan rothko (D-020):** mesin Cogan bisa membangun dari sumber kernel HP sendiri (ACK resmi 6.1.138). Bukti lokal: Image KSUN + SUSFS Full LTO (`92d892d4…`) lolos gate tiga acuan. CRC yang berbeda terhadap ABI stok (538) adalah himpunan yang sama dengan GKID 6.1.177.
+- **Tidak dilakukan:** flash, perubahan `bsp-rothko-u-oss`.
+- **Berikutnya:**
+  - `rothko/engine.lock` = cogan17/Cogan `d9cbc9f` (squash cogan17/Cogan#87); owner menjalankan ulang builder (GKID);
+  - input *Sumber kernel* di workflow menyusul setelah compile BakaSU + SUSFS dari sumber stok lolos.
+

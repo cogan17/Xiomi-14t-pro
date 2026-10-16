@@ -4,6 +4,6 @@
 # Raise COGAN_COMMIT only through a pull request to dev/rothko, after the new
 # Cogan dev commit passed its own checks; older builds stay reproducible.
 COGAN_REPO=cogan17/Cogan
-# cogan17/Cogan#86 squash merge on dev (2026-10-16): KMI gate also holds the build against
-# the rothko stock kernel (ACK android14-6.1-2025-06_r11, 6.1.138), fetched at its pinned commit.
-COGAN_COMMIT=a406e33a66f4820fbbb69d43b576463171142e19
+# cogan17/Cogan#87 squash merge on dev (2026-10-16): MODULE_SCMVERSION reviewed in the KMI gate
+# (fixes run 38934173981) and the rothko stock kernel source (KERNEL_SOURCE=stock).
+COGAN_COMMIT=d9cbc9f80de4a46b1ff42096de81aad1e3436c12
