@@ -1,6 +1,6 @@
 # Status proyek — Cogan Kernel Rothko
 
-> **Keputusan 2026-10-16 (D-017):** kernel rothko dibangun dari GKI 6.1 (GKID) dengan BSP Xiaomi repo ini sebagai acuan kompatibilitas otomatis; workflow **Cogan Rothko Kernel Builder (GKI 6.1 + BSP check)**. Lihat [ROTHKO_GKI_BUILD.md](ROTHKO_GKI_BUILD.md). Flash tetap keputusan owner.
+> **Keputusan 2026-10-16 (D-017):** kernel rothko dibangun dari GKI 6.1 (GKID) dengan BSP Xiaomi repo ini sebagai acuan kompatibilitas otomatis; workflow **Cogan Rothko Kernel Builder (GKI 6.1 + BSP check)**. Sejak D-019, gate juga memakai kernel bawaan rothko (ACK `6.1.138`) sebagai acuan. Lihat [ROTHKO_GKI_BUILD.md](ROTHKO_GKI_BUILD.md). Flash tetap keputusan owner.
 
 > **Keputusan 2026-10-14:** Hanya KSUN dan BakaSU yang aktif. [Arsip internal KSU/Mama](archive/ksu-mama/README.md) menyimpan rujukan dan riwayat opsi lama. Rincian tiga-root di bawah bersifat historis; BUILD HOLD tetap aktif.
 
