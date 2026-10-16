@@ -15,8 +15,8 @@ Kernel khusus **Xiaomi 14T Pro** (`rothko`, MediaTek Dimensity 9300+ / MT6989), 
 |---|---|
 | Root manager | **KernelSU Next + SUSFS**, **BakaSU + SUSFS**, atau **keduanya** dalam satu run (ZIP terpisah) |
 | Fitur | SUSFS, NoMount, Baseband Guard (BBG), BBRv3 (`bbr` dan `bbr3`) + paket jaringan, LTO pilihan (KSUN + SUSFS: Full LTO) |
-| Kernel | 6.1, sublevel bisa dipilih: **167–177**; `lts` = terbaru |
-| Nama | `Cogan-Rothko` di versi kernel (mis. `6.1.177-Cogan-Rothko-r4-…`), nama ZIP, banner flasher dan nama rilis |
+| Kernel | 6.1 dari salah satu **sumber kernel**: **GKID 6.1** (sublevel **167–177**, `lts` = terbaru) atau **kernel bawaan rothko** (ACK resmi `6.1.138`, sublevel tetap). Lihat *Dua sumber kernel* |
+| Nama | `Cogan-Rothko` (GKID) atau `Cogan-Rothko-ACK` (kernel bawaan) di versi kernel (mis. `6.1.177-Cogan-Rothko-r4-…`), nama ZIP, banner flasher dan nama rilis |
 | Pengaman | ZIP AnyKernel3 memakai cek perangkat (`do.devicecheck=1`, `device.name1=rothko`): di HP lain proses flash berhenti dengan *Unsupported device* sebelum `boot` disentuh |
 | Gate KMI | Setelah compile, `scripts/kmi_compat.py` (mesin Cogan) memastikan kernel tetap cocok dengan modul vendor HP (lihat *Kompatibilitas*). Gagal = build berhenti, tidak ada ZIP |
 | Revisi & waktu | **Build Revision** (`r` + angka) dan **Build Time** sama seperti varian lain |
@@ -31,12 +31,32 @@ Kernel khusus **Xiaomi 14T Pro** (`rothko`, MediaTek Dimensity 9300+ / MT6989), 
 |---|---|
 | Root Manager | `KernelSU Next + SUSFS`, `BakaSU + SUSFS`, atau `KSUN + SUSFS & BakaSU + SUSFS` |
 | LTO Package | `fullLTO + NoMount + Clean LTO` (wajib untuk KSUN + SUSFS) |
-| Kernel Sublevel | `lts`, atau angka 167–177. Pilih yang **sama atau lebih baru** dari kernel stock (`6.1.138` di HyperOS `OS3.0.301.0`) |
+| Sumber kernel | `GKID 6.1 (Ahmed Al-Nassif)` (default) atau `Kernel bawaan rothko (ACK resmi 6.1.138)` |
+| Kernel Sublevel | GKID: `lts` atau angka 167–177, pilih yang **sama atau lebih baru** dari kernel stock (`6.1.138` di HyperOS `OS3.0.301.0`). Kernel bawaan: `lts` atau `138` |
 | Build Revision | mis. `r4` |
 | Build Time | `N` atau waktu tetap |
 | Networking, BBG | biarkan aktif (KSUN + SUSFS selalu aktif) |
 
-Form hanya menawarkan KernelSU Next + SUSFS, BakaSU + SUSFS, atau keduanya. Kombinasi yang tidak valid (mis. KSUN + SUSFS tanpa Full LTO, atau sublevel di bawah 167) ditolak sebelum kompilasi.
+Form hanya menawarkan KernelSU Next + SUSFS, BakaSU + SUSFS, atau keduanya. Kombinasi yang tidak valid ditolak sebelum kompilasi, misalnya KSUN + SUSFS tanpa Full LTO, sublevel GKID di bawah 167, atau sublevel selain `138` untuk kernel bawaan.
+
+---
+
+## Dua sumber kernel (D-020)
+
+Acuan owner ada tiga: kernel bawaan rothko, GKID, dan GKI 2.0 (ACK android14-6.1). Karena itu ada dua pilihan **sumber kernel**. Fitur Cogan sama di keduanya: KSUN/BakaSU + SUSFS, NoMount, BBG, BBRv3 (`bbr`/`bbr3`), LTO, Build Revision dan Build Time. Gate KMI-nya juga sama, dengan tiga acuan.
+
+| | GKID 6.1 (default) | Kernel bawaan rothko |
+|---|---|---|
+| Sumber | [GKI-Duchamp-6.1](https://github.com/ahmed-alnassif/GKI-Duchamp-6.1) (Ahmed Al-Nassif), android14-6.1-lts | ACK resmi Google tag `android14-6.1-2025-06_r11`, commit `6ab8c9a8`, **sumber yang sama dengan kernel bawaan HP** (`6.1.138-android14-11-g6ab8c9a86a33`) |
+| Sublevel | 167–177 (lebih baru dari stok) | 138 (sama dengan stok) |
+| Tambahan dasar | Tumpukan patch GKID: *force-load* modul, protected exports dihapus, patch performa | Hanya bagian kompatibilitas: *force-load* modul dan protected exports dihapus. Tanpa patch performa GKID, jadi ABI-nya paling dekat dengan stok |
+| Status | 6.1.177 sudah boot di HP (KSUN + SUSFS r2/r3) | Lolos compile lokal + gate KMI. **Belum diuji di HP** |
+
+Patch Cogan untuk kernel bawaan hanya beda konteks, isinya sama. Ada dua patch yang diadaptasi:
+- **SUSFS 002**: blok include di `fs/exec.c`, `fs/namespace.c` dan `fs/proc/base.c`;
+- **BBRv3**: satu hunk di `tcp_input.c`.
+
+Isi perubahannya dicek per berkas dan identik dengan versi GKID. Tree hasilnya dikunci seperti sublevel GKID.
 
 ---
 
