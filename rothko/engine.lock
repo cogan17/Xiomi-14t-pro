@@ -1,0 +1,8 @@
+# Cogan build engine used by .github/workflows/rothko-gki-builder.yml.
+# The rothko kernel runs cogan17/Cogan's build.sh at exactly this commit with
+# TARGET_DEVICE=rothko (patches, pins, GKID parity and the KMI gate live there).
+# Raise COGAN_COMMIT only through a pull request to dev/rothko, after the new
+# Cogan dev commit passed its own checks; older builds stay reproducible.
+COGAN_REPO=cogan17/Cogan
+# cogan17/Cogan#84 squash merge on dev (2026-10-16)
+COGAN_COMMIT=22c90da1b73c5940f4d4eb2d84e808d01cbb5c6e

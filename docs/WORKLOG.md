@@ -578,8 +578,8 @@ bukan menghapus jejak kejadian.
 - **Tujuan (owner):** kernel khusus rothko di repo ini dengan root KSUN & BakaSU, SUSFS, BBG, LTO, BBRv3 (`bbr`/`bbr3`), NoMount, kernel 6.1 dikunci, sublevel bisa dipilih, Build Revision, Build Time. Prinsipnya "kompatibel dulu, flash belakangan".
 - **Sebelumnya:** jalur BSP `6.1.57` (PR #8/#9) tertahan di audit source-only. Versi itu lebih tua dari kernel stock HP (`6.1.138-android14-11`), sublevel-nya tetap, dan root + SUSFS belum pernah terkompilasi. Sementara itu kernel GKI Cogan 6.1.177 (KSUN + SUSFS dan BakaSU + SUSFS) sudah boot di rothko.
 - **Tindakan:**
-  - workflow baru `Cogan Rothko Kernel Builder (GKI 6.1 + BSP check)`;
-  - `rothko/engine.lock` (mesin `build.sh` Cogan dipin, `TARGET_DEVICE=rothko`);
+  - workflow baru `Cogan Rothko Kernel Builder (GKI 6.1 + BSP check)`, yang diletakkan di branch default (D-018);
+  - `rothko/engine.lock` = cogan17/Cogan `22c90da` (squash merge cogan17/Cogan#84; mesin `build.sh`, `TARGET_DEVICE=rothko`);
   - BSP repo ini di-*checkout* sparse sebagai `ROTHKO_BSP_SRC`;
   - dokumen [ROTHKO_GKI_BUILD.md](ROTHKO_GKI_BUILD.md).
 - **Gate kompatibilitas setiap build:**
@@ -590,8 +590,11 @@ bukan menghapus jejak kejadian.
   - opsi `=y` di `gki_defconfig` BSP aktif (3 pengecualian ditinjau).
 
   Untuk sublevel ≠ 177: paritas GKID.
-- **Bukti lokal (container sesi):**
+- **Bukti lokal (container sesi; `docs/validation/ksun-susfs-6.1-sublevels.json` di Cogan):**
   - semua simbol BSP ada di daftar GKID (MTK 3353 ⊂ 3705, Xiaomi 308 ⊂ 477);
-  - compile Full LTO KSUN + SUSFS 6.1.167 lolos (0 error, 0 undefined) di cogan17/Cogan#84.
+  - KSUN + SUSFS 6.1.167 + paritas GKID, Full LTO: 0 error, 0 undefined, gate KMI + acuan BSP lolos;
+  - kalibrasi 6.1.177 (kernel yang boot di HP) lolos gate yang sama;
+  - CRC berbeda 167 (561) ⊂ 177 (568);
+  - validasi form diuji lokal: 4 input sah diterima, 8 input salah ditolak.
 - **Tidak dilakukan:** flash, run workflow build (owner), perubahan `bsp-rothko-u-oss`.
 - **Berikutnya:** owner menjalankan builder ini (mis. `KSUN + SUSFS & BakaSU + SUSFS`, sublevel `lts`, revisi `r4`); ringkasan run harus `KMI …: OK; … BSP: …`. Uji HP hanya setelah itu.

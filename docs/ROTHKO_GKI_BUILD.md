@@ -118,4 +118,4 @@ Salin JSON hasilnya ke `sublevels` di lock Cogan, lalu naikkan `COGAN_COMMIT` di
 
 ## Mesin build dipin
 
-`rothko/engine.lock` menunjuk satu commit `dev` Cogan. Perubahan di Cogan (pin, patch, gate) baru dipakai build rothko setelah `COGAN_COMMIT` dinaikkan lewat PR ke `dev/rothko`. Build lama tetap bisa diulang dari commit yang sama.
+`rothko/engine.lock` (di `dev/rothko`) menunjuk satu commit `dev` Cogan. File workflow ada di branch default agar tombol **Run workflow** muncul (D-018); lock dan acuan BSP tetap dibaca dari `dev/rothko`. Perubahan di Cogan (pin, patch, gate) baru dipakai build rothko setelah `COGAN_COMMIT` dinaikkan lewat PR ke `dev/rothko`. Build lama tetap bisa diulang dari commit yang sama.
