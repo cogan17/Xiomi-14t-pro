@@ -623,3 +623,19 @@ bukan menghapus jejak kejadian.
   - `rothko/engine.lock` = cogan17/Cogan `d9cbc9f` (squash cogan17/Cogan#87); owner menjalankan ulang builder (GKID);
   - input *Sumber kernel* di workflow menyusul setelah compile BakaSU + SUSFS dari sumber stok lolos.
 
+## 2026-10-17 — CI hijau dua sumber kernel; mesin build sendiri (D-021)
+
+- **Run CI (atas permintaan owner):**
+  - 38934173981 percobaan 2 (GKID 6.1.177, KSUN + SUSFS): **hijau**. Gate KMI `OK` terhadap BSP, kernel bawaan dan GKI. ZIP `Cogan-Rothko-6.1.177_KernelSU-Next+SuSFS_v26.10.17-r1`.
+  - 38970833229 (kernel bawaan 6.1.138, KSUN + SUSFS dan BakaSU + SUSFS): **hijau**. Gate `OK` tiga acuan. ZIP `Cogan-Rothko-ACK-6.1.138_…_v26.10.17-r2`.
+- **Pemisahan dari Cogan (owner: "Mesin/source tetap mencontoh tapi tidak mengganggu repo Cogan"):**
+  - mesin build kini branch **`rothko-engine`** repo ini, salinan Cogan `d9cbc9f` beserta sejarahnya; lihat `ENGINE.md` di branch itu;
+  - `rothko/engine.lock` = `ENGINE_REPO=cogan17/Xiomi-14t-pro`, `ENGINE_COMMIT=6974dd4`;
+  - workflow membaca mesin dan ccache dari repo ini (PR terpisah ke branch default);
+  - bukti validasi dipindah dari Cogan ke [ROTHKO_GKI_VALIDATION.json](ROTHKO_GKI_VALIDATION.json);
+  - panduan pemulihan bootloop rothko kini ada di [ROTHKO_GKI_BUILD.md](ROTHKO_GKI_BUILD.md#pulihkan-dari-bootloop);
+  - Cogan dibersihkan dari kode rothko lewat PR terpisah di repo Cogan.
+- **Masih dibaca dari Cogan (hanya-baca):** rilis `cogan-mirror`, berisi manager BakaSU *spoofed*.
+- **Tidak dilakukan:** flash, perubahan `bsp-rothko-u-oss` di luar file workflow.
+- **Berikutnya:** owner menguji HP (A16). Untuk membuktikan mesin sendiri, satu run builder setelah PR ini dan PR workflow masuk (build pertama tanpa cache, lebih lambat).
+

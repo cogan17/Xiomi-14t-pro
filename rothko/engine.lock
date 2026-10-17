@@ -1,9 +1,10 @@
-# Cogan build engine used by .github/workflows/rothko-gki-builder.yml.
-# The rothko kernel runs cogan17/Cogan's build.sh at exactly this commit with
-# TARGET_DEVICE=rothko (patches, pins, GKID parity and the KMI gate live there).
-# Raise COGAN_COMMIT only through a pull request to dev/rothko, after the new
-# Cogan dev commit passed its own checks; older builds stay reproducible.
-COGAN_REPO=cogan17/Cogan
-# cogan17/Cogan#87 squash merge on dev (2026-10-16): MODULE_SCMVERSION reviewed in the KMI gate
-# (fixes run 38934173981) and the rothko stock kernel source (KERNEL_SOURCE=stock).
-COGAN_COMMIT=d9cbc9f80de4a46b1ff42096de81aad1e3436c12
+# Build engine used by .github/workflows/rothko-gki-builder.yml (D-021).
+# The engine is this repository's own branch rothko-engine: a copy of the Cogan
+# engine (cogan17/Cogan d9cbc9f, with history) that rothko work changes without
+# touching the Cogan repository. build.sh runs at exactly ENGINE_COMMIT with
+# TARGET_DEVICE=rothko. Raise ENGINE_COMMIT only through a pull request to
+# dev/rothko, after the rothko-engine pull request passed its checks.
+ENGINE_REPO=cogan17/Xiomi-14t-pro
+# rothko-engine 6974dd4 (2026-10-17): Cogan d9cbc9f + ENGINE.md; same engine as the
+# green runs 38934173981 (attempt 2) and 38970833229.
+ENGINE_COMMIT=6974dd4a091b39d1d2d71ef7b35df1a5f60e3220
