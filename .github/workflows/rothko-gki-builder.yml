@@ -3,9 +3,11 @@ name: Cogan Rothko Kernel Builder (GKI 6.1 + BSP check)
 # Builds the Xiaomi 14T Pro (rothko) kernel from GKI 6.1 (GKID, sublevels 167-177) or from
 # the rothko stock kernel source (official ACK android14-6.1-2025-06_r11, 6.1.138; D-019).
 # Every build is held against the stock kernel and the Xiaomi BSP of this repository (KMI
-# symbol lists, KMI generation, gki_defconfig, vendor hooks). The build engine is
-# cogan17/Cogan's build.sh at the commit pinned in rothko/engine.lock (TARGET_DEVICE=rothko):
-# one place for patches and pins.
+# symbol lists, KMI generation, gki_defconfig, vendor hooks). The build engine is this
+# repository's own copy of the Cogan engine (branch rothko-engine, D-021), at the commit
+# pinned in rothko/engine.lock (TARGET_DEVICE=rothko), so rothko work never touches the
+# Cogan repository. The only Cogan resource still read (read-only) is the cogan-mirror
+# release that holds the spoofed BakaSU manager.
 #
 # This file lives on the default branch only because GitHub shows "Run workflow" for
 # workflow_dispatch workflows of the default branch. The engine lock and the BSP
@@ -91,6 +93,7 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       engine: ${{ steps.engine.outputs.commit }}
+      engine_repo: ${{ steps.engine.outputs.repo }}
     steps:
       - name: Checkout the engine lock (dev/rothko)
         uses: actions/checkout@v7.0.1
@@ -105,17 +108,19 @@ jobs:
         id: engine
         run: |
           set -euo pipefail
-          repo="$(sed -n 's/^COGAN_REPO=//p' rothko/engine.lock)"
-          commit="$(sed -n 's/^COGAN_COMMIT=//p' rothko/engine.lock)"
-          [[ "$repo" == "cogan17/Cogan" && "$commit" =~ ^[0-9a-f]{40}$ ]] \
-            || { echo "::error::rothko/engine.lock needs COGAN_REPO=cogan17/Cogan and a 40-hex COGAN_COMMIT"; exit 1; }
+          repo="$(sed -n 's/^ENGINE_REPO=//p' rothko/engine.lock)"
+          commit="$(sed -n 's/^ENGINE_COMMIT=//p' rothko/engine.lock)"
+          # The engine is this repository's rothko-engine branch (D-021), never cogan17/Cogan.
+          [[ "${repo,,}" == "${GITHUB_REPOSITORY,,}" && "$commit" =~ ^[0-9a-f]{40}$ ]] \
+            || { echo "::error::rothko/engine.lock needs ENGINE_REPO=$GITHUB_REPOSITORY and a 40-hex ENGINE_COMMIT"; exit 1; }
+          echo "repo=$GITHUB_REPOSITORY" >> "$GITHUB_OUTPUT"
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
-          echo "Engine: $repo@$commit"
+          echo "Engine: $GITHUB_REPOSITORY@$commit (branch rothko-engine)"
 
-      - name: Checkout the Cogan build engine
+      - name: Checkout the rothko build engine (rothko-engine)
         uses: actions/checkout@v7.0.1
         with:
-          repository: cogan17/Cogan
+          repository: ${{ steps.engine.outputs.repo }}
           ref: ${{ steps.engine.outputs.commit }}
           path: engine
           fetch-depth: 1
@@ -209,10 +214,10 @@ jobs:
           [ "$hooks" -gt 0 ] || { echo "::error::BSP reference has no vendor hooks"; exit 1; }
           echo "BSP reference: $(grep KMI_GENERATION bsp/build.config.common), $hooks vendor hook declarations"
 
-      - name: Checkout the Cogan build engine
+      - name: Checkout the rothko build engine (rothko-engine)
         uses: actions/checkout@v7.0.1
         with:
-          repository: cogan17/Cogan
+          repository: ${{ needs.prepare.outputs.engine_repo }}
           ref: ${{ needs.prepare.outputs.engine }}
           path: engine
           fetch-depth: 1
@@ -222,14 +227,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libdw-dev ccache gh bc bison flex libssl-dev libelf-dev dwarves cpio zstd
 
-      - name: Restore ccache from Cogan (read-only)
+      # Own ci-ccache-store release only (D-021); none yet means a cold, slower build.
+      - name: Restore ccache (this repository, read-only)
         uses: ./engine/.github/actions/ccache-restore
         with:
-          repo: cogan17/Cogan
+          repo: ${{ github.repository }}
           token: ${{ github.token }}
           variant: ${{ matrix.name }}
 
-      - name: Run the Cogan build engine (TARGET_DEVICE=rothko)
+      - name: Run the rothko build engine (TARGET_DEVICE=rothko)
         id: kernel-build
         working-directory: engine
         env:
@@ -269,6 +275,7 @@ jobs:
           BUILD_OUTCOME: ${{ steps.kernel-build.outcome }}
           ROOT_MANAGER_INPUT: ${{ inputs.ROOT_MANAGER }}
           ENGINE: ${{ needs.prepare.outputs.engine }}
+          ENGINE_REPO: ${{ needs.prepare.outputs.engine_repo }}
         run: |
           {
             echo "## Cogan Rothko — Build Summary"
@@ -277,13 +284,13 @@ jobs:
             echo "- Root manager: ${ROOT_MANAGER_INPUT} (${{ matrix.name }})"
             echo "- Sumber kernel / kernel source: ${{ inputs.KERNEL_SOURCE }}"
             echo "- Kernel: ${LINUX_VERSION:-belum terbaca / not read}"
-            echo "- Mesin / engine: cogan17/Cogan@${ENGINE:0:12}"
+            echo "- Mesin / engine: ${ENGINE_REPO}@${ENGINE:0:12} (rothko-engine)"
             echo "- Fitur / features: ${KERNEL_FEATURES:-tidak terbaca / unreadable}"
             echo "- KMI: ${KMI_COMPAT:-belum dicek / not checked}"
             echo "- Hasil / result: ${BUILD_OUTCOME}"
             echo ""
             if [ "${BUILD_OUTCOME}" != "success" ]; then
-              echo "**Build gagal / failed.** Jangan flash. Periksa error pertama di *Run the Cogan build engine*."
+              echo "**Build gagal / failed.** Jangan flash. Periksa error pertama di *Run the rothko build engine*."
             else
               echo "**Build berhasil dan gate KMI lolos.** Ini bukti kompatibilitas offline, bukan uji HP: flash hanya setelah owner memutuskan (kompatibel dulu, flash belakangan)."
             fi
@@ -313,7 +320,7 @@ jobs:
             echo "KERNEL_SOURCE_BRANCH=${KERNEL_SOURCE_BRANCH:-}"
             echo "TARGET_DEVICE=${TARGET_DEVICE:-}"
             echo "KERNEL_SOURCE=${KERNEL_SOURCE:-}"
-            echo "ENGINE=cogan17/Cogan@${{ needs.prepare.outputs.engine }}"
+            echo "ENGINE=${{ needs.prepare.outputs.engine_repo }}@${{ needs.prepare.outputs.engine }}"
             echo "BUILD_VARIANT=${{ matrix.name }}"
           } > "build-env-${{ matrix.name }}.txt"
 
@@ -335,6 +342,7 @@ jobs:
         env:
           KSU_INPUT: ${{ matrix.KSU }}
           KSU_SUSFS_INPUT: ${{ matrix.KSU_SUSFS }}
+          # Read-only: the spoofed BakaSU manager lives in Cogan's cogan-mirror release.
           COGAN_MIRROR_REPO: cogan17/Cogan
           NAME_SUFFIX: ${{ strategy.job-total > 1 && format('_{0}', matrix.name) || '' }}
         run: |
