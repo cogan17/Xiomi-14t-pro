@@ -1,9 +1,18 @@
-# Cogan — petunjuk untuk Claude
+# rothko-engine — petunjuk untuk Claude
 
-Baca **`docs/WORK-AGREEMENT.md`** sebelum mengerjakan apa pun. Isinya aturan kerja (bagian A), peta pekerjaan berprioritas (C) dan checkpoint (E).
+- Branch ini adalah **mesin build kernel rothko milik `cogan17/Xiomi-14t-pro`** (lihat `ENGINE.md`), bukan repo Cogan. Pengembangan rothko tidak boleh mengganggu repo Cogan (keputusan owner 2026-10-17, D-021).
+- Dokumen kerja rothko ada di branch `dev/rothko`:
+  - `docs/WORKLOG.md`;
+  - `docs/DECISIONS.md`;
+  - `docs/ROTHKO_GKI_BUILD.md`.
 
-- **Mulai sesi / owner mengetik `lanjutkan`:** baca entri terbaru di bagian *E. Checkpoint*, lalu kerjakan langkah **Berikutnya** di sana atau item teratas yang belum selesai di bagian C.
-- **Owner mengetik `checkpoint`:** ikuti aturan A15: tulis entri checkpoint (Selesai / Sedang berjalan / Berikutnya / Menunggu owner), perbarui status di bagian C, commit + push ke branch kerja, laporkan hash commit.
-- Branch utama `dev`; perubahan masuk lewat PR. Keputusan merge/squash dan perampingan issue/PR ada di Claude (A17). Workflow build kernel, rilis dan flash hanya owner (A10, A16); compile lokal boleh.
-- Ruang lingkup kernel 6.1 saja (A11). Kernel khusus Xiaomi 14T Pro (rothko) dibangun di repo `cogan17/Xiomi-14t-pro` (workflow rothko di sana memakai `build.sh` Cogan pada commit yang dipin, dengan `TARGET_DEVICE=rothko`); Cogan adalah kernel GKI umum + mesin build.
-- Bahasa dokumen dan laporan: Indonesia; README dan rilis juga berbahasa Inggris.
+  `docs/WORK-AGREEMENT.md` di branch ini adalah salinan Cogan saat disalin (sejarah). Jangan dipakai sebagai peta kerja.
+- Alur perubahan:
+  1. PR ke `rothko-engine` (test di `validate.yml` harus hijau).
+  2. PR ke `dev/rothko` untuk menaikkan `ENGINE_COMMIT` di `rothko/engine.lock`, disertai entri WORKLOG.
+- Perbaikan dari Cogan disalin dengan `git cherry-pick`, bukan merge.
+- Aturan owner tetap berlaku:
+  - checkpoint berarti berhenti total sampai owner meminta lanjut;
+  - run workflow, rilis dan flash hanya oleh owner, kecuali owner meminta secara eksplisit;
+  - kompatibel dulu, flash belakangan;
+  - bahasa Indonesia.

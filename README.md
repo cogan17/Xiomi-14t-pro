@@ -1,3 +1,5 @@
+> **Branch `rothko-engine` (cogan17/Xiomi-14t-pro):** salinan mesin Cogan untuk kernel Xiaomi 14T Pro (rothko). Baca [`ENGINE.md`](ENGINE.md). README di bawah adalah README Cogan saat disalin.
+
 <div align="center">
 
 # Cogan Kernel
