@@ -2,10 +2,10 @@
 
 Kernel khusus **Xiaomi 14T Pro** (`rothko`, MediaTek Dimensity 9300+ / MT6989), dibangun di repo ini.
 
-**Sumber gabungan (keputusan owner 2026-10-16, D-017, D-019):** kernel dibangun dari **GKI 6.1 (GKID)**, yang sudah terbukti boot di rothko. Ada tiga acuan: **kernel bawaan rothko** (ACK resmi `android14-6.1-2025-06_r11`, versi `6.1.138`), **GKID**, dan **GKI 2.0 (ACK android14-6.1)**. Setiap build, kernel dicek otomatis terhadap kernel bawaan rothko dan terhadap **BSP Xiaomi di repo ini**: daftar simbol KMI MediaTek/Xiaomi, generasi KMI, dan `gki_defconfig`. Mesin build-nya adalah `build.sh` dari [cogan17/Cogan](https://github.com/cogan17/Cogan) pada commit yang dipin di `rothko/engine.lock` (`TARGET_DEVICE=rothko`), jadi patch dan pin dirawat di satu tempat.
+**Sumber gabungan (keputusan owner 2026-10-16, D-017, D-019):** kernel dibangun dari **GKI 6.1 (GKID)**, yang sudah terbukti boot di rothko. Ada tiga acuan: **kernel bawaan rothko** (ACK resmi `android14-6.1-2025-06_r11`, versi `6.1.138`), **GKID**, dan **GKI 2.0 (ACK android14-6.1)**. Setiap build, kernel dicek otomatis terhadap kernel bawaan rothko dan terhadap **BSP Xiaomi di repo ini**: daftar simbol KMI MediaTek/Xiaomi, generasi KMI, dan `gki_defconfig`. Mesin build-nya adalah **milik repo ini**: branch `rothko-engine`, salinan mesin [cogan17/Cogan](https://github.com/cogan17/Cogan) (D-021). Commit yang dipakai dipin di `rothko/engine.lock` (`TARGET_DEVICE=rothko`). Pengembangan rothko tidak menyentuh repo Cogan.
 
 > [!CAUTION]
-> Siapkan `boot.img` stock yang **sama persis** dengan versi HyperOS Anda sebelum flash. Langkah pemulihan ada di **[Panduan Bootloop → Khusus Xiaomi 14T Pro](https://github.com/cogan17/Cogan/blob/dev/docs/bootloop.md#3-khusus-xiaomi-14t-pro-rothko)**.
+> Siapkan `boot.img` stock yang **sama persis** dengan versi HyperOS Anda sebelum flash. Langkah pemulihan ada di bagian **[Pulihkan dari bootloop](#pulihkan-dari-bootloop)** di bawah.
 
 ---
 
@@ -18,7 +18,7 @@ Kernel khusus **Xiaomi 14T Pro** (`rothko`, MediaTek Dimensity 9300+ / MT6989), 
 | Kernel | 6.1 dari salah satu **sumber kernel**: **GKID 6.1** (sublevel **167–177**, `lts` = terbaru) atau **kernel bawaan rothko** (ACK resmi `6.1.138`, sublevel tetap). Lihat *Dua sumber kernel* |
 | Nama | `Cogan-Rothko` (GKID) atau `Cogan-Rothko-ACK` (kernel bawaan) di versi kernel (mis. `6.1.177-Cogan-Rothko-r4-…`), nama ZIP, banner flasher dan nama rilis |
 | Pengaman | ZIP AnyKernel3 memakai cek perangkat (`do.devicecheck=1`, `device.name1=rothko`): di HP lain proses flash berhenti dengan *Unsupported device* sebelum `boot` disentuh |
-| Gate KMI | Setelah compile, `scripts/kmi_compat.py` (mesin Cogan) memastikan kernel tetap cocok dengan modul vendor HP (lihat *Kompatibilitas*). Gagal = build berhenti, tidak ada ZIP |
+| Gate KMI | Setelah compile, `scripts/kmi_compat.py` (mesin `rothko-engine`) memastikan kernel tetap cocok dengan modul vendor HP (lihat *Kompatibilitas*). Gagal = build berhenti, tidak ada ZIP |
 | Revisi & waktu | **Build Revision** (`r` + angka) dan **Build Time** sama seperti varian lain |
 
 ---
@@ -124,19 +124,19 @@ Ringkasan gate muncul di ringkasan run (`KMI …: OK; … BSP: …; stock 6.1.13
 
 Semua varian SUSFS (KSUN, BakaSU, KernelSU) butuh **6.1.167 ke atas**: patch kernel SUSFS memerlukan konteks `fs/namespace.c` (include `trace/hooks/blk.h` dan hook vendor `do_new_mount_fc`) yang baru ada di 6.1.167. Di 160–166 patch itu gagal, jadi pilihan tersebut ditolak di awal run. Patch tidak pernah diadaptasi diam-diam.
 
-KSUN + SUSFS dibangun dari kandidat yang sudah diuji di HP. Patch-nya diterapkan tanpa *fuzz*, dan tiap sublevel punya tree hasil yang dikunci di `configs/ksun-susfs-6.1-features.lock.json` → `sublevels` (repo Cogan). Build berhenti bila tree berbeda.
+KSUN + SUSFS dibangun dari kandidat yang sudah diuji di HP. Patch-nya diterapkan tanpa *fuzz*, dan tiap sublevel punya tree hasil yang dikunci di `configs/ksun-susfs-6.1-features.lock.json` → `sublevels` (branch `rothko-engine`). Build berhenti bila tree berbeda.
 
 - **167–177**: terverifikasi. 177 tetap identik byte-per-byte dengan build yang lolos uji HP.
 - **160–166**: tidak tersedia (alasan di atas).
 
-Menambah sublevel baru (di repo Cogan) setelah **Cogan Manual Update** memasang pin-nya:
+Menambah sublevel baru (di branch `rothko-engine`): ambil pin-nya dari `configs/upstream.lock` Cogan (`git cherry-pick` commit **Cogan Manual Update**, lihat `ENGINE.md`), lalu:
 
 ```sh
 git init -q /tmp/gkid && git -C /tmp/gkid fetch --depth=1 https://github.com/ahmed-alnassif/GKI-Duchamp-6.1 <commit>
 python3 scripts/ksun_susfs_sublevel.py record /tmp/gkid <commit>
 ```
 
-Salin JSON hasilnya ke `sublevels` di lock Cogan, lalu naikkan `COGAN_COMMIT` di `rothko/engine.lock` repo ini, build, dan uji. Bila patch tidak cocok, alat ini berhenti dan sublevel itu tetap tidak tersedia.
+Salin JSON hasilnya ke `sublevels` di lock `rothko-engine` (PR ke branch itu), lalu naikkan `ENGINE_COMMIT` di `rothko/engine.lock`, build, dan uji. Bila patch tidak cocok, alat ini berhenti dan sublevel itu tetap tidak tersedia.
 
 ---
 
@@ -144,10 +144,55 @@ Salin JSON hasilnya ke `sublevels` di lock Cogan, lalu naikkan `COGAN_COMMIT` di
 
 1. Flash `1-KERNEL_Cogan-Rothko-…zip` dengan [Kernel Flasher](https://github.com/fatalcoder524/KernelFlasher) (fatalcoder524). Yang diubah hanya partisi `boot`.
 2. Pasang APK manager dari artifact/rilis yang sama (2 **atau** 3) dan modul NoMount (4).
-3. Bootloop: flash `boot.img` stock lewat fastboot, lihat [Panduan Bootloop](https://github.com/cogan17/Cogan/blob/dev/docs/bootloop.md#3-khusus-xiaomi-14t-pro-rothko).
+3. Bootloop: flash `boot.img` stock lewat fastboot, lihat [Pulihkan dari bootloop](#pulihkan-dari-bootloop).
 
 ---
 
-## Mesin build dipin
+## Mesin build sendiri (D-021)
 
-`rothko/engine.lock` (di `dev/rothko`) menunjuk satu commit `dev` Cogan. File workflow ada di branch default agar tombol **Run workflow** muncul (D-018); lock dan acuan BSP tetap dibaca dari `dev/rothko`. Perubahan di Cogan (pin, patch, gate) baru dipakai build rothko setelah `COGAN_COMMIT` dinaikkan lewat PR ke `dev/rothko`. Build lama tetap bisa diulang dari commit yang sama.
+Mesin build ada di branch **`rothko-engine`** repo ini. Branch itu salinan cogan17/Cogan `d9cbc9f` beserta sejarahnya; asal-usul dan kreditnya ada di `ENGINE.md`.
+
+- `rothko/engine.lock` (di `dev/rothko`) menunjuk satu commit branch itu (`ENGINE_REPO=cogan17/Xiomi-14t-pro`, `ENGINE_COMMIT`). Workflow menolak lock yang menunjuk repo lain.
+- File workflow ada di branch default agar tombol **Run workflow** muncul (D-018). Lock dan acuan BSP dibaca dari `dev/rothko`.
+- Perubahan rothko (patch, pin, gate) dikerjakan lewat PR ke `rothko-engine`, lalu `ENGINE_COMMIT` dinaikkan lewat PR ke `dev/rothko`. Build lama tetap bisa diulang dari commit yang sama.
+- Perbaikan umum dari Cogan disalin dengan `git cherry-pick`, bukan merge.
+- Cache ccache dibaca dari rilis `ci-ccache-store` repo ini. Belum ada cache berarti build dingin, lebih lambat beberapa menit.
+- Satu-satunya sumber daya Cogan yang masih dibaca (hanya-baca) adalah rilis `cogan-mirror`, berisi manager BakaSU *spoofed*.
+
+---
+
+## Pulihkan dari bootloop
+
+Diadaptasi dari Panduan Bootloop Cogan, bagian *Khusus Xiaomi 14T Pro (rothko)*.
+
+| | |
+|---|---|
+| Codename | `rothko` |
+| SoC | MediaTek Dimensity 9300+ (MT6989) |
+| Partisi | A/B (slot `_a` / `_b`) |
+| Kernel stock | GKI `android14-6.1` (contoh `6.1.138-android14-11`) |
+| ROM | HyperOS (contoh `OS3.0.301.0.WNNIDXM`) |
+
+**Flash `boot` atau `init_boot`?** Flash **`boot`** saja. HP ini dirilis dengan Android 14, jadi kernel ada di partisi `boot`; `init_boot` hanya berisi ramdisk, dan ZIP rothko tidak pernah mengubahnya. `init_boot.img` stock hanya perlu di-flash juga jika Anda pernah mem-patch `init_boot` sendiri (Magisk atau KernelSU mode LKM).
+
+**Masuk fastboot:** tahan **Volume Bawah + Power** sampai muncul tulisan **FASTBOOT**.
+
+**Langkah:**
+
+1. Pastikan `boot.img` berasal dari versi HyperOS yang **sama persis** dengan yang terpasang.
+2. Jalankan `fastboot flash boot boot.img`, lalu `fastboot reboot`.
+3. HP menyala dengan kernel stock, dan data tetap aman.
+
+**Jangan pernah:**
+
+- Menjalankan `flash_all_lock` dari ROM fastboot. Skrip ini mengunci bootloader; dengan partisi yang sudah diubah, HP bisa mati total (*hard brick*).
+- Mem-flash ROM yang **lebih lama** dari versi terpasang. Xiaomi memakai anti-rollback, dan downgrade bisa membuat HP mati total.
+- Memakai SP Flash Tool atau mode BROM MediaTek. Biasanya butuh akun resmi Xiaomi, dan bisa menghapus kalibrasi modem/IMEI.
+- Mem-flash `boot.img` ke partisi lain (`init_boot`, `vendor_boot`, dan seterusnya).
+
+Recovery bawaan Xiaomi (**Volume Atas + Power**) tidak bisa mem-flash `boot.img`, jadi gunakan fastboot.
+
+**Masih bootloop setelah flash `boot.img` stock?**
+
+1. Flash ROM fastboot resmi dengan versi yang sama memakai `flash_all_except_storage` (data tetap ada).
+2. Jika tetap gagal, bawa ke service center resmi Xiaomi.
